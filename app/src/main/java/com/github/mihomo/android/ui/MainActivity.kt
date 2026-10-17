@@ -846,7 +846,9 @@ class MainActivity : ComponentActivity() {
                         onHapticEnabledChanged = { enabled ->
                             hapticEnabled = enabled
                             settingsManager.hapticEnabled = enabled
-                            if (enabled) hapticTick()
+                            // This callback runs before recomposition, so hapticTick still
+                            // captures the old preference. Use the new value for this tick.
+                            window.decorView.hapticTick(enabled)
                         },
                         onScriptsChanged = {
                             parseActiveProfile()
