@@ -50,7 +50,7 @@
         <service
             android:name=".service.MihomoTileService"
             android:exported="true"
-            android:icon="@drawable/ic_vpn_key"
+            android:icon="@drawable/ic_qs_tile"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>

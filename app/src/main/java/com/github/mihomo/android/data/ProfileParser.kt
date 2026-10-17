@@ -9,13 +9,21 @@ import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.constructor.SafeConstructor
 import java.io.File
 
+data class ParsedRule(
+    val type: String,
+    val payload: String,
+    val target: String,
+    val noResolve: Boolean = false
+)
+
 data class ParsedProfile(
     val groupNames: List<String> = emptyList(),
     val groups: Map<String, ProxyGroup> = emptyMap(),
     val groupIcons: Map<String, String> = emptyMap(),
     val totalNodes: Int = 0,
     val totalRules: Int = 0,
-    val activeNode: String = ""
+    val activeNode: String = "",
+    val rules: List<ParsedRule> = emptyList()
 )
 
 object ProfileParser {
@@ -32,10 +40,11 @@ object ProfileParser {
         val lastModified: Long,
         val length: Long,
         val savedNodesHash: Int,
+        val scriptKey: String,
         val parsed: ParsedProfile
     ) {
-        fun isValid(lm: Long, len: Long, hash: Int): Boolean =
-            lastModified == lm && length == len && savedNodesHash == hash
+        fun isValid(lm: Long, len: Long, hash: Int, sKey: String): Boolean =
+            lastModified == lm && length == len && savedNodesHash == hash && scriptKey == sKey
     }
     private val parsedCache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry>()
 
@@ -52,19 +61,27 @@ object ProfileParser {
         val lm = file.lastModified()
         val len = file.length()
         val savedHash = savedNodes.hashCode()
+
+        val activeProfile = if (context != null) {
+            ConfigManager.getProfiles(context).find {
+                it.file.name == file.name || it.file.absolutePath == file.absolutePath || it.id == file.nameWithoutExtension
+            }
+        } else null
+        val scriptKey = if (activeProfile != null && activeProfile.scriptEnabled) {
+            activeProfile.scriptIds.sorted().joinToString(",")
+        } else ""
+
         val cached = parsedCache[path]
-        if (cached?.isValid(lm, len, savedHash) == true) {
+        if (cached?.isValid(lm, len, savedHash, scriptKey) == true) {
             return cached.parsed
         }
 
         var content = file.readText()
         if (context != null) {
-            val activeProfile = ConfigManager.getProfiles(context).find { it.file.absolutePath == file.absolutePath }
-            val targetIds = if (activeProfile != null && activeProfile.scriptIds.isNotEmpty()) {
+            val targetIds = if (activeProfile != null && activeProfile.scriptEnabled && activeProfile.scriptIds.isNotEmpty()) {
                 activeProfile.scriptIds
             } else null
-            val shouldRunScripts = targetIds != null || ScriptManager.getScripts(context).isNotEmpty()
-            if (shouldRunScripts) {
+            if (!targetIds.isNullOrEmpty()) {
                 content = runCatching {
                     ConfigScriptEngine.executeScripts(
                         context = context,
@@ -86,21 +103,12 @@ object ProfileParser {
             }
 
             // 1. Extract proxies (support 'proxies' and 'Proxy')
-            val proxyMap = mutableMapOf<String, String>() // name -> type
-            val rawProxies = (data["proxies"] ?: data["Proxy"]) as? List<*>
-            if (rawProxies != null) {
-                for (item in rawProxies) {
-                    if (item is Map<*, *>) {
-                        val name = item["name"]?.toString() ?: continue
-                        val type = item["type"]?.toString() ?: "Proxy"
-                        proxyMap[name] = type
-                    }
-                }
-            }
+            val proxyMap = extractProxyMap(data)
 
-            // 2. Extract rules count (support 'rules' and 'Rule')
+            // 2. Extract rules (support 'rules' and 'Rule')
             val rawRules = (data["rules"] ?: data["Rule"]) as? List<*>
-            val rulesCount = rawRules?.size ?: 0
+            val parsedRules = extractParsedRules(rawRules)
+            val rulesCount = if (parsedRules.isNotEmpty()) parsedRules.size else (rawRules?.size ?: 0)
 
             // 3. Extract proxy-groups (support 'proxy-groups' and 'Proxy Group')
             val groupNames = mutableListOf<String>()
@@ -126,36 +134,13 @@ object ProfileParser {
                                 item["include-all-proxies"] == true ||
                                 item["include-all-proxies"]?.toString()?.equals("true", ignoreCase = true) == true
 
-                        val memberSet = LinkedHashSet<String>()
-                        memberSet.addAll(explicitProxies)
-
-                        val filterRegex = if (!filterPattern.isNullOrBlank()) {
-                            runCatching { Regex(filterPattern, RegexOption.IGNORE_CASE) }.getOrNull()
-                        } else null
-
-                        val excludeRegex = if (!excludePattern.isNullOrBlank()) {
-                            runCatching { Regex(excludePattern, RegexOption.IGNORE_CASE) }.getOrNull()
-                        } else null
-
-                        if (includeAll) {
-                            for (pName in proxyMap.keys) {
-                                if (excludeRegex == null || !excludeRegex.containsMatchIn(pName)) {
-                                    memberSet.add(pName)
-                                }
-                            }
-                        } else if (filterRegex != null) {
-                            for (pName in proxyMap.keys) {
-                                if (filterRegex.containsMatchIn(pName)) {
-                                    if (excludeRegex == null || !excludeRegex.containsMatchIn(pName)) {
-                                        memberSet.add(pName)
-                                    }
-                                }
-                            }
-                        } else if (excludeRegex != null) {
-                            memberSet.removeAll { excludeRegex.containsMatchIn(it) }
-                        }
-
-                        val memberNames = memberSet.toList()
+                        val memberNames = resolveGroupMembers(
+                            explicitProxies = explicitProxies,
+                            proxyNames = proxyMap.keys,
+                            filterPattern = filterPattern,
+                            excludePattern = excludePattern,
+                            includeAll = includeAll
+                        )
 
                         val proxies = memberNames.mapNotNull { mName ->
                             val mType = proxyMap[mName] ?: if (mName in listOf("DIRECT", "REJECT", "GLOBAL")) mName else "Group"
@@ -205,14 +190,15 @@ object ProfileParser {
                 groupIcons = groupIcons,
                 totalNodes = totalNodes,
                 totalRules = rulesCount,
-                activeNode = activeNode
+                activeNode = activeNode,
+                rules = parsedRules
             )
-            parsedCache[path] = CacheEntry(lm, len, savedHash, result)
+            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, result)
             return result
         } catch (e: Throwable) {
             Log.w(TAG, "SnakeYAML failed, using robust line fallback: ${e.message}")
             val fallback = parseFallback(content, savedNodes)
-            parsedCache[path] = CacheEntry(lm, len, savedHash, fallback)
+            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, fallback)
             return fallback
         }
     }
@@ -233,6 +219,7 @@ object ProfileParser {
         var currentGroupIncludeAll = false
         var currentGroupProxies = mutableListOf<Proxy>()
         var rulesCount = 0
+        val fallbackRules = mutableListOf<ParsedRule>()
 
         fun finalizeGroup() {
             if (currentGroupName != null) {
@@ -339,6 +326,15 @@ object ProfileParser {
                 }
             } else if (!inProxies && !inGroups && content.contains("rules:")) {
                 if (trimmed.startsWith("- ")) {
+                    val ruleContent = trimmed.removePrefix("- ").trim().trim('"', '\'')
+                    val parts = ruleContent.split(",").map { it.trim() }
+                    if (parts.isNotEmpty()) {
+                        val rType = parts[0]
+                        val rPayload = if (parts.size >= 3) parts[1] else ""
+                        val rTarget = if (parts.size >= 3) parts[2] else if (parts.size == 2) parts[1] else ""
+                        val rNoResolve = parts.any { it.equals("no-resolve", ignoreCase = true) }
+                        fallbackRules.add(ParsedRule(rType, rPayload, rTarget, rNoResolve))
+                    }
                     rulesCount++
                 }
             }
@@ -365,7 +361,74 @@ object ProfileParser {
             groupIcons = groupIcons,
             totalNodes = proxyMap.size,
             totalRules = rulesCount,
-            activeNode = groupMap.values.firstOrNull()?.now ?: ""
+            activeNode = groupMap.values.firstOrNull()?.now ?: "",
+            rules = fallbackRules
         )
+    }
+
+    private fun extractProxyMap(data: Map<String, Any?>): Map<String, String> {
+        val proxyMap = mutableMapOf<String, String>()
+        val rawProxies = (data["proxies"] ?: data["Proxy"]) as? List<*> ?: return proxyMap
+        for (item in rawProxies) {
+            if (item is Map<*, *>) {
+                val name = item["name"]?.toString() ?: continue
+                val type = item["type"]?.toString() ?: "Proxy"
+                proxyMap[name] = type
+            }
+        }
+        return proxyMap
+    }
+
+    private fun extractParsedRules(rawRules: List<*>?): List<ParsedRule> {
+        val parsedRules = mutableListOf<ParsedRule>()
+        if (rawRules == null) return parsedRules
+        for (item in rawRules) {
+            val ruleStr = item?.toString()?.trim() ?: continue
+            if (ruleStr.isBlank() || ruleStr.startsWith("#")) continue
+            val parts = ruleStr.split(",").map { it.trim() }
+            if (parts.isNotEmpty()) {
+                val rType = parts[0]
+                val rPayload = if (parts.size >= 3) parts[1] else ""
+                val rTarget = if (parts.size >= 3) parts[2] else if (parts.size == 2) parts[1] else ""
+                val rNoResolve = parts.any { it.equals("no-resolve", ignoreCase = true) }
+                parsedRules.add(ParsedRule(rType, rPayload, rTarget, rNoResolve))
+            }
+        }
+        return parsedRules
+    }
+
+    private fun resolveGroupMembers(
+        explicitProxies: List<String>,
+        proxyNames: Set<String>,
+        filterPattern: String?,
+        excludePattern: String?,
+        includeAll: Boolean
+    ): List<String> {
+        val memberSet = LinkedHashSet<String>(explicitProxies)
+        val filterRegex = if (!filterPattern.isNullOrBlank()) {
+            runCatching { Regex(filterPattern, RegexOption.IGNORE_CASE) }.getOrNull()
+        } else null
+        val excludeRegex = if (!excludePattern.isNullOrBlank()) {
+            runCatching { Regex(excludePattern, RegexOption.IGNORE_CASE) }.getOrNull()
+        } else null
+
+        if (includeAll) {
+            for (pName in proxyNames) {
+                if (excludeRegex == null || !excludeRegex.containsMatchIn(pName)) {
+                    memberSet.add(pName)
+                }
+            }
+        } else if (filterRegex != null) {
+            for (pName in proxyNames) {
+                if (filterRegex.containsMatchIn(pName)) {
+                    if (excludeRegex == null || !excludeRegex.containsMatchIn(pName)) {
+                        memberSet.add(pName)
+                    }
+                }
+            }
+        } else if (excludeRegex != null) {
+            memberSet.removeAll { excludeRegex.containsMatchIn(it) }
+        }
+        return memberSet.toList()
     }
 }

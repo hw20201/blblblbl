@@ -8,8 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Android
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,7 +61,7 @@ fun AppRoutingScreen(
         ) {
             if (onBack != null) {
                 IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = AppStrings.get("back", lang), tint = LoonTextPrimary)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppStrings.get("back", lang), tint = LoonTextPrimary)
                 }
                 Spacer(modifier = Modifier.width(6.dp))
             }
