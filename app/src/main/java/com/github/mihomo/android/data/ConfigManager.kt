@@ -73,7 +73,7 @@ object ConfigManager {
         return if (total > 0L || expire > 0L) SubscriptionUserInfo(upload, download, total, expire) else null
     }
 
-    private fun extractProfileName(name: String?, response: okhttp3.Response?, body: String, url: String): String {
+    internal fun extractProfileName(name: String?, response: okhttp3.Response?, body: String, url: String): String {
         if (!name.isNullOrBlank()) return name.trim()
 
         // 1. Check URL Fragment (#Name)
@@ -250,7 +250,7 @@ object ConfigManager {
     }
 
     fun saveLocalProfile(context: Context, name: String, content: String): ProfileItem {
-        val id = System.currentTimeMillis().toString()
+        val id = java.util.UUID.randomUUID().toString()
         val file = getProfilesDir(context).resolve("$id.yaml")
         file.writeText(content)
         val item = ProfileItem(id, name, null, file, System.currentTimeMillis())
@@ -490,13 +490,14 @@ object ConfigManager {
 
         if (sourceFile != null && sourceFile.exists()) {
             var rawContent = sourceFile.readText()
-            val activeProfile = getProfiles(context).find { it.file.absolutePath == sourceFile.absolutePath }
-            val targetIds = if (activeProfile != null && activeProfile.scriptIds.isNotEmpty()) {
+            val activeProfile = getProfiles(context).find {
+                it.file.absolutePath == sourceFile.absolutePath || it.file.name == sourceFile.name || it.id == sourceFile.nameWithoutExtension
+            }
+            val targetIds = if (activeProfile != null && activeProfile.scriptEnabled && activeProfile.scriptIds.isNotEmpty()) {
                 activeProfile.scriptIds
             } else null
-            val shouldRunScripts = targetIds != null || ScriptManager.getScripts(context).isNotEmpty()
-            if (shouldRunScripts) {
-                Log.i(TAG, "Applying config rewrite scripts for profile: ${activeProfile?.name ?: sourceFile.name}...")
+            if (!targetIds.isNullOrEmpty()) {
+                Log.i(TAG, "Applying config rewrite scripts for profile: ${activeProfile?.name ?: sourceFile.name} (${targetIds.size} scripts)...")
                 rawContent = ConfigScriptEngine.executeScripts(
                     context = context,
                     rawYaml = rawContent,
@@ -509,9 +510,6 @@ object ConfigManager {
             Log.i(TAG, "Prepared synthesized config with user profile: ${sourceFile.name}")
         } else {
             val defaultBody = """
-                port: 7890
-                socks-port: 7891
-                allow-lan: ${settings.allowLan}
                 proxies: []
                 proxy-groups:
                   - name: GLOBAL

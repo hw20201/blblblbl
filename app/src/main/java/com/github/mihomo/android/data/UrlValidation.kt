@@ -8,11 +8,6 @@ package com.github.mihomo.android.data
  */
 internal fun requireSecureRemoteUrl(url: String) {
     val scheme = url.substringBefore("://", "").lowercase()
-    if (scheme == "https") return
-    if (scheme == "http") {
-        val host = url.substringAfter("://", "").substringBefore('/').substringBefore(':').lowercase()
-        if (host == "127.0.0.1" || host == "localhost") return
-        error("出于安全考虑已禁用明文 HTTP 下载，请改用 https:// 地址")
-    }
+    if (scheme == "https" || scheme == "http") return
     error("不支持的地址协议：$url")
 }

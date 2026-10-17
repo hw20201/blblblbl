@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,14 +26,34 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.github.mihomo.android.core.ClashCore
+import com.github.mihomo.android.data.ConfigManager
 import com.github.mihomo.android.data.ProfileParser
 import com.github.mihomo.android.data.ScriptItem
 import com.github.mihomo.android.data.ScriptManager
+import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private fun formatRelativeTime(timestamp: Long): String {
+    val diff = System.currentTimeMillis() - timestamp
+    if (diff < 0) return "刚刚"
+    val seconds = diff / 1000
+    if (seconds < 60) return "刚刚"
+    val minutes = seconds / 60
+    if (minutes < 60) return "${minutes} 分钟前"
+    val hours = minutes / 60
+    if (hours < 24) return "${hours} 小时前"
+    val days = hours / 24
+    if (days < 30) return "${days} 天前"
+    val months = days / 30
+    if (months < 12) return "${months} 个月前"
+    val years = months / 12
+    return "${years} 年前"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +65,7 @@ fun ScriptsScreen(
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
     var scripts by remember { mutableStateOf(emptyList<ScriptItem>()) }
+    var updatingScriptIds by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(Unit) {
         scripts = withContext(Dispatchers.IO) { ScriptManager.getScripts(context) }
@@ -123,7 +145,7 @@ fun ScriptsScreen(
                     modifier = Modifier.padding(end = 6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = AppStrings.get("back", lang),
                         tint = LoonTextPrimary
                     )
@@ -136,14 +158,63 @@ fun ScriptsScreen(
                 )
             }
 
-            IconButton(
-                onClick = { showImportUrlDialog = true }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Link,
-                    contentDescription = AppStrings.get("scripts_import_network", lang),
-                    tint = LoonTextSecondary
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (scripts.any { it.url.isNotBlank() }) {
+                    val isAnyUpdating = updatingScriptIds.isNotEmpty()
+                    IconButton(
+                        onClick = {
+                            if (isAnyUpdating) return@IconButton
+                            val remoteScripts = scripts.filter { it.url.isNotBlank() }
+                            scope.launch {
+                                updatingScriptIds = updatingScriptIds + remoteScripts.map { it.id }
+                                var successCount = 0
+                                for (s in remoteScripts) {
+                                    val r = ScriptManager.updateScriptFromRemote(context, s)
+                                    if (r.isSuccess) successCount++
+                                }
+                                updatingScriptIds = updatingScriptIds - remoteScripts.map { it.id }.toSet()
+                                refresh()
+                                withContext(Dispatchers.IO) {
+                                    val settings = SettingsManager(context)
+                                    val profiles = ConfigManager.getProfiles(context)
+                                    val active = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
+                                    if (active?.scriptEnabled == true && ClashCore.isCoreLoaded) {
+                                        runCatching {
+                                            val cf = ConfigManager.prepareConfig(context, active.file)
+                                            ClashCore.load(cf)
+                                        }
+                                    }
+                                }
+                                Toast.makeText(context, "已同步 $successCount/${remoteScripts.size} 个远程脚本", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isAnyUpdating
+                    ) {
+                        if (isAnyUpdating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = LoonBlue,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "同步所有远程脚本",
+                                tint = LoonTextPrimary
+                            )
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = { showCreateDialog = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = AppStrings.get("scripts_new", lang),
+                        tint = LoonTextPrimary
+                    )
+                }
             }
         }
 
@@ -185,13 +256,13 @@ fun ScriptsScreen(
                 }
             }
 
-            // Button 2: 新建脚本 (Emerald Green, clearly distinguished from Blue)
+            // Button 2: 链接导入 (Emerald Green, swapped with 新建脚本)
             Surface(
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { showCreateDialog = true },
+                    .clickable { showImportUrlDialog = true },
                 color = Color(0xFF10B981),
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -201,14 +272,14 @@ fun ScriptsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Add,
+                        imageVector = Icons.Default.Link,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = AppStrings.get("scripts_new", lang),
+                        text = AppStrings.get("scripts_import_link", lang),
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
@@ -272,20 +343,7 @@ fun ScriptsScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    // Badge with uniform soft gray LoonEditBlueBg background
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = LoonEditBlueBg,
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    ) {
-                                        Text(
-                                            text = "JS",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = LoonTextPrimary,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
+
                                     Text(
                                         text = script.name,
                                         fontWeight = FontWeight.Bold,
@@ -297,6 +355,59 @@ fun ScriptsScreen(
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (script.url.isNotBlank()) {
+                                        val isUpdating = updatingScriptIds.contains(script.id)
+                                        IconButton(
+                                            onClick = {
+                                                if (isUpdating) return@IconButton
+                                                updatingScriptIds = updatingScriptIds + script.id
+                                                scope.launch {
+                                                    val res = ScriptManager.updateScriptFromRemote(context, script)
+                                                    updatingScriptIds = updatingScriptIds - script.id
+                                                    if (res.isSuccess) {
+                                                        refresh()
+                                                        withContext(Dispatchers.IO) {
+                                                            val settings = SettingsManager(context)
+                                                            val profiles = ConfigManager.getProfiles(context)
+                                                            val active = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
+                                                            if (active?.scriptEnabled == true && active.scriptIds.contains(script.id) && ClashCore.isCoreLoaded) {
+                                                                runCatching {
+                                                                    val cf = ConfigManager.prepareConfig(context, active.file)
+                                                                    ClashCore.load(cf)
+                                                                }
+                                                            }
+                                                        }
+                                                        Toast.makeText(context, AppStrings.get("scripts_sync_success", lang), Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(
+                                                            context,
+                                                            AppStrings.get("scripts_sync_failed", lang).replace("{msg}", res.exceptionOrNull()?.message ?: ""),
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(32.dp),
+                                            enabled = !isUpdating
+                                        ) {
+                                            if (isUpdating) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    color = LoonBlue,
+                                                    strokeWidth = 2.dp
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Default.Sync,
+                                                    contentDescription = AppStrings.get("scripts_sync", lang),
+                                                    tint = LoonBlue,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+
                                     IconButton(
                                         onClick = { deleteConfirmScript = script },
                                         modifier = Modifier.size(32.dp)
@@ -330,7 +441,11 @@ fun ScriptsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = AppStrings.get("scripts_bind_hint", lang),
+                                    text = if (script.url.isNotBlank()) {
+                                        "更新于: ${formatRelativeTime(script.updatedAt)}"
+                                    } else {
+                                        AppStrings.get("scripts_bind_hint", lang)
+                                    },
                                     fontSize = 11.sp,
                                     color = LoonTextMuted
                                 )

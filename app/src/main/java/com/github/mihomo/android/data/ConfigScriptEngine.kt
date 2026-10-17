@@ -16,12 +16,9 @@ object ConfigScriptEngine {
         targetScriptIds: List<String>? = null,
         logToRepo: Boolean = true
     ): String {
+        if (targetScriptIds.isNullOrEmpty()) return rawYaml
         val allScripts = ScriptManager.getScripts(context)
-        val scripts = if (targetScriptIds != null) {
-            allScripts.filter { targetScriptIds.contains(it.id) }
-        } else {
-            allScripts
-        }
+        val scripts = allScripts.filter { targetScriptIds.contains(it.id) }
         if (scripts.isEmpty()) return rawYaml
 
         var currentYaml = rawYaml
@@ -157,6 +154,10 @@ object ConfigScriptEngine {
             val runnerCode = """
                 (function() {
                     var __input = JSON.parse($escapedJson);
+                    var inProxies = __input.proxies ? JSON.parse(JSON.stringify(__input.proxies)) :
+                                    (__input.Proxies ? JSON.parse(JSON.stringify(__input.Proxies)) :
+                                    (__input.Proxy ? JSON.parse(JSON.stringify(__input.Proxy)) : null));
+                    var inGroups = __input['proxy-groups'] ? JSON.parse(JSON.stringify(__input['proxy-groups'])) : null;
                     var __fn = (typeof main === 'function') ? main :
                                (typeof module !== 'undefined' && typeof module.exports === 'function') ? module.exports :
                                (typeof module !== 'undefined' && module.exports && typeof module.exports.main === 'function') ? module.exports.main :
@@ -168,13 +169,12 @@ object ConfigScriptEngine {
                     if (__res && typeof __res.then === 'function') {
                         __res = __input;
                     }
-                    var inProxies = __input.proxies || __input.Proxies || __input.Proxy;
                     var outProxies = __res.proxies || __res.Proxies || __res.Proxy;
-                    if (inProxies && (!outProxies || !Array.isArray(outProxies) || outProxies.length === 0)) {
+                    if (inProxies && inProxies.length > 0 && (!outProxies || !Array.isArray(outProxies) || outProxies.length === 0)) {
                         __res.proxies = inProxies;
                     }
-                    if (__input['proxy-groups'] && (!__res['proxy-groups'] || !Array.isArray(__res['proxy-groups']) || __res['proxy-groups'].length === 0)) {
-                        __res['proxy-groups'] = __input['proxy-groups'];
+                    if (inGroups && inGroups.length > 0 && (!__res['proxy-groups'] || !Array.isArray(__res['proxy-groups']) || __res['proxy-groups'].length === 0)) {
+                        __res['proxy-groups'] = inGroups;
                     }
                     return JSON.stringify(__res);
                 })();
@@ -193,7 +193,7 @@ object ConfigScriptEngine {
      * pulled from remote subscriptions, so an unrestricted bridge here is remote code execution.
      * A ContextFactory-based instruction observer also bounds runaway scripts.
      */
-    private fun executeWithRhino(code: String, jsonStr: String, scriptName: String, gson: Gson): String? {
+    internal fun executeWithRhino(code: String, jsonStr: String, scriptName: String, gson: Gson): String? {
         val deadline = System.currentTimeMillis() + RHINO_TIMEOUT_MS
         val factory = object : org.mozilla.javascript.ContextFactory() {
             override fun observeInstructionCount(cx: org.mozilla.javascript.Context, instructionCount: Int) {
@@ -230,6 +230,10 @@ object ConfigScriptEngine {
             val runnerCode = """
                 (function() {
                     var __input = JSON.parse($escapedJson);
+                    var inProxies = __input.proxies ? JSON.parse(JSON.stringify(__input.proxies)) :
+                                    (__input.Proxies ? JSON.parse(JSON.stringify(__input.Proxies)) :
+                                    (__input.Proxy ? JSON.parse(JSON.stringify(__input.Proxy)) : null));
+                    var inGroups = __input['proxy-groups'] ? JSON.parse(JSON.stringify(__input['proxy-groups'])) : null;
                     var __fn = (typeof main === 'function') ? main :
                                (typeof module !== 'undefined' && typeof module.exports === 'function') ? module.exports :
                                (typeof module !== 'undefined' && module.exports && typeof module.exports.main === 'function') ? module.exports.main :
@@ -241,13 +245,12 @@ object ConfigScriptEngine {
                     if (__res && typeof __res.then === 'function') {
                         __res = __input;
                     }
-                    var inProxies = __input.proxies || __input.Proxies || __input.Proxy;
                     var outProxies = __res.proxies || __res.Proxies || __res.Proxy;
-                    if (inProxies && (!outProxies || !Array.isArray(outProxies) || outProxies.length === 0)) {
+                    if (inProxies && inProxies.length > 0 && (!outProxies || !Array.isArray(outProxies) || outProxies.length === 0)) {
                         __res.proxies = inProxies;
                     }
-                    if (__input['proxy-groups'] && (!__res['proxy-groups'] || !Array.isArray(__res['proxy-groups']) || __res['proxy-groups'].length === 0)) {
-                        __res['proxy-groups'] = __input['proxy-groups'];
+                    if (inGroups && inGroups.length > 0 && (!__res['proxy-groups'] || !Array.isArray(__res['proxy-groups']) || __res['proxy-groups'].length === 0)) {
+                        __res['proxy-groups'] = inGroups;
                     }
                     return JSON.stringify(__res);
                 })();
@@ -257,7 +260,7 @@ object ConfigScriptEngine {
         }
     }
 
-    private fun normalizeYamlData(data: Any?): Any? {
+    internal fun normalizeYamlData(data: Any?): Any? {
         return when (data) {
             is Map<*, *> -> {
                 val result = LinkedHashMap<String, Any?>()

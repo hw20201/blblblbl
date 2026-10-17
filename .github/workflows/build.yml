@@ -44,33 +44,8 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-configuration-cache
 
-      # Restores the release keystore from the repository secrets. When the secret is absent the
-      # workflow falls back to a debug build so the pipeline never produces an unsigned APK.
-      - name: Restore signing keystore
-        env:
-          RELEASE_STORE_BASE64: ${{ secrets.RELEASE_STORE_BASE64 }}
-        run: |
-          if [ -n "$RELEASE_STORE_BASE64" ]; then
-            echo "$RELEASE_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/nexus-release.jks"
-            echo "RELEASE_STORE_FILE=$RUNNER_TEMP/nexus-release.jks" >> "$GITHUB_ENV"
-            echo "SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
-            echo "Release signing configured."
-          else
-            echo "SIGNING_CONFIGURED=false" >> "$GITHUB_ENV"
-            echo "::warning::RELEASE_STORE_BASE64 is not set; falling back to a debug build."
-          fi
-
-      - name: Build signed Release APK
-        if: env.SIGNING_CONFIGURED == 'true'
-        env:
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon
-
-      - name: Build Debug APK (fallback)
-        if: env.SIGNING_CONFIGURED != 'true'
-        run: ./gradlew assembleDebug --no-daemon
 
       - name: Prepare APK Output
         run: |

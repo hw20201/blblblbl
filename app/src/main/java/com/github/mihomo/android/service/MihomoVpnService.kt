@@ -102,7 +102,7 @@ class MihomoVpnService : VpnService() {
 
     private fun startVpn() {
         val status = _vpnState.value.status
-        if (startJob?.isActive == true || status == VpnState.Status.RUNNING || status == VpnState.Status.STARTING) {
+        if (startJob?.isActive == true || status != VpnState.Status.STOPPED) {
             return
         }
 
@@ -202,14 +202,19 @@ class MihomoVpnService : VpnService() {
 
                 // 5. Hand over fd to Mihomo core
                 val fd = pfd.detachFd()
-                ClashCore.startTun(
-                    fd = fd,
-                    stack = settings.tunStack,
-                    gateway = "172.19.0.1/30,fdfe:dcba:9876::1/126",
-                    portal = "172.19.0.2,fdfe:dcba:9876::2",
-                    dns = "172.19.0.2,fdfe:dcba:9876::2",
-                    vpnService = this@MihomoVpnService
-                )
+                try {
+                    ClashCore.startTun(
+                        fd = fd,
+                        stack = settings.tunStack,
+                        gateway = "172.19.0.1/30,fdfe:dcba:9876::1/126",
+                        portal = "172.19.0.2,fdfe:dcba:9876::2",
+                        dns = "172.19.0.2,fdfe:dcba:9876::2",
+                        vpnService = this@MihomoVpnService
+                    )
+                } catch (t: Throwable) {
+                    runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
+                    throw t
+                }
 
                 // 6. Report running state
                 _vpnState.value = _vpnState.value.copy(
@@ -262,6 +267,10 @@ class MihomoVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        if (_vpnState.value.status == VpnState.Status.STOPPED) {
+            stopSelf()
+            return
+        }
         _vpnState.value = _vpnState.value.copy(status = VpnState.Status.STOPPING)
         // Cancel an in-flight start first: otherwise it can establish the TUN and flip the state
         // back to RUNNING after we have already torn down and reported STOPPED.

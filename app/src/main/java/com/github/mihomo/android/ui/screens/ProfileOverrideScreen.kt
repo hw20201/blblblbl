@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -70,7 +71,7 @@ fun ProfileOverrideScreen(
                 modifier = Modifier.padding(end = 6.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = AppStrings.get("back", lang),
                     tint = LoonTextPrimary
                 )
@@ -303,7 +304,7 @@ fun ProfileOverrideScreen(
         Button(
             onClick = {
                 val updated = profile.copy(
-                    scriptEnabled = true,
+                    scriptEnabled = selectedScriptIds.isNotEmpty(),
                     scriptIds = selectedScriptIds.toList()
                 )
                 ConfigManager.updateProfile(context, updated)

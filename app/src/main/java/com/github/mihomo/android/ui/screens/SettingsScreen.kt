@@ -62,7 +62,9 @@ fun SettingsScreen(
     onNavigateToScripts: () -> Unit = {},
     onNavigateToProfiles: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
-    onNavigateToLogs: () -> Unit
+    onNavigateToLogs: () -> Unit,
+    onNavigateToAppearance: () -> Unit = {},
+    onNavigateToDns: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -71,10 +73,7 @@ fun SettingsScreen(
 
     var showTunDialog by remember { mutableStateOf(false) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
-    var showThemeDialog by remember { mutableStateOf(false) }
-    var showLanguageDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
-    var currentLanguage by remember { mutableStateOf(settingsManager.appLanguage) }
     var currentLogLevel by remember { mutableStateOf(settingsManager.logLevel) }
 
     var scripts by remember { mutableStateOf(emptyList<ScriptItem>()) }
@@ -170,28 +169,14 @@ fun SettingsScreen(
             LoonSettingsItem(
                 icon = Icons.Default.Palette,
                 iconBg = Color(0xFF8B5CF6),
-                title = AppStrings.get("settings_theme", lang),
+                title = AppStrings.get("settings_appearance", lang),
                 value = when (themeMode) {
                     ThemeMode.SYSTEM -> AppStrings.get("theme_system", lang)
                     ThemeMode.LIGHT -> AppStrings.get("theme_light", lang)
                     ThemeMode.DARK -> AppStrings.get("theme_dark", lang)
                 },
                 showChevron = true,
-                onClick = { showThemeDialog = true }
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.Language,
-                iconBg = Color(0xFF3B82F6),
-                title = AppStrings.get("settings_language", lang),
-                value = when (currentLanguage) {
-                    "zh" -> "简体中文"
-                    "en" -> "English"
-                    "ru" -> "Русский"
-                    else -> AppStrings.get("theme_system", lang)
-                },
-                showChevron = true,
-                onClick = { showLanguageDialog = true }
+                onClick = onNavigateToAppearance
             )
         }
 
@@ -258,10 +243,10 @@ fun SettingsScreen(
             LoonSettingsItem(
                 icon = Icons.Default.Public,
                 iconBg = Color(0xFF0D9488),
-                title = AppStrings.get("settings_upstream_dns", lang),
-                value = "阿里/腾讯/Cloudflare",
-                showChevron = false,
-                onClick = {}
+                title = AppStrings.get("dns_screen_title", lang),
+                value = "上游服务器与记录",
+                showChevron = true,
+                onClick = onNavigateToDns
             )
         }
 
@@ -313,6 +298,20 @@ fun SettingsScreen(
                 onClick = { showResetDialog = true }
             )
         }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Section: 关于
+        LoonSectionHeader(title = AppStrings.get("settings_about", lang))
+        LoonGroupCard {
+            LoonSettingsItem(
+                icon = Icons.Default.Info,
+                iconBg = LoonBlue,
+                title = "应用版本",
+                value = "1.0.1-Beta.3",
+                showChevron = false
+            )
+        }
     }
 }
 
@@ -339,161 +338,6 @@ fun SettingsScreen(
             }
         )
     }
-
-    // Theme Selection Dialog
-    if (showThemeDialog) {
-        val themeOptions = listOf(
-            ThemeMode.SYSTEM to ("跟随系统" to "自动适配系统深色/浅色设置"),
-            ThemeMode.LIGHT to ("浅色模式" to "始终保持明亮清爽视觉"),
-            ThemeMode.DARK to ("深色模式" to "沉浸暗黑风格，夜间护眼")
-        )
-        AlertDialog(
-            onDismissRequest = { showThemeDialog = false },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = LoonCard,
-            title = {
-                Text("选择外观主题", fontWeight = FontWeight.Bold, color = LoonTextPrimary)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    themeOptions.forEach { (mode, pair) ->
-                        val (label, desc) = pair
-                        val isSelected = themeMode == mode
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) LoonBlue else LoonCardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable {
-                                    onThemeModeChanged(mode)
-                                    showThemeDialog = false
-                                },
-                            color = if (isSelected) LoonBlue.copy(alpha = 0.08f) else LoonCard
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) LoonBlue else LoonTextPrimary,
-                                        fontSize = 15.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = desc,
-                                        color = LoonTextSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = LoonBlue,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showThemeDialog = false }) {
-                    Text("关闭", color = LoonBlue, fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-
-    // Language Selection Dialog
-    if (showLanguageDialog) {
-        val langs = listOf(
-            "SYSTEM" to "跟随系统",
-            "zh" to "简体中文",
-            "en" to "English",
-            "ru" to "Русский"
-        )
-        AlertDialog(
-            onDismissRequest = { showLanguageDialog = false },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = LoonCard,
-            title = {
-                Text(AppStrings.get("settings_language", lang), fontWeight = FontWeight.Bold, color = LoonTextPrimary)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    langs.forEach { (code, label) ->
-                        val isSelected = currentLanguage == code
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = if (isSelected) 1.5.dp else 0.5.dp,
-                                    color = if (isSelected) LoonBlue else LoonCardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable {
-                                    currentLanguage = code
-                                    settingsManager.appLanguage = code
-                                    onLanguageChanged(code)
-                                    showLanguageDialog = false
-                                    Toast.makeText(context, "${AppStrings.get("language_updated", code)}: $label", Toast.LENGTH_SHORT).show()
-                                    runCatching {
-                                        val locale = if (code == "SYSTEM") java.util.Locale.getDefault() else java.util.Locale(code)
-                                        java.util.Locale.setDefault(locale)
-                                        val config = context.resources.configuration
-                                        config.setLocale(locale)
-                                        context.resources.updateConfiguration(config, context.resources.displayMetrics)
-                                    }
-                                },
-                            color = if (isSelected) LoonEditBlueBg else LoonCard
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) LoonBlue else LoonTextPrimary,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 14.sp
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = LoonBlue,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) {
-                    Text(AppStrings.get("confirm", lang), color = LoonBlue, fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-
     // Log Level Selection Dialog
     if (showLogLevelDialog) {
         val levels = listOf(

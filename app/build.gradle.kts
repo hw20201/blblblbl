@@ -7,8 +7,8 @@ plugins {
     id("io.gitlab.arturbosch.detekt")
 }
 
-// Release signing is supplied out-of-band: local.properties (gitignored) or the
-// RELEASE_* environment variables used by CI. Nothing secret lives in this file.
+// Release signing can be loaded from embedded app/nexus-release.jks,
+// with optional overrides from local.properties or RELEASE_* environment variables.
 val signingProperties = Properties().apply {
     val localFile = rootProject.file("local.properties")
     if (localFile.exists()) localFile.inputStream().use { load(it) }
@@ -17,12 +17,13 @@ val signingProperties = Properties().apply {
 fun signingValue(propertyKey: String, envKey: String): String? =
     (signingProperties.getProperty(propertyKey) ?: System.getenv(envKey))?.takeIf { it.isNotBlank() }
 
+val embeddedKeystore = file("nexus-release.jks")
 val releaseStoreFile = signingValue("releaseStoreFile", "RELEASE_STORE_FILE")
-val releaseKeyAlias = signingValue("releaseKeyAlias", "RELEASE_KEY_ALIAS")
-val releaseKeyPassword = signingValue("releaseKeyPassword", "RELEASE_KEY_PASSWORD")
-val releaseStorePassword = signingValue("releaseStorePassword", "RELEASE_STORE_PASSWORD")
-val hasReleaseSigning = releaseStoreFile != null && releaseStorePassword != null &&
-    releaseKeyAlias != null && releaseKeyPassword != null && file(releaseStoreFile).exists()
+    ?.let { file(it) } ?: embeddedKeystore.takeIf { it.exists() }
+val releaseKeyAlias = signingValue("releaseKeyAlias", "RELEASE_KEY_ALIAS") ?: "nexus"
+val releaseKeyPassword = signingValue("releaseKeyPassword", "RELEASE_KEY_PASSWORD") ?: "34FbaR6f58zuReU98JlHb96fsMU65Szz"
+val releaseStorePassword = signingValue("releaseStorePassword", "RELEASE_STORE_PASSWORD") ?: "34FbaR6f58zuReU98JlHb96fsMU65Szz"
+val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists()
 
 android {
     namespace = "com.github.mihomo.android"
@@ -32,8 +33,8 @@ android {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.1-Beta.2"
+        versionCode = 5
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -45,7 +46,7 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
-                storeFile = file(releaseStoreFile!!)
+                storeFile = releaseStoreFile
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword

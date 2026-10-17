@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,12 +34,19 @@ import com.github.mihomo.android.service.VpnState
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
 import com.github.mihomo.android.ui.screens.*
 import com.github.mihomo.android.ui.theme.LoonBg
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
@@ -52,7 +60,12 @@ enum class SubScreen {
     APP_ROUTING,
     LOGS,
     SCRIPTS,
-    PROFILE_OVERRIDE
+    PROFILE_OVERRIDE,
+    RULES,
+    DNS,
+    REQUESTS,
+    NETWORK_SHARE,
+    APPEARANCE
 }
 
 /** Persists the current sub-screen across configuration changes. */
@@ -154,7 +167,7 @@ class MainActivity : ComponentActivity() {
         var parsedProfile by remember { mutableStateOf(ParsedProfile()) }
         var proxyGroups by remember { mutableStateOf(listOf<String>()) }
         var liveGroupMap by remember { mutableStateOf<Map<String, ProxyGroup>>(emptyMap()) }
-        var selectedGroupName by remember { mutableStateOf("") }
+        var selectedGroupName by rememberSaveable { mutableStateOf("") }
         var currentGroupData by remember { mutableStateOf<ProxyGroup?>(null) }
         var activeNodeName by remember { mutableStateOf("") }
 
@@ -186,7 +199,28 @@ class MainActivity : ComponentActivity() {
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         val settingsScrollState = rememberScrollState()
         val dashboardScrollState = rememberScrollState()
+        val proxiesTabsListState = rememberLazyListState()
+        val proxiesListModeState = rememberLazyListState()
+        val proxiesGroupRowState = rememberLazyListState()
+        val proxiesExpandedGroups = rememberSaveable(
+            saver = Saver<SnapshotStateMap<String, Boolean>, HashMap<String, Boolean>>(
+                save = { HashMap(it) },
+                restore = { saved ->
+                    mutableStateMapOf<String, Boolean>().apply {
+                        putAll(saved)
+                    }
+                }
+            )
+        ) { mutableStateMapOf<String, Boolean>() }
+        val proxiesPerGroupTabStates = remember { mutableStateMapOf<String, LazyListState>() }
         var testingNodes by remember { mutableStateOf(setOf<String>()) }
+        val pagerState = rememberPagerState(initialPage = currentTab, pageCount = { 3 })
+        val coroutineScope = rememberCoroutineScope()
+        LaunchedEffect(pagerState.currentPage) {
+            if (currentTab != pagerState.currentPage) {
+                currentTab = pagerState.currentPage
+            }
+        }
 
         // Persistent node selection handler (Instant 0-delay optimistic update)
         fun handleSelectProxy(group: String, proxy: Proxy) {
@@ -341,97 +375,129 @@ class MainActivity : ComponentActivity() {
                         ClashCore.ensureCoreLoaded(this@MainActivity)
                     }
                     val targetGroups = if (groupName.isNotBlank()) listOf(groupName) else proxyGroups
-                    for (g in targetGroups) {
-                        val grp = liveGroupMap[g] ?: parsedProfile.groups[g] ?: (if (selectedGroupName == g) currentGroupData else null)
-                        val normType = (grp?.type ?: "").lowercase().replace("-", "").replace("_", "").trim()
-                        val isAutoGroup = normType == "urltest" || normType == "fallback" || normType == "loadbalance"
+                    val semaphore = Semaphore(3)
+                    coroutineScope {
+                        targetGroups.map { g ->
+                            async(Dispatchers.IO) {
+                                semaphore.withPermit {
+                                    val grp = liveGroupMap[g] ?: parsedProfile.groups[g] ?: (if (selectedGroupName == g) currentGroupData else null)
+                                    val normType = (grp?.type ?: "").lowercase().replace("-", "").replace("_", "").trim()
+                                    val isAutoGroup = normType == "urltest" || normType == "fallback" || normType == "loadbalance"
 
-                        if (isAutoTest && !isAutoGroup) continue
+                                    if (isAutoTest && !isAutoGroup) return@withPermit
 
-                        val filterVirtual = grp?.proxies?.filter { p ->
-                            !p.name.equals("DIRECT", ignoreCase = true) &&
-                            !p.name.equals("REJECT", ignoreCase = true) &&
-                            !p.name.equals("COMPATIBLE", ignoreCase = true)
-                        } ?: emptyList()
+                                    val filterVirtual = grp?.proxies?.filter { p ->
+                                        !p.name.equals("DIRECT", ignoreCase = true) &&
+                                        !p.name.equals("REJECT", ignoreCase = true) &&
+                                        !p.name.equals("COMPATIBLE", ignoreCase = true)
+                                    } ?: emptyList()
 
-                        val allNodeNames = filterVirtual.map { it.name }
-                        if (allNodeNames.isEmpty()) continue
+                                    val allNodeNames = filterVirtual.map { it.name }
+                                    if (allNodeNames.isEmpty()) return@withPermit
 
-                        val memberSubGroups = allNodeNames.filter { parsedProfile.groups.containsKey(it) }
+                                    val memberSubGroups = allNodeNames.filter { parsedProfile.groups.containsKey(it) }
 
-                        withContext(Dispatchers.Main) {
-                            testingNodes = if (isAutoTest) testingNodes + g else testingNodes + allNodeNames + g
-                        }
+                                    withContext(Dispatchers.Main) {
+                                        testingNodes = if (isAutoTest) testingNodes + g else testingNodes + allNodeNames + g
+                                    }
 
-                        try {
-                            val curTime = System.currentTimeMillis()
+                                    try {
+                                        val curTime = System.currentTimeMillis()
 
-                            // Native group health check: Mihomo core tests all member nodes concurrently in Go!
-                            val groupDelays = ClashCore.healthCheckGroupNative(g)
-                            withContext(Dispatchers.Main) {
-                                groupDelays.forEach { (name, delay) ->
-                                    if (delay > 0 || delay == -2) {
-                                        delayCache[name] = delay
-                                        delayCache["$g:$name"] = delay
-                                        if (delay > 0) {
-                                            nodeLastTestedTimes[name] = curTime
+                                        // Concurrently run parent group health check and member sub-groups!
+                                        val parentJob = async(Dispatchers.IO) {
+                                            ClashCore.healthCheckGroupNative(g) { pName, delay ->
+                                                lifecycleScope.launch(Dispatchers.Main) {
+                                                    if (delay > 0 || delay == -2) {
+                                                        delayCache[pName] = delay
+                                                        delayCache["$g:$pName"] = delay
+                                                        if (delay > 0) {
+                                                            nodeLastTestedTimes[pName] = System.currentTimeMillis()
+                                                        }
+                                                    }
+                                                    testingNodes = testingNodes - pName
+                                                }
+                                            }
+                                        }
+
+                                        val subJobs = memberSubGroups.map { subG ->
+                                            async(Dispatchers.IO) {
+                                                val subDelays = ClashCore.healthCheckGroupNative(subG) { subNodeName, subNodeDelay ->
+                                                    lifecycleScope.launch(Dispatchers.Main) {
+                                                        if (subNodeDelay > 0 || subNodeDelay == -2) {
+                                                            delayCache[subNodeName] = subNodeDelay
+                                                            delayCache["$subG:$subNodeName"] = subNodeDelay
+                                                        }
+                                                        testingNodes = testingNodes - subNodeName
+                                                    }
+                                                }
+                                                val subGroupData = ClashCore.queryGroup(subG)
+                                                val subBestName = subGroupData?.now ?: ""
+                                                val subBestDelay = subDelays[subBestName] ?: subGroupData?.proxies?.find { it.name == subBestName }?.delay ?: -1
+                                                val finalSubDelay = if (subBestDelay in 1..65534) subBestDelay else if (subBestDelay >= 65535) -2 else -1
+                                                withContext(Dispatchers.Main) {
+                                                    if (finalSubDelay > 0 || finalSubDelay == -2) {
+                                                        delayCache[subG] = finalSubDelay
+                                                    }
+                                                    subDelays.forEach { (subNodeName, subNodeDelay) ->
+                                                        if (subNodeDelay > 0 || subNodeDelay == -2) {
+                                                            delayCache[subNodeName] = subNodeDelay
+                                                            delayCache["$subG:$subNodeName"] = subNodeDelay
+                                                        }
+                                                    }
+                                                    if (subGroupData != null && subGroupData.now.isNotBlank()) {
+                                                        val existing = liveGroupMap[subG] ?: parsedProfile.groups[subG]
+                                                        if (existing != null) {
+                                                            liveGroupMap = liveGroupMap + (subG to existing.copy(now = subGroupData.now))
+                                                        }
+                                                    }
+                                                    testingNodes = testingNodes - subG
+                                                }
+                                            }
+                                        }
+
+                                        val groupDelays = parentJob.await()
+                                        subJobs.awaitAll()
+
+                                        withContext(Dispatchers.Main) {
+                                            groupDelays.forEach { (name, delay) ->
+                                                if (delay > 0 || delay == -2) {
+                                                    delayCache[name] = delay
+                                                    delayCache["$g:$name"] = delay
+                                                    if (delay > 0) {
+                                                        nodeLastTestedTimes[name] = curTime
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        val finalGroup = ClashCore.queryGroup(g)
+                                        withContext(Dispatchers.Main) {
+                                            val bestNodeName = finalGroup?.now ?: ""
+                                            val bestDelay = delayCache[bestNodeName] ?: finalGroup?.proxies?.find { it.name == bestNodeName }?.delay ?: -1
+                                            val finalGroupDelay = if (bestDelay in 1..65534) bestDelay else if (bestDelay >= 65535) -2 else -1
+                                            if (finalGroupDelay > 0 || finalGroupDelay == -2) {
+                                                delayCache[g] = finalGroupDelay
+                                            }
+
+                                            if (finalGroup != null && finalGroup.now.isNotBlank()) {
+                                                val existing = liveGroupMap[g] ?: parsedProfile.groups[g]
+                                                if (existing != null) {
+                                                    liveGroupMap = liveGroupMap + (g to existing.copy(now = finalGroup.now))
+                                                }
+                                                if (selectedGroupName == g && currentGroupData != null) {
+                                                    currentGroupData = currentGroupData?.copy(now = finalGroup.now)
+                                                }
+                                            }
+                                        }
+                                    } finally {
+                                        withContext(Dispatchers.Main) {
+                                            testingNodes = if (isAutoTest) testingNodes - g else testingNodes - allNodeNames.toSet() - g
                                         }
                                     }
                                 }
                             }
-
-                            // Member sub-groups test (nested groups)
-                            for (subG in memberSubGroups) {
-                                val subDelays = ClashCore.healthCheckGroupNative(subG)
-                                val subGroupData = ClashCore.queryGroup(subG)
-                                val subBestName = subGroupData?.now ?: ""
-                                val subBestDelay = subDelays[subBestName] ?: subGroupData?.proxies?.find { it.name == subBestName }?.delay ?: -1
-                                val finalSubDelay = if (subBestDelay in 1..65534) subBestDelay else if (subBestDelay >= 65535) -2 else -1
-                                withContext(Dispatchers.Main) {
-                                    if (finalSubDelay > 0 || finalSubDelay == -2) {
-                                        delayCache[subG] = finalSubDelay
-                                    }
-                                    subDelays.forEach { (subNodeName, subNodeDelay) ->
-                                        if (subNodeDelay > 0 || subNodeDelay == -2) {
-                                            delayCache[subNodeName] = subNodeDelay
-                                            delayCache["$subG:$subNodeName"] = subNodeDelay
-                                        }
-                                    }
-                                    if (subGroupData != null && subGroupData.now.isNotBlank()) {
-                                        val existing = liveGroupMap[subG] ?: parsedProfile.groups[subG]
-                                        if (existing != null) {
-                                            liveGroupMap = liveGroupMap + (subG to existing.copy(now = subGroupData.now))
-                                        }
-                                    }
-                                    testingNodes = testingNodes - subG
-                                }
-                            }
-
-                            // Update group delay and 'now'
-                            val finalGroup = ClashCore.queryGroup(g)
-                            withContext(Dispatchers.Main) {
-                                val bestNodeName = finalGroup?.now ?: ""
-                                val bestDelay = delayCache[bestNodeName] ?: finalGroup?.proxies?.find { it.name == bestNodeName }?.delay ?: -1
-                                val finalGroupDelay = if (bestDelay in 1..65534) bestDelay else if (bestDelay >= 65535) -2 else -1
-                                if (finalGroupDelay > 0 || finalGroupDelay == -2) {
-                                    delayCache[g] = finalGroupDelay
-                                }
-
-                                if (finalGroup != null && finalGroup.now.isNotBlank()) {
-                                    val existing = liveGroupMap[g] ?: parsedProfile.groups[g]
-                                    if (existing != null) {
-                                        liveGroupMap = liveGroupMap + (g to existing.copy(now = finalGroup.now))
-                                    }
-                                    if (selectedGroupName == g && currentGroupData != null) {
-                                        currentGroupData = currentGroupData?.copy(now = finalGroup.now)
-                                    }
-                                }
-                            }
-                        } finally {
-                            withContext(Dispatchers.Main) {
-                                testingNodes = if (isAutoTest) testingNodes - g else testingNodes - allNodeNames.toSet() - g
-                            }
-                        }
+                        }.awaitAll()
                     }
                 } catch (_: Throwable) {
                     withContext(Dispatchers.Main) {
@@ -527,29 +593,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Trigger auto speed test whenever active profile is ready or parsed
-        LaunchedEffect(parsedProfile) {
-            if (parsedProfile.groups.isNotEmpty()) {
-                triggerAutoSpeedTest()
-            }
-        }
-
-        // Trigger auto speed test on app foreground
-        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                    if (parsedProfile.groups.isNotEmpty()) {
-                        triggerAutoSpeedTest()
-                    }
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose {
-                lifecycleOwner.lifecycle.removeObserver(observer)
-            }
-        }
-
         // Re-parse once the profile list finishes loading, otherwise the first run (when the list
         // starts empty) would parse nothing and show no nodes.
         LaunchedEffect(selectedProfileId, profiles) {
@@ -559,7 +602,6 @@ class MainActivity : ComponentActivity() {
         // Dynamic refresh when VPN is connected
         LaunchedEffect(vpnState.status) {
             if (vpnState.status == VpnState.Status.RUNNING) {
-                triggerAutoSpeedTest()
                 while (isActive) {
                     refreshProxiesOnline()
                     delay(3000)
@@ -627,314 +669,439 @@ class MainActivity : ComponentActivity() {
                 .fillMaxSize()
                 .background(LoonBg)
         ) {
-            // Content Screen with smooth slide + fade transitions
-            AnimatedContent(
-                targetState = currentSubScreen,
-                transitionSpec = {
-                    fun getDepth(s: SubScreen?): Int = when (s) {
-                        null -> 0
-                        SubScreen.PROFILES, SubScreen.APP_ROUTING, SubScreen.LOGS -> 1
-                        SubScreen.PROFILE_OVERRIDE -> 2
-                        SubScreen.SCRIPTS -> 3
-                    }
-                    val initialDepth = getDepth(initialState)
-                    val targetDepth = getDepth(targetState)
-
-                    if (targetDepth > initialDepth) {
-                        (slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) +
-                                fadeIn(animationSpec = tween(280)))
-                            .togetherWith(
-                                slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(280, easing = FastOutSlowInEasing)) +
-                                        fadeOut(animationSpec = tween(280))
-                            )
-                    } else if (targetDepth < initialDepth) {
-                        (slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(280, easing = FastOutSlowInEasing)) +
-                                fadeIn(animationSpec = tween(280)))
-                            .togetherWith(
-                                slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) +
-                                        fadeOut(animationSpec = tween(280))
-                            )
-                    } else {
-                        EnterTransition.None togetherWith ExitTransition.None
-                    }
-                },
-                label = "ScreenTransition"
-            ) { subScreen ->
-                when (subScreen) {
-                    SubScreen.PROFILES -> {
-                        ProfilesScreen(
-                            profiles = profiles,
-                            selectedProfileId = selectedProfileId,
-                            onBack = { currentSubScreen = null },
-                            onSelectProfile = { profile ->
-                                selectedProfileId = profile.id
-                                settingsManager.selectedProfileId = profile.id
-                                parseActiveProfile()
-                                Toast.makeText(this@MainActivity, "已生效配置: ${profile.name}", Toast.LENGTH_SHORT).show()
-                            },
-                            onAddSubscription = { name, url ->
-                                lifecycleScope.launch {
-                                    val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
-                                    if (res.isSuccess) {
-                                        reloadProfiles()
-                                        Toast.makeText(this@MainActivity, "订阅添加成功", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(this@MainActivity, "下载失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
-                            onUpdateProfile = { profile ->
-                                reloadProfiles()
-                                if (selectedProfileId == profile.id) {
-                                    parseActiveProfile()
-                                }
-                            },
-                            onRefreshSubscription = { profile ->
-                                if (profile.url != null) {
-                                    lifecycleScope.launch {
-                                        val res = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url)
-                                        if (res.isSuccess) {
-                                            reloadProfiles()
-                                            Toast.makeText(this@MainActivity, "订阅更新成功", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(this@MainActivity, "更新失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                }
-                            },
-                            onDeleteProfile = { profile ->
-                                ConfigManager.deleteProfile(this@MainActivity, profile.id)
-                                reloadProfiles()
-                            },
-                            onImportLocalFile = {
-                                profileImportLauncher.launch("*/*")
-                            },
-                            onReorderProfiles = { newOrderList ->
-                                profiles = newOrderList
-                                ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
-                            },
-                            onNavigateToOverride = { profile ->
-                                overrideTargetProfile = profile
-                                overrideTargetProfileId = profile.id
-                                currentSubScreen = SubScreen.PROFILE_OVERRIDE
-                            }
-                        )
-                    }
-                    SubScreen.PROFILE_OVERRIDE -> {
-                        val currentTarget = overrideTargetProfile ?: profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
-                        if (currentTarget != null) {
-                            ProfileOverrideScreen(
-                                profile = currentTarget,
-                                onBack = { currentSubScreen = SubScreen.PROFILES },
-                                onNavigateToScripts = { currentSubScreen = SubScreen.SCRIPTS },
-                                onProfileUpdated = { updated ->
-                                    overrideTargetProfile = updated
-                                    overrideTargetProfileId = updated.id
-                                    reloadProfiles()
-                                    parseActiveProfile()
-                                }
-                            )
-                        } else {
-                            currentSubScreen = SubScreen.PROFILES
+            // 1. Primary main tabs: HorizontalPager keeps all 3 tabs persistently composed!
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = false,
+                beyondViewportPageCount = 2,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (page) {
+                    0 -> {
+                        val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
+                            ?: (parsedProfile.groups[mainProxyGroupName]?.proxies ?: emptyList())
+                        val mainGroupProxies = rawProxies.map { p ->
+                            val scopedKey = "$mainProxyGroupName:${p.name}"
+                            val d = delayCache[p.name] ?: delayCache[scopedKey]
+                            if (d != null) p.copy(delay = d) else p
                         }
-                    }
-                    SubScreen.SCRIPTS -> {
-                        ScriptsScreen(
-                            onBack = {
-                                if (overrideTargetProfile != null) {
-                                    currentSubScreen = SubScreen.PROFILE_OVERRIDE
-                                } else {
-                                    currentSubScreen = null
-                                }
+                        val currentMainActiveNode = (liveGroupMap[mainProxyGroupName]?.now
+                            ?: parsedProfile.groups[mainProxyGroupName]?.now
+                            ?: settingsManager.getSelectedNode(mainProxyGroupName)
+                            ?: activeNodeName).ifBlank { parsedProfile.activeNode }
+                        DashboardScreen(
+                            scrollState = dashboardScrollState,
+                            vpnState = vpnState,
+                            currentMode = tunnelMode,
+                            activeProfileName = profiles.firstOrNull { it.id == selectedProfileId }?.name ?: "默认配置",
+                            mainGroupName = mainProxyGroupName,
+                            mainGroupProxies = mainGroupProxies,
+                            activeNodeName = currentMainActiveNode,
+                            totalNodes = parsedProfile.totalNodes,
+                            totalRules = parsedProfile.totalRules,
+                            visibleShortcuts = visibleShortcuts,
+                            shortcutOrder = shortcutOrder,
+                            onToggleVpn = { handleToggleVpn() },
+                            onModeSelected = { newMode ->
+                                tunnelMode = newMode
+                                settingsManager.tunnelMode = newMode.value
                             },
-                            onScriptsChanged = {
-                                parseActiveProfile()
+                            onSelectProxy = { group, proxy -> handleSelectProxy(mainProxyGroupName, proxy) },
+                            onHealthCheck = { group -> runSpeedTestForGroup(group) },
+                            onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
+                            onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
+                            onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
+                            onNavigateToRules = { currentSubScreen = SubScreen.RULES },
+                            onNavigateToDns = { currentSubScreen = SubScreen.DNS },
+                            onNavigateToRequests = { currentSubScreen = SubScreen.REQUESTS },
+                            onNavigateToNetworkShare = { currentSubScreen = SubScreen.NETWORK_SHARE },
+                            onUpdateVisibleShortcuts = { updated ->
+                                visibleShortcuts = updated
+                                settingsManager.visibleShortcuts = updated
+                            },
+                            onUpdateShortcutOrder = { updated ->
+                                shortcutOrder = updated
+                                settingsManager.shortcutOrder = updated
                             }
                         )
                     }
-                    SubScreen.APP_ROUTING -> {
-                        AppRoutingScreen(
-                            currentMode = perAppMode,
-                            selectedPackages = selectedPackages,
-                            apps = installedApps,
-                            isLoading = isAppsLoading,
-                            onBack = { currentSubScreen = null },
-                            onModeChanged = { mode ->
-                                perAppMode = mode
-                                settingsManager.perAppProxyMode = mode
-                            },
-                            onTogglePackage = { pkg ->
-                                val updated = if (selectedPackages.contains(pkg)) {
-                                    selectedPackages - pkg
+                    1 -> {
+                        val computedGroupMap = remember(parsedProfile.groups, liveGroupMap, delayCache.toMap()) {
+                            parsedProfile.groups.mapValues { (gName, baseGroup) ->
+                                val live = liveGroupMap[gName]
+                                val liveProxyMap = live?.proxies?.associateBy { it.name } ?: emptyMap()
+                                val savedNode = settingsManager.getSelectedNode(gName)
+                                val resolvedNow = if (!savedNode.isNullOrBlank() && baseGroup.proxies.any { it.name == savedNode }) {
+                                    savedNode
                                 } else {
-                                    selectedPackages + pkg
+                                    live?.now?.ifBlank { baseGroup.now } ?: baseGroup.now
                                 }
-                                selectedPackages = updated
-                                settingsManager.selectedPackages = updated
-                            }
-                        )
-                    }
-                    SubScreen.LOGS -> {
-                        LogsScreen(
-                            onBack = { currentSubScreen = null }
-                        )
-                    }
-                    null -> {
-                        when (currentTab) {
-                            0 -> {
-                                val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
-                                    ?: (parsedProfile.groups[mainProxyGroupName]?.proxies ?: emptyList())
-                                val mainGroupProxies = rawProxies.map { p ->
-                                    val scopedKey = "$mainProxyGroupName:${p.name}"
-                                    val d = delayCache[p.name] ?: delayCache[scopedKey]
-                                    if (d != null) p.copy(delay = d) else p
-                                }
-                                val currentMainActiveNode = (liveGroupMap[mainProxyGroupName]?.now
-                                    ?: parsedProfile.groups[mainProxyGroupName]?.now
-                                    ?: settingsManager.getSelectedNode(mainProxyGroupName)
-                                    ?: activeNodeName).ifBlank { parsedProfile.activeNode }
-                                DashboardScreen(
-                                    scrollState = dashboardScrollState,
-                                    vpnState = vpnState,
-                                    currentMode = tunnelMode,
-                                    activeProfileName = profiles.firstOrNull { it.id == selectedProfileId }?.name ?: "默认配置",
-                                    mainGroupName = mainProxyGroupName,
-                                    mainGroupProxies = mainGroupProxies,
-                                    activeNodeName = currentMainActiveNode,
-                                    totalNodes = parsedProfile.totalNodes,
-                                    totalRules = parsedProfile.totalRules,
-                                    visibleShortcuts = visibleShortcuts,
-                                    shortcutOrder = shortcutOrder,
-                                    onToggleVpn = { handleToggleVpn() },
-                                    onModeSelected = { newMode ->
-                                        tunnelMode = newMode
-                                        settingsManager.tunnelMode = newMode.value
-                                    },
-                                    onSelectProxy = { group, proxy -> handleSelectProxy(mainProxyGroupName, proxy) },
-                                    onHealthCheck = { group -> runSpeedTestForGroup(group) },
-                                    onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
-                                    onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
-                                    onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
-                                    onUpdateVisibleShortcuts = { updated ->
-                                        visibleShortcuts = updated
-                                        settingsManager.visibleShortcuts = updated
-                                    },
-                                    onUpdateShortcutOrder = { updated ->
-                                        shortcutOrder = updated
-                                        settingsManager.shortcutOrder = updated
+                                baseGroup.copy(
+                                    now = resolvedNow,
+                                    proxies = baseGroup.proxies.map { bp ->
+                                        val p = liveProxyMap[bp.name] ?: bp
+                                        val scopedKey = "$gName:${bp.name}"
+                                        val cached = delayCache[bp.name] ?: delayCache[scopedKey]
+                                        if (cached != null) p.copy(delay = cached) else p
                                     }
                                 )
                             }
-                            1 -> {
-                                val computedGroupMap = remember(parsedProfile.groups, liveGroupMap, delayCache.toMap()) {
-                                    parsedProfile.groups.mapValues { (gName, baseGroup) ->
-                                        val live = liveGroupMap[gName]
-                                        val liveProxyMap = live?.proxies?.associateBy { it.name } ?: emptyMap()
-                                        val savedNode = settingsManager.getSelectedNode(gName)
-                                        val resolvedNow = if (!savedNode.isNullOrBlank() && baseGroup.proxies.any { it.name == savedNode }) {
-                                            savedNode
-                                        } else {
-                                            live?.now?.ifBlank { baseGroup.now } ?: baseGroup.now
-                                        }
-                                        baseGroup.copy(
-                                            now = resolvedNow,
-                                            proxies = baseGroup.proxies.map { bp ->
-                                                val p = liveProxyMap[bp.name] ?: bp
-                                                val scopedKey = "$gName:${bp.name}"
-                                                val cached = delayCache[bp.name] ?: delayCache[scopedKey]
-                                                if (cached != null) p.copy(delay = cached) else p
-                                            }
-                                        )
-                                    }
-                                }
-                                val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
-
-                                ProxiesScreen(
-                                    groups = proxyGroups,
-                                    groupMap = computedGroupMap,
-                                    groupIcons = parsedProfile.groupIcons,
-                                    currentGroup = effectiveCurrentGroup,
-                                    selectedGroupName = selectedGroupName,
-                                    currentViewMode = proxiesViewMode,
-                                showGroupIcons = showGroupIcons,
-                                nodeColumns = nodeColumns,
-                                onViewModeChanged = { mode ->
-                                    proxiesViewMode = mode
-                                    settingsManager.proxiesViewMode = mode
-                                },
-                                onShowGroupIconsChanged = { show ->
-                                    showGroupIcons = show
-                                    settingsManager.showGroupIcons = show
-                                },
-                                onNodeColumnsChanged = { cols ->
-                                    nodeColumns = cols
-                                    settingsManager.nodeColumns = cols
-                                },
-                                onSelectGroup = { gName ->
-                                    selectedGroupName = gName
-                                    val savedNode = settingsManager.getSelectedNode(gName)
-                                    if (vpnState.status == VpnState.Status.RUNNING) {
-                                        lifecycleScope.launch(Dispatchers.IO) {
-                                            val gData = ClashCore.queryGroup(gName)
-                                            withContext(Dispatchers.Main) {
-                                                currentGroupData = gData
-                                            }
-                                        }
-                                    } else {
-                                        val gData = parsedProfile.groups[gName]
-                                        val effectiveNow = if (savedNode != null && gData?.proxies?.any { it.name == savedNode } == true) savedNode else (gData?.now ?: "")
-                                        currentGroupData = gData?.copy(now = effectiveNow)
-                                    }
-                                },
-                                onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
-                                onHealthCheck = { group -> runSpeedTestForGroup(group) },
-                                testingNodes = testingNodes,
-                                onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) }
-                            )
                         }
-                        2 -> SettingsScreen(
-                                scrollState = settingsScrollState,
-                                tunStack = tunStack,
-                                bootOnStartup = bootOnStartup,
-                                allowLan = allowLan,
-                                fakeIpEnabled = fakeIpEnabled,
-                                themeMode = currentThemeMode,
-                                onTunStackChanged = { stack ->
-                                    tunStack = stack
-                                    settingsManager.tunStack = stack
-                                },
-                                onBootOnStartupChanged = { enabled ->
-                                    bootOnStartup = enabled
-                                    settingsManager.bootOnStartup = enabled
-                                },
-                                onAllowLanChanged = { enabled ->
-                                    allowLan = enabled
-                                    settingsManager.allowLan = enabled
-                                },
-                                onFakeIpEnabledChanged = { enabled ->
-                                    fakeIpEnabled = enabled
-                                    settingsManager.fakeIpEnabled = enabled
-                                },
-                                onThemeModeChanged = onThemeModeChanged,
-                                onLanguageChanged = { code -> appLanguage = code },
-                                onScriptsChanged = {
-                                    parseActiveProfile()
-                                },
-                                onNavigateToScripts = {
-                                    overrideTargetProfile = null
-                                    overrideTargetProfileId = null
-                                    currentSubScreen = SubScreen.SCRIPTS
-                                },
-                                onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
-                                onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
-                                onNavigateToLogs = { currentSubScreen = SubScreen.LOGS }
-                            )
+                        val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
+
+                        ProxiesScreen(
+                            groups = proxyGroups,
+                            groupMap = computedGroupMap,
+                            groupIcons = parsedProfile.groupIcons,
+                            currentGroup = effectiveCurrentGroup,
+                            selectedGroupName = selectedGroupName,
+                            currentViewMode = proxiesViewMode,
+                            showGroupIcons = showGroupIcons,
+                            nodeColumns = nodeColumns,
+                            tabsListState = proxiesTabsListState,
+                            listModeState = proxiesListModeState,
+                            groupRowState = proxiesGroupRowState,
+                            expandedGroups = proxiesExpandedGroups,
+                            perGroupTabStates = proxiesPerGroupTabStates,
+                            onViewModeChanged = { mode ->
+                                proxiesViewMode = mode
+                                settingsManager.proxiesViewMode = mode
+                            },
+                            onShowGroupIconsChanged = { show ->
+                                showGroupIcons = show
+                                settingsManager.showGroupIcons = show
+                            },
+                            onNodeColumnsChanged = { cols ->
+                                nodeColumns = cols
+                                settingsManager.nodeColumns = cols
+                            },
+                            onSelectGroup = { gName ->
+                                selectedGroupName = gName
+                                val savedNode = settingsManager.getSelectedNode(gName)
+                                if (vpnState.status == VpnState.Status.RUNNING) {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val gData = ClashCore.queryGroup(gName)
+                                        withContext(Dispatchers.Main) {
+                                            currentGroupData = gData
+                                        }
+                                    }
+                                } else {
+                                    val gData = parsedProfile.groups[gName]
+                                    val effectiveNow = if (savedNode != null && gData?.proxies?.any { it.name == savedNode } == true) savedNode else (gData?.now ?: "")
+                                    currentGroupData = gData?.copy(now = effectiveNow)
+                                }
+                            },
+                            onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
+                            onHealthCheck = { group -> runSpeedTestForGroup(group) },
+                            testingNodes = testingNodes,
+                            onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) }
+                        )
+                    }
+                    2 -> SettingsScreen(
+                        scrollState = settingsScrollState,
+                        tunStack = tunStack,
+                        bootOnStartup = bootOnStartup,
+                        allowLan = allowLan,
+                        fakeIpEnabled = fakeIpEnabled,
+                        themeMode = currentThemeMode,
+                        onTunStackChanged = { stack ->
+                            tunStack = stack
+                            settingsManager.tunStack = stack
+                        },
+                        onBootOnStartupChanged = { enabled ->
+                            bootOnStartup = enabled
+                            settingsManager.bootOnStartup = enabled
+                        },
+                        onAllowLanChanged = { enabled ->
+                            allowLan = enabled
+                            settingsManager.allowLan = enabled
+                            if (vpnState.status == VpnState.Status.RUNNING) {
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                    val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                    ClashCore.load(conf)
+                                }
+                            }
+                        },
+                        onFakeIpEnabledChanged = { enabled ->
+                            fakeIpEnabled = enabled
+                            settingsManager.fakeIpEnabled = enabled
+                            if (vpnState.status == VpnState.Status.RUNNING) {
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                    val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                    ClashCore.load(conf)
+                                }
+                            }
+                        },
+                        onThemeModeChanged = onThemeModeChanged,
+                        onLanguageChanged = { code -> appLanguage = code },
+                        onScriptsChanged = {
+                            parseActiveProfile()
+                        },
+                        onNavigateToScripts = {
+                            overrideTargetProfile = null
+                            overrideTargetProfileId = null
+                            currentSubScreen = SubScreen.SCRIPTS
+                        },
+                        onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
+                        onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
+                        onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
+                        onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
+                        onNavigateToDns = { currentSubScreen = SubScreen.DNS }
+                    )
+                }
+            }
+
+            var lastActiveSubScreen by remember { mutableStateOf<SubScreen?>(null) }
+            LaunchedEffect(currentSubScreen) {
+                if (currentSubScreen != null) {
+                    lastActiveSubScreen = currentSubScreen
+                }
+            }
+            val displayedSubScreen = currentSubScreen ?: lastActiveSubScreen
+
+            // 2. Sub-screens overlay (smooth slide in / out over the main tabs)
+            AnimatedVisibility(
+                visible = currentSubScreen != null,
+                enter = slideInHorizontally(
+                    initialOffsetX = { it },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(220)),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { it },
+                    animationSpec = tween(260, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(200)),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                AnimatedContent(
+                    targetState = displayedSubScreen,
+                    transitionSpec = {
+                        fun getDepth(s: SubScreen?): Int = when (s) {
+                            null -> 0
+                            SubScreen.PROFILES, SubScreen.APP_ROUTING, SubScreen.LOGS,
+                            SubScreen.RULES, SubScreen.DNS, SubScreen.REQUESTS, SubScreen.NETWORK_SHARE,
+                            SubScreen.APPEARANCE -> 1
+                            SubScreen.PROFILE_OVERRIDE -> 2
+                            SubScreen.SCRIPTS -> 3
+                        }
+                        val initialDepth = getDepth(initialState)
+                        val targetDepth = getDepth(targetState)
+
+                        if (targetDepth > initialDepth) {
+                            (slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260, easing = FastOutSlowInEasing)) +
+                                    fadeIn(animationSpec = tween(220)))
+                                .togetherWith(
+                                    slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) +
+                                            fadeOut(animationSpec = tween(200))
+                                ).using(SizeTransform(clip = false) { _, _ -> tween(0) })
+                        } else {
+                            (slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) +
+                                    fadeIn(animationSpec = tween(220)))
+                                .togetherWith(
+                                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(260, easing = FastOutSlowInEasing)) +
+                                            fadeOut(animationSpec = tween(200))
+                                ).using(SizeTransform(clip = false) { _, _ -> tween(0) })
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "SubScreenOverlayTransition"
+                ) { subScreen ->
+                    if (subScreen != null) {
+                    Box(modifier = Modifier.fillMaxSize().background(LoonBg)) {
+                        when (subScreen) {
+                            SubScreen.PROFILES -> {
+                                ProfilesScreen(
+                                    profiles = profiles,
+                                    selectedProfileId = selectedProfileId,
+                                    onBack = { currentSubScreen = null },
+                                    onSelectProfile = { profile ->
+                                        selectedProfileId = profile.id
+                                        settingsManager.selectedProfileId = profile.id
+                                        parseActiveProfile()
+                                        Toast.makeText(this@MainActivity, "已生效配置: ${profile.name}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onAddSubscription = { name, url ->
+                                        lifecycleScope.launch {
+                                            val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
+                                            if (res.isSuccess) {
+                                                reloadProfiles()
+                                                Toast.makeText(this@MainActivity, "订阅添加成功", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "下载失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                    onUpdateProfile = { profile ->
+                                        reloadProfiles()
+                                        if (selectedProfileId == profile.id) {
+                                            parseActiveProfile()
+                                        }
+                                    },
+                                    onRefreshSubscription = { profile ->
+                                        if (profile.url != null) {
+                                            lifecycleScope.launch {
+                                                val res = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url)
+                                                if (res.isSuccess) {
+                                                    reloadProfiles()
+                                                    Toast.makeText(this@MainActivity, "订阅更新成功", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(this@MainActivity, "更新失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onDeleteProfile = { profile ->
+                                        ConfigManager.deleteProfile(this@MainActivity, profile.id)
+                                        reloadProfiles()
+                                    },
+                                    onImportLocalFile = {
+                                        profileImportLauncher.launch("*/*")
+                                    },
+                                    onReorderProfiles = { newOrderList ->
+                                        profiles = newOrderList
+                                        ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
+                                    },
+                                    onNavigateToOverride = { profile ->
+                                        overrideTargetProfile = profile
+                                        overrideTargetProfileId = profile.id
+                                        currentSubScreen = SubScreen.PROFILE_OVERRIDE
+                                    }
+                                )
+                            }
+                            SubScreen.PROFILE_OVERRIDE -> {
+                                val currentTarget = overrideTargetProfile ?: profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                if (currentTarget != null) {
+                                    ProfileOverrideScreen(
+                                        profile = currentTarget,
+                                        onBack = { currentSubScreen = SubScreen.PROFILES },
+                                        onNavigateToScripts = { currentSubScreen = SubScreen.SCRIPTS },
+                                        onProfileUpdated = { updated ->
+                                            overrideTargetProfile = updated
+                                            overrideTargetProfileId = updated.id
+                                            reloadProfiles()
+                                            parseActiveProfile()
+                                        }
+                                    )
+                                } else {
+                                    currentSubScreen = SubScreen.PROFILES
+                                }
+                            }
+                            SubScreen.SCRIPTS -> {
+                                ScriptsScreen(
+                                    onBack = {
+                                        if (overrideTargetProfile != null) {
+                                            currentSubScreen = SubScreen.PROFILE_OVERRIDE
+                                        } else {
+                                            currentSubScreen = null
+                                        }
+                                    },
+                                    onScriptsChanged = {
+                                        parseActiveProfile()
+                                    }
+                                )
+                            }
+                            SubScreen.APP_ROUTING -> {
+                                AppRoutingScreen(
+                                    currentMode = perAppMode,
+                                    selectedPackages = selectedPackages,
+                                    apps = installedApps,
+                                    isLoading = isAppsLoading,
+                                    onBack = { currentSubScreen = null },
+                                    onModeChanged = { mode ->
+                                        perAppMode = mode
+                                        settingsManager.perAppProxyMode = mode
+                                    },
+                                    onTogglePackage = { pkg ->
+                                        val updated = if (selectedPackages.contains(pkg)) {
+                                            selectedPackages - pkg
+                                        } else {
+                                            selectedPackages + pkg
+                                        }
+                                        selectedPackages = updated
+                                        settingsManager.selectedPackages = updated
+                                    }
+                                )
+                            }
+                            SubScreen.LOGS -> {
+                                LogsScreen(
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
+                            SubScreen.RULES -> {
+                                RulesScreen(
+                                    rules = parsedProfile.rules,
+                                    totalRules = parsedProfile.totalRules,
+                                    tunnelMode = tunnelMode,
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
+                            SubScreen.DNS -> {
+                                DnsScreen(
+                                    fakeIpEnabled = fakeIpEnabled,
+                                    onFakeIpEnabledChanged = { enabled ->
+                                        fakeIpEnabled = enabled
+                                        settingsManager.fakeIpEnabled = enabled
+                                        if (vpnState.status == VpnState.Status.RUNNING) {
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                                ClashCore.load(conf)
+                                            }
+                                        }
+                                    },
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
+                            SubScreen.REQUESTS -> {
+                                RequestLogsScreen(
+                                    vpnState = vpnState,
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
+                            SubScreen.NETWORK_SHARE -> {
+                                NetworkShareScreen(
+                                    allowLan = allowLan,
+                                    onAllowLanChanged = { enabled ->
+                                        allowLan = enabled
+                                        settingsManager.allowLan = enabled
+                                        if (vpnState.status == VpnState.Status.RUNNING) {
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                                ClashCore.load(conf)
+                                            }
+                                        }
+                                    },
+                                    vpnState = vpnState,
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
+                            SubScreen.APPEARANCE -> {
+                                AppearanceScreen(
+                                    themeMode = currentThemeMode,
+                                    onThemeModeChanged = onThemeModeChanged,
+                                    onLanguageChanged = { code -> appLanguage = code },
+                                    nodeColumns = nodeColumns,
+                                    onNodeColumnsChanged = { cols ->
+                                        nodeColumns = cols
+                                        settingsManager.nodeColumns = cols
+                                    },
+                                    showGroupIcons = showGroupIcons,
+                                    onShowGroupIconsChanged = { show ->
+                                        showGroupIcons = show
+                                        settingsManager.showGroupIcons = show
+                                    },
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
 
-            // Floating Bottom Bar (animated in/out when navigating to sub-screens)
+            // 3. Floating Bottom Bar (animated in/out when navigating to sub-screens)
             AnimatedVisibility(
                 visible = currentSubScreen == null,
                 enter = fadeIn(animationSpec = tween(240)) + slideInVertically(
@@ -945,17 +1112,27 @@ class MainActivity : ComponentActivity() {
                     targetOffsetY = { it },
                     animationSpec = tween(200, easing = FastOutSlowInEasing)
                 ),
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .wrapContentSize(Alignment.BottomCenter)
             ) {
                 Box(
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier
+                        .wrapContentSize(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp)
                 ) {
                     LoonFloatingBottomBar(
-                        selectedTab = currentTab,
+                        selectedTab = pagerState.targetPage,
                         onTabSelected = { tabIndex ->
                             currentTab = tabIndex
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(
+                                    page = tabIndex,
+                                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                                )
+                            }
                             if (tabIndex == 1) {
-                                triggerAutoSpeedTest()
                                 if (vpnState.status == VpnState.Status.RUNNING) {
                                     refreshProxiesOnline()
                                 } else if (parsedProfile.groups.isEmpty()) {
@@ -970,11 +1147,3 @@ class MainActivity : ComponentActivity() {
         } // end CompositionLocalProvider
     }
 }
-
-
-
-
-
-
-
-

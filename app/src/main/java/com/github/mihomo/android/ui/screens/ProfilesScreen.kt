@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,6 +38,7 @@ import com.github.mihomo.android.data.ConfigManager
 import com.github.mihomo.android.data.ProfileItem
 import com.github.mihomo.android.data.ScriptManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
@@ -93,6 +95,7 @@ fun ProfilesScreen(
     onNavigateToOverride: ((ProfileItem) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showAddDialog by remember { mutableStateOf(false) }
     var subName by remember { mutableStateOf("") }
     var subUrl by remember { mutableStateOf("") }
@@ -159,7 +162,7 @@ fun ProfilesScreen(
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
                             tint = LoonTextPrimary
                         )
@@ -520,7 +523,7 @@ fun ProfilesScreen(
                 Button(
                     onClick = {
                         val updated = target.copy(
-                            scriptEnabled = true,
+                            scriptEnabled = selectedScriptIds.isNotEmpty(),
                             scriptIds = selectedScriptIds.toList()
                         )
                         ConfigManager.updateProfile(context, updated)
@@ -528,6 +531,14 @@ fun ProfilesScreen(
                             onSelectProfile(updated)
                         }
                         onUpdateProfile(updated)
+                        scope.launch(Dispatchers.IO) {
+                            if (target.id == selectedProfileId && com.github.mihomo.android.core.ClashCore.isCoreLoaded) {
+                                runCatching {
+                                    val configFile = ConfigManager.prepareConfig(context, updated.file)
+                                    com.github.mihomo.android.core.ClashCore.load(configFile)
+                                }
+                            }
+                        }
                         overrideDialogProfile = null
                         Toast.makeText(context, "覆写设置已保存", Toast.LENGTH_SHORT).show()
                     },
@@ -658,6 +669,41 @@ fun ProfilesScreen(
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
+                            }
+                        }
+                    }
+
+                    // JS Script override button
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = LoonEditBlueBg,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                fullEditDialogProfile = null
+                                if (onNavigateToOverride != null) {
+                                    onNavigateToOverride(target)
+                                } else {
+                                    overrideDialogProfile = target
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Javascript, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                val count = if (target.scriptEnabled) target.scriptIds.size else 0
+                                Text(
+                                    text = if (count > 0) "JS 脚本覆写 (已生效 $count 个)" else "JS 脚本覆写 (未生效)",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = LoonTextPrimary
+                                )
+                                Text("为该配置勾选并生效导入的脚本", fontSize = 11.sp, color = LoonTextSecondary)
                             }
                         }
                     }
@@ -1083,7 +1129,7 @@ private fun LoonProfileCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Bottom Row: update time only
+            // Bottom Row: update time & script badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1094,6 +1140,37 @@ private fun LoonProfileCard(
                     color = LoonTextMuted,
                     fontSize = 11.5.sp
                 )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (item.scriptEnabled && item.scriptIds.isNotEmpty()) LoonEditBlueBg else LoonBg,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (item.scriptEnabled && item.scriptIds.isNotEmpty()) LoonBlue.copy(alpha = 0.5f) else LoonCardBorder
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onOverride() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            tint = if (item.scriptEnabled && item.scriptIds.isNotEmpty()) LoonBlue else LoonTextMuted,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (item.scriptEnabled && item.scriptIds.isNotEmpty()) "已生效 ${item.scriptIds.size} 个脚本" else "未勾选脚本",
+                            color = if (item.scriptEnabled && item.scriptIds.isNotEmpty()) LoonBlue else LoonTextMuted,
+                            fontSize = 11.sp,
+                            fontWeight = if (item.scriptEnabled && item.scriptIds.isNotEmpty()) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
             }
         }
     }

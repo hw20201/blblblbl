@@ -8,12 +8,14 @@ import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 @RequiresApi(Build.VERSION_CODES.N)
 class MihomoTileService : TileService() {
-    private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var stateJob: Job? = null
 
     override fun onStartListening() {
@@ -31,6 +33,12 @@ class MihomoTileService : TileService() {
         super.onStopListening()
     }
 
+    override fun onDestroy() {
+        stateJob?.cancel()
+        scope.cancel()
+        super.onDestroy()
+    }
+
     override fun onClick() {
         super.onClick()
         val current = MihomoVpnService.vpnState.value.status
@@ -41,15 +49,26 @@ class MihomoTileService : TileService() {
             if (vpnIntent == null) {
                 MihomoVpnService.start(this)
             } else {
-                // VPN permission not yet granted by user; need to open app
                 vpnIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivityAndCollapse(vpnIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val pendingIntent = android.app.PendingIntent.getActivity(
+                        this,
+                        0,
+                        vpnIntent,
+                        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    startActivityAndCollapse(pendingIntent)
+                } else {
+                    @Suppress("DEPRECATION")
+                    startActivityAndCollapse(vpnIntent)
+                }
             }
         }
     }
 
     private fun updateTileState(status: VpnState.Status) {
         val tile = qsTile ?: return
+        tile.icon = android.graphics.drawable.Icon.createWithResource(this, com.github.mihomo.android.R.drawable.ic_qs_tile)
         when (status) {
             VpnState.Status.RUNNING -> {
                 tile.state = Tile.STATE_ACTIVE

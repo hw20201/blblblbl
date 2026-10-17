@@ -13,6 +13,10 @@ import com.github.kr328.clash.core.model.Traffic
 import com.github.kr328.clash.core.model.TunnelState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -197,25 +201,56 @@ object ClashCore {
         }.getOrDefault(false)
     }
 
-    suspend fun healthCheckGroupNative(name: String): Map<String, Int> = withContext(Dispatchers.IO) {
+    suspend fun healthCheckGroupNative(
+        name: String,
+        onProgress: ((String, Int) -> Unit)? = null
+    ): Map<String, Int> = withContext(Dispatchers.IO) {
+        val initialGroup = queryGroup(name)
+        val initialDelays = initialGroup?.proxies?.associate { it.name to it.delay } ?: emptyMap()
         val deferred = CompletableDeferred<Unit>()
+        var pollJob: Job? = null
         try {
             Bridge.nativeHealthCheck(deferred, name)
+            if (onProgress != null) {
+                val reported = mutableSetOf<String>()
+                pollJob = launch {
+                    while (isActive && !deferred.isCompleted) {
+                        delay(150L)
+                        val currentGroup = queryGroup(name)
+                        val proxies = currentGroup?.proxies ?: emptyList()
+                        proxies.forEach { p ->
+                            if (!reported.contains(p.name)) {
+                                val oldDelay = initialDelays[p.name]
+                                val newDelay = p.delay
+                                if (oldDelay != newDelay && newDelay > 0) {
+                                    reported.add(p.name)
+                                    val finalD = if (newDelay in 1..65534) newDelay else -2
+                                    onProgress(p.name, finalD)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             withTimeout(5500L) {
                 deferred.await()
             }
         } catch (_: Throwable) {
+        } finally {
+            pollJob?.cancel()
         }
         val group = queryGroup(name)
         val result = mutableMapOf<String, Int>()
         group?.proxies?.forEach { p ->
             val d = if (p.delay in 1..65534) p.delay else if (p.delay >= 65535 || p.delay == -2) -2 else -1
             result[p.name] = d
+            onProgress?.invoke(p.name, d)
         }
         result
     }
 
-    suspend fun healthCheck(name: String): Map<String, Int> = healthCheckGroupNative(name)
+    suspend fun healthCheck(name: String, onProgress: ((String, Int) -> Unit)? = null): Map<String, Int> =
+        healthCheckGroupNative(name, onProgress)
 
     suspend fun testProxyDelayNative(proxyName: String, groupName: String? = null): Int = withContext(Dispatchers.IO) {
         if (proxyName.equals("DIRECT", ignoreCase = true)) return@withContext 0

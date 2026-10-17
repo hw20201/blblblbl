@@ -1,5 +1,6 @@
 package com.github.mihomo.android.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -58,24 +59,29 @@ fun LoonTrafficCard(
     Surface(
         modifier = modifier
             .height(82.dp)
-            .shadow(6.dp, RoundedCornerShape(18.dp), spotColor = if (isUpload) Color(0x3300C853) else Color(0x334A69FF)),
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(18.dp),
+                spotColor = if (isUpload) Color(0x3300C853) else Color(0x334A69FF)
+            ),
         shape = RoundedCornerShape(18.dp),
         color = Color.Transparent
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .clip(RoundedCornerShape(18.dp))
                 .background(gradient)
-                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
+            // Primary Information (Title & Real-time speed)
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(end = 46.dp)
+                    .padding(start = 14.dp, end = 56.dp)
             ) {
                 Text(
                     text = title,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.88f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -83,29 +89,206 @@ fun LoonTrafficCard(
                 Text(
                     text = if (speed.isBlank()) "--" else speed,
                     color = Color.White,
-                    fontSize = 15.sp,
+                    fontSize = 15.5.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
                 )
             }
 
-            // Circular icon with arrow
+            // iOS-Style Rounded Traffic Arrow (SF Symbols Morphology, Rounded Curves, Frosted Translucency)
             Box(
                 modifier = Modifier
-                    .size(38.dp)
                     .align(Alignment.CenterEnd)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.22f)),
+                    .padding(end = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = if (isUpload) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                IosTrafficArrow(
+                    isUpload = isUpload,
+                    modifier = Modifier.size(width = 32.dp, height = 38.dp)
                 )
             }
         }
+    }
+}
+
+/**
+ * Modern iOS SF Symbols rounded traffic arrow.
+ * Features organic rounded apex, rounded wingtips, smooth concave fillets, and rounded base.
+ * Employs frosted translucent gradients and subtle high-clarity contour for authentic iOS vibrancy.
+ */
+@Composable
+private fun IosTrafficArrow(
+    isUpload: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+
+        // iOS rounded proportions
+        val rApex = 2.4.dp.toPx()
+        val rWing = 2.4.dp.toPx()
+        val rInner = 2.8.dp.toPx()
+        val rBase = 2.6.dp.toPx()
+
+        val wingW = w * 0.92f
+        val wingLeft = cx - wingW * 0.5f
+        val wingRight = cx + wingW * 0.5f
+
+        val stemW = w * 0.36f
+        val stemLeft = cx - stemW * 0.5f
+        val stemRight = cx + stemW * 0.5f
+
+        val path = Path()
+
+        if (isUpload) {
+            // ==================== UPLOAD (Points UP) ====================
+            val topY = 1.5.dp.toPx()
+            val wingY = h * 0.52f
+            val bottomY = h - 1.5.dp.toPx()
+
+            path.apply {
+                // 1. Rounded Apex
+                moveTo(cx - rApex * 0.8f, topY + rApex * 0.8f)
+                quadraticTo(cx, topY, cx + rApex * 0.8f, topY + rApex * 0.8f)
+
+                // 2. Right downward wing slope
+                lineTo(wingRight - rWing * 0.7f, wingY - rWing * 0.7f)
+
+                // 3. Right wingtip curve
+                quadraticTo(wingRight, wingY, wingRight - rWing, wingY)
+
+                // 4. Horizontal notch in towards stem
+                lineTo(stemRight + rInner, wingY)
+
+                // 5. Right inner fillet curve (smooth concave corner)
+                quadraticTo(stemRight, wingY, stemRight, wingY + rInner)
+
+                // 6. Right stem vertical edge
+                lineTo(stemRight, bottomY - rBase)
+
+                // 7. Bottom-right base curve
+                quadraticTo(stemRight, bottomY, stemRight - rBase, bottomY)
+
+                // 8. Base horizontal edge
+                lineTo(stemLeft + rBase, bottomY)
+
+                // 9. Bottom-left base curve
+                quadraticTo(stemLeft, bottomY, stemLeft, bottomY - rBase)
+
+                // 10. Left stem vertical edge
+                lineTo(stemLeft, wingY + rInner)
+
+                // 11. Left inner fillet curve (smooth concave corner)
+                quadraticTo(stemLeft, wingY, stemLeft - rInner, wingY)
+
+                // 12. Horizontal notch out towards wing
+                lineTo(wingLeft + rWing, wingY)
+
+                // 13. Left wingtip curve
+                quadraticTo(wingLeft, wingY, wingLeft + rWing * 0.7f, wingY - rWing * 0.7f)
+
+                // 14. Left upward wing slope back to apex
+                lineTo(cx - rApex * 0.8f, topY + rApex * 0.8f)
+                close()
+            }
+        } else {
+            // ==================== DOWNLOAD (Points DOWN) ====================
+            val topY = 1.5.dp.toPx()
+            val wingY = h * 0.48f
+            val bottomY = h - 1.5.dp.toPx()
+
+            path.apply {
+                // 1. Top-left stem base curve
+                moveTo(stemLeft, topY + rBase)
+                quadraticTo(stemLeft, topY, stemLeft + rBase, topY)
+
+                // 2. Top base horizontal edge
+                lineTo(stemRight - rBase, topY)
+
+                // 3. Top-right stem base curve
+                quadraticTo(stemRight, topY, stemRight, topY + rBase)
+
+                // 4. Right stem vertical edge down to fillet
+                lineTo(stemRight, wingY - rInner)
+
+                // 5. Right inner fillet curve (smooth concave corner)
+                quadraticTo(stemRight, wingY, stemRight + rInner, wingY)
+
+                // 6. Horizontal notch out towards wing
+                lineTo(wingRight - rWing, wingY)
+
+                // 7. Right wingtip curve
+                quadraticTo(wingRight, wingY, wingRight - rWing * 0.7f, wingY + rWing * 0.7f)
+
+                // 8. Right downward slope to apex
+                lineTo(cx + rApex * 0.8f, bottomY - rApex * 0.8f)
+
+                // 9. Bottom apex curve
+                quadraticTo(cx, bottomY, cx - rApex * 0.8f, bottomY - rApex * 0.8f)
+
+                // 10. Left upward slope to wing
+                lineTo(wingLeft + rWing * 0.7f, wingY + rWing * 0.7f)
+
+                // 11. Left wingtip curve
+                quadraticTo(wingLeft, wingY, wingLeft + rWing, wingY)
+
+                // 12. Horizontal notch in towards stem
+                lineTo(stemLeft - rInner, wingY)
+
+                // 13. Left inner fillet curve (smooth concave corner)
+                quadraticTo(stemLeft, wingY, stemLeft, wingY - rInner)
+
+                // 14. Left stem vertical edge back to top
+                lineTo(stemLeft, topY + rBase)
+                close()
+            }
+        }
+
+        // Frosted translucent body fill (reveals vibrant card gradient underneath)
+        val fillBrush = Brush.verticalGradient(
+            colors = if (isUpload) {
+                listOf(
+                    Color.White.copy(alpha = 0.78f),
+                    Color.White.copy(alpha = 0.45f)
+                )
+            } else {
+                listOf(
+                    Color.White.copy(alpha = 0.45f),
+                    Color.White.copy(alpha = 0.78f)
+                )
+            },
+            startY = 0f,
+            endY = h
+        )
+        drawPath(path = path, brush = fillBrush)
+
+        // Crisp semi-translucent contour (clean iOS Vibrancy outline)
+        val strokeBrush = Brush.verticalGradient(
+            colors = if (isUpload) {
+                listOf(
+                    Color.White.copy(alpha = 0.95f),
+                    Color.White.copy(alpha = 0.65f)
+                )
+            } else {
+                listOf(
+                    Color.White.copy(alpha = 0.65f),
+                    Color.White.copy(alpha = 0.95f)
+                )
+            },
+            startY = 0f,
+            endY = h
+        )
+        drawPath(
+            path = path,
+            brush = strokeBrush,
+            style = Stroke(
+                width = 1.4.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
     }
 }
 
@@ -157,42 +340,29 @@ fun LoonShortcutCard(
                 }
             }
 
-            // Bottom-left circular chevron '>' button or drag handle
+            // Bottom-left: clean chevron '>' button or drag handle (no background color block)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 14.dp, bottom = 14.dp)
+                    .padding(start = 14.dp, bottom = 14.dp),
+                contentAlignment = Alignment.Center
             ) {
                 if (isEditing) {
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(CircleShape)
-                            .background(if (LocalLoonColors.current.isDark) Color(0xFF262C3A) else Color(0xFFF1F3F7)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "☰",
-                            fontSize = 14.sp,
-                            color = LoonTextSecondary,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Canvas(modifier = Modifier.size(18.dp)) {
+                        val stroke = 2.dp.toPx()
+                        val w = size.width
+                        val h = size.height
+                        val color = Color(0xFF9AA0AE)
+                        drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
+                        drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
                     }
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(CircleShape)
-                            .background(if (LocalLoonColors.current.isDark) Color(0xFF262C3A) else Color(0xFFF1F3F7)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = Color(0xFF9AA0AE),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color(0xFF9AA0AE),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -687,11 +857,11 @@ fun AppRoutingIllustration() {
 @Composable
 fun LoonFloatingBottomBar(
     selectedTab: Int,
-    onTabSelected: (Int) -> Unit
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = Modifier
-            .padding(bottom = 18.dp)
+        modifier = modifier
             .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
             .border(1.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
         shape = RoundedCornerShape(32.dp),
@@ -787,12 +957,28 @@ private fun BottomNavItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val tint = if (isSelected) LoonBlue else Color(0xFF9AA1B0)
+    val tint by animateColorAsState(
+        targetValue = if (isSelected) LoonBlue else Color(0xFF9AA1B0),
+        animationSpec = tween(durationMillis = 200),
+        label = "nav_tint"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.05f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "nav_scale"
+    )
 
     Column(
         modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clickable(
-                interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource(),
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null
             ) { onClick() }
             .padding(horizontal = 6.dp, vertical = 2.dp),

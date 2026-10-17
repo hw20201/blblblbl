@@ -74,6 +74,10 @@ fun DashboardScreen(
     onNavigateToProfiles: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
     onNavigateToLogs: () -> Unit,
+    onNavigateToRules: () -> Unit = {},
+    onNavigateToDns: () -> Unit = {},
+    onNavigateToRequests: () -> Unit = {},
+    onNavigateToNetworkShare: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit
 ) {
@@ -132,50 +136,24 @@ fun DashboardScreen(
                 onNavigateToLogs()
             },
             "request_logs" to ShortcutDef("request_logs", AppStrings.get("shortcut_requests", lang), if (isRunning) "实时监控" else "未开启", { RequestLogsIllustration() }) {
-                activeDialogTitle = "请求记录与状态"
-                activeDialogContent = if (isRunning) {
-                    "Nexus 内核已连接并正常调度网络连接。\n\n" +
-                            "已上传总量: ${vpnState.totalUp}\n" +
-                            "已下载总量: ${vpnState.totalDown}\n" +
-                            "当前上传速率: ${vpnState.upSpeed}\n" +
-                            "当前下载速率: ${vpnState.downSpeed}\n" +
-                            "核心运行状态: 活跃运行中"
-                } else {
-                    "代理服务未开启，暂无活动请求记录。请点击右上角开启连接。"
-                }
+                onNavigateToRequests()
             },
             "dns" to ShortcutDef("dns", AppStrings.get("shortcut_dns", lang), "Fake-IP", { DnsIllustration() }) {
-                activeDialogTitle = "DNS 运行模式"
-                activeDialogContent = "Nexus 内置高性能 DNS 解析器\n\n" +
-                        "• 增强模式: Fake-IP 映射池\n" +
-                        "• 虚拟网段: 198.18.0.1/16\n" +
-                        "• 监听端口: 127.0.0.1:1053\n" +
-                        "• 国内上游: 223.5.5.5, 119.29.29.29\n" +
-                        "• 防污染劫持: 启用"
+                onNavigateToDns()
             },
             "rules" to ShortcutDef("rules", AppStrings.get("shortcut_rules", lang), if (totalRules > 0) "$totalRules" else "1", { RulesIllustration() }) {
-                activeDialogTitle = "分流规则"
-                activeDialogContent = "当前配置已加载 $totalRules 条匹配规则。\n\n" +
-                        "• 分流机制: 规则引擎 (GEOIP, DOMAIN-SUFFIX, IP-CIDR, MATCH)\n" +
-                        "• 当前运行模式: ${currentMode.displayName}\n" +
-                        "• 规则嗅探: 开启 TLS/HTTP SNI 智能嗅探"
+                onNavigateToRules()
             },
             "routing" to ShortcutDef("routing", AppStrings.get("shortcut_routing", lang), "规则与黑白名单", { AppRoutingIllustration() }) {
                 onNavigateToAppRouting()
             },
             "plugins" to ShortcutDef("plugins", AppStrings.get("shortcut_plugins", lang), if (vpnState.coreVersion.isNotBlank()) "v${vpnState.coreVersion.take(8)}" else "Nexus Core", { PluginsIllustration() }) {
-                activeDialogTitle = "Nexus 内核信息"
-                activeDialogContent = "内核版本: ${vpnState.coreVersion.ifBlank { "Nexus Core (Clash.Meta) v1.18.x" }}\n" +
-                        "ABI 架构: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}\n" +
-                        "内核通信: JNI 原生嵌入式交互\n" +
-                        "系统服务: Android VpnService + TUN"
+                activeDialogTitle = "内核信息"
+                activeDialogContent = "内核版本: ${vpnState.coreVersion.ifBlank { "v1.18.x" }}\n" +
+                        "架构支持: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}"
             },
             "network_share" to ShortcutDef("network_share", AppStrings.get("shortcut_network_share", lang), "127.0.0.1:7890", { NetworkShareIllustration() }) {
-                activeDialogTitle = "局域网共享与代理端口"
-                activeDialogContent = "混合端口 (HTTP + SOCKS5):\n" +
-                        "• 本机地址: 127.0.0.1:7890\n" +
-                        "• TUN 设备: tun0 (172.19.0.1)\n" +
-                        "• 允许局域网设备连接可在设置中开启"
+                onNavigateToNetworkShare()
             }
         )
     }
