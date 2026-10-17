@@ -130,6 +130,7 @@ fun SettingsScreen(
                 iconBg = Color(0xFF3B82F6),
                 title = AppStrings.get("settings_tun_stack", lang),
                 value = when (tunStack) {
+                    "mips" -> "Mips"
                     "mixed" -> "Mixed"
                     "gvisor" -> "gVisor"
                     else -> "System"
@@ -424,7 +425,7 @@ fun SettingsScreen(
             title = { Text(AppStrings.get("settings_tun_stack", lang), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    listOf("mixed" to "Mixed (混合栈，兼顾兼容与性能)", "gvisor" to "gVisor (用户态栈，高隔离)").forEach { (key, desc) ->
+                    listOf("mips" to "Mips (MetaCubeX 自研栈，性能优先)", "mixed" to "Mixed (混合栈，兼顾兼容与性能)", "gvisor" to "gVisor (用户态栈，高隔离)").forEach { (key, desc) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
