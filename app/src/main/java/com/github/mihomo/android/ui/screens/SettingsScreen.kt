@@ -56,8 +56,6 @@ fun SettingsScreen(
     onBootOnStartupChanged: (Boolean) -> Unit,
     onAllowLanChanged: (Boolean) -> Unit,
     onFakeIpEnabledChanged: (Boolean) -> Unit,
-    onThemeModeChanged: (ThemeMode) -> Unit = {},
-    onLanguageChanged: (String) -> Unit = {},
     onScriptsChanged: () -> Unit = {},
     onNavigateToScripts: () -> Unit = {},
     onNavigateToProfiles: () -> Unit,
