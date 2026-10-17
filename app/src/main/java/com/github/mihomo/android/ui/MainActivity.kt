@@ -39,6 +39,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
+import com.github.mihomo.android.ui.components.hapticTick
+import com.github.mihomo.android.ui.components.rememberHapticTick
 import com.github.mihomo.android.ui.screens.*
 import com.github.mihomo.android.ui.theme.LoonBg
 import com.github.mihomo.android.ui.theme.MihomoTheme
@@ -117,6 +119,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleToggleVpn() {
+        window.decorView.hapticTick(settingsManager.hapticEnabled)
         val currentStatus = MihomoVpnService.vpnState.value.status
         if (currentStatus == VpnState.Status.RUNNING || currentStatus == VpnState.Status.STARTING) {
             MihomoVpnService.stop(this)
@@ -197,6 +200,7 @@ class MainActivity : ComponentActivity() {
         var bootOnStartup by remember { mutableStateOf(settingsManager.bootOnStartup) }
         var allowLan by remember { mutableStateOf(settingsManager.allowLan) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
+        var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         val settingsScrollState = rememberScrollState()
         val dashboardScrollState = rememberScrollState()
         val proxiesTabsListState = rememberLazyListState()
@@ -222,8 +226,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val hapticTick = rememberHapticTick(hapticEnabled)
+
         // Persistent node selection handler (Instant 0-delay optimistic update)
         fun handleSelectProxy(group: String, proxy: Proxy) {
+            hapticTick()
             settingsManager.setSelectedNode(group, proxy.name)
             if (group == mainProxyGroupName) {
                 activeNodeName = proxy.name
@@ -803,8 +810,10 @@ class MainActivity : ComponentActivity() {
                         bootOnStartup = bootOnStartup,
                         allowLan = allowLan,
                         fakeIpEnabled = fakeIpEnabled,
+                        hapticEnabled = hapticEnabled,
                         themeMode = currentThemeMode,
                         onTunStackChanged = { stack ->
+                            hapticTick()
                             tunStack = stack
                             settingsManager.tunStack = stack
                         },
@@ -833,6 +842,11 @@ class MainActivity : ComponentActivity() {
                                     ClashCore.load(conf)
                                 }
                             }
+                        },
+                        onHapticEnabledChanged = { enabled ->
+                            hapticEnabled = enabled
+                            settingsManager.hapticEnabled = enabled
+                            if (enabled) hapticTick()
                         },
                         onScriptsChanged = {
                             parseActiveProfile()
@@ -914,6 +928,7 @@ class MainActivity : ComponentActivity() {
                                     selectedProfileId = selectedProfileId,
                                     onBack = { currentSubScreen = null },
                                     onSelectProfile = { profile ->
+                                        hapticTick()
                                         selectedProfileId = profile.id
                                         settingsManager.selectedProfileId = profile.id
                                         parseActiveProfile()
