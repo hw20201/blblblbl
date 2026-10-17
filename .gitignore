@@ -28,7 +28,6 @@ local.properties
 *.keystore
 keystore.properties
 signing.properties
-!app/nexus-release.jks
 
 # Log Files
 *.log

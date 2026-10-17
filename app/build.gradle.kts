@@ -7,8 +7,10 @@ plugins {
     id("io.gitlab.arturbosch.detekt")
 }
 
-// Release signing can be loaded from embedded app/nexus-release.jks,
-// with optional overrides from local.properties or RELEASE_* environment variables.
+// Release signing is never committed to the repo. Provide it via local.properties
+// (releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+// or the RELEASE_* environment variables (e.g. CI secrets). Without them,
+// release builds fall back to the debug key.
 val signingProperties = Properties().apply {
     val localFile = rootProject.file("local.properties")
     if (localFile.exists()) localFile.inputStream().use { load(it) }
@@ -17,13 +19,14 @@ val signingProperties = Properties().apply {
 fun signingValue(propertyKey: String, envKey: String): String? =
     (signingProperties.getProperty(propertyKey) ?: System.getenv(envKey))?.takeIf { it.isNotBlank() }
 
-val embeddedKeystore = file("nexus-release.jks")
-val releaseStoreFile = signingValue("releaseStoreFile", "RELEASE_STORE_FILE")
-    ?.let { file(it) } ?: embeddedKeystore.takeIf { it.exists() }
-val releaseKeyAlias = signingValue("releaseKeyAlias", "RELEASE_KEY_ALIAS") ?: "nexus"
-val releaseKeyPassword = signingValue("releaseKeyPassword", "RELEASE_KEY_PASSWORD") ?: "34FbaR6f58zuReU98JlHb96fsMU65Szz"
-val releaseStorePassword = signingValue("releaseStorePassword", "RELEASE_STORE_PASSWORD") ?: "34FbaR6f58zuReU98JlHb96fsMU65Szz"
-val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists()
+val releaseStoreFile = signingValue("releaseStoreFile", "RELEASE_STORE_FILE")?.let { file(it) }
+val releaseKeyAlias = signingValue("releaseKeyAlias", "RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingValue("releaseKeyPassword", "RELEASE_KEY_PASSWORD")
+val releaseStorePassword = signingValue("releaseStorePassword", "RELEASE_STORE_PASSWORD")
+val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
+    !releaseKeyAlias.isNullOrBlank() &&
+    !releaseKeyPassword.isNullOrBlank() &&
+    !releaseStorePassword.isNullOrBlank()
 
 android {
     namespace = "com.github.mihomo.android"
