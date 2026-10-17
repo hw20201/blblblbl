@@ -137,4 +137,9 @@ class SettingsManager(context: Context) {
     var appLanguage: String
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"
         set(value) = prefs.edit().putString("app_language", value).apply()
+
+    /** Master switch for haptic feedback on key interactions. */
+    var hapticEnabled: Boolean
+        get() = prefs.getBoolean("haptic_enabled", true)
+        set(value) = prefs.edit().putBoolean("haptic_enabled", value).apply()
 }
