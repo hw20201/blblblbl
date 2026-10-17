@@ -51,11 +51,13 @@ fun SettingsScreen(
     bootOnStartup: Boolean,
     allowLan: Boolean,
     fakeIpEnabled: Boolean,
+    hapticEnabled: Boolean,
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onTunStackChanged: (String) -> Unit,
     onBootOnStartupChanged: (Boolean) -> Unit,
     onAllowLanChanged: (Boolean) -> Unit,
     onFakeIpEnabledChanged: (Boolean) -> Unit,
+    onHapticEnabledChanged: (Boolean) -> Unit,
     onScriptsChanged: () -> Unit = {},
     onNavigateToScripts: () -> Unit = {},
     onNavigateToProfiles: () -> Unit,
@@ -175,6 +177,14 @@ fun SettingsScreen(
                 },
                 showChevron = true,
                 onClick = onNavigateToAppearance
+            )
+            LoonDivider()
+            LoonSettingsSwitchItem(
+                icon = Icons.Default.Vibration,
+                iconBg = Color(0xFF14B8A6),
+                title = AppStrings.get("settings_haptic", lang),
+                checked = hapticEnabled,
+                onCheckedChange = onHapticEnabledChanged
             )
         }
 
