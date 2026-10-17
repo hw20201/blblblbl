@@ -834,8 +834,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
-                        onThemeModeChanged = onThemeModeChanged,
-                        onLanguageChanged = { code -> appLanguage = code },
                         onScriptsChanged = {
                             parseActiveProfile()
                         },
