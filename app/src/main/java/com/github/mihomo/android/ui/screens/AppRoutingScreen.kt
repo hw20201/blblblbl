@@ -28,6 +28,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +63,7 @@ fun AppRoutingScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBack != null) {
-                IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.size(36.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppStrings.get("back", lang), tint = LoonTextPrimary)
                 }
                 Spacer(modifier = Modifier.width(6.dp))
@@ -92,7 +95,7 @@ fun AppRoutingScreen(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(20.dp))
-                            .clickable { onModeChanged(mode) },
+                            .hapticClickable { onModeChanged(mode) },
                         color = if (isSelected) LoonBlue else Color.Transparent
                     ) {
                         Text(
@@ -155,7 +158,7 @@ fun AppRoutingScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Switch(
                         checked = showSystemApps,
-                        onCheckedChange = { showSystemApps = it },
+                        onCheckedChange = rememberHapticValueAction({ showSystemApps = it }),
                         modifier = Modifier.scale(0.8f),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -281,7 +284,7 @@ private fun AppItemRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .border(1.dp, if (isChecked) LoonBlue else LoonCardBorder, RoundedCornerShape(16.dp))
-            .clickable { onToggle() },
+            .hapticClickable { onToggle() },
         color = LoonCard
     ) {
         Row(
@@ -361,7 +364,7 @@ private fun AppItemRow(
 
             Checkbox(
                 checked = isChecked,
-                onCheckedChange = { onToggle() },
+                onCheckedChange = rememberHapticValueAction({ onToggle() }),
                 colors = CheckboxDefaults.colors(
                     checkedColor = LoonBlue,
                     checkmarkColor = Color.White,

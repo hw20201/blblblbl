@@ -37,6 +37,8 @@ import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 private fun formatRelativeTime(timestamp: Long): String {
     val diff = System.currentTimeMillis() - timestamp
@@ -141,7 +143,7 @@ fun ScriptsScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
-                    onClick = onBack,
+                    onClick = rememberHapticAction(onBack),
                     modifier = Modifier.padding(end = 6.dp)
                 ) {
                     Icon(
@@ -162,8 +164,8 @@ fun ScriptsScreen(
                 if (scripts.any { it.url.isNotBlank() }) {
                     val isAnyUpdating = updatingScriptIds.isNotEmpty()
                     IconButton(
-                        onClick = {
-                            if (isAnyUpdating) return@IconButton
+                        onClick = rememberHapticAction({
+                            if (isAnyUpdating) return@rememberHapticAction
                             val remoteScripts = scripts.filter { it.url.isNotBlank() }
                             scope.launch {
                                 updatingScriptIds = updatingScriptIds + remoteScripts.map { it.id }
@@ -187,7 +189,7 @@ fun ScriptsScreen(
                                 }
                                 Toast.makeText(context, "已同步 $successCount/${remoteScripts.size} 个远程脚本", Toast.LENGTH_SHORT).show()
                             }
-                        },
+                        }),
                         enabled = !isAnyUpdating
                     ) {
                         if (isAnyUpdating) {
@@ -207,7 +209,7 @@ fun ScriptsScreen(
                 }
 
                 IconButton(
-                    onClick = { showCreateDialog = true }
+                    onClick = rememberHapticAction({ showCreateDialog = true })
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -231,7 +233,7 @@ fun ScriptsScreen(
                     .weight(1f)
                     .height(50.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { localScriptLauncher.launch("*/*") },
+                    .hapticClickable { localScriptLauncher.launch("*/*") },
                 color = LoonBlue,
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -262,7 +264,7 @@ fun ScriptsScreen(
                     .weight(1f)
                     .height(50.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { showImportUrlDialog = true },
+                    .hapticClickable { showImportUrlDialog = true },
                 color = Color(0xFF10B981),
                 shape = RoundedCornerShape(14.dp)
             ) {
@@ -358,8 +360,8 @@ fun ScriptsScreen(
                                     if (script.url.isNotBlank()) {
                                         val isUpdating = updatingScriptIds.contains(script.id)
                                         IconButton(
-                                            onClick = {
-                                                if (isUpdating) return@IconButton
+                                            onClick = rememberHapticAction({
+                                                if (isUpdating) return@rememberHapticAction
                                                 updatingScriptIds = updatingScriptIds + script.id
                                                 scope.launch {
                                                     val res = ScriptManager.updateScriptFromRemote(context, script)
@@ -386,7 +388,7 @@ fun ScriptsScreen(
                                                         ).show()
                                                     }
                                                 }
-                                            },
+                                            }),
                                             modifier = Modifier.size(32.dp),
                                             enabled = !isUpdating
                                         ) {
@@ -409,7 +411,7 @@ fun ScriptsScreen(
                                     }
 
                                     IconButton(
-                                        onClick = { deleteConfirmScript = script },
+                                        onClick = rememberHapticAction({ deleteConfirmScript = script }),
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
@@ -455,7 +457,7 @@ fun ScriptsScreen(
                                     color = LoonEditBlueBg,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
+                                        .hapticClickable {
                                             scriptCodeInput = ScriptManager.readScriptCode(context, script)
                                             editingScript = script
                                         }
@@ -523,7 +525,7 @@ fun ScriptsScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         if (newName.isNotBlank()) {
                             ScriptManager.saveLocalScript(
                                 context = context,
@@ -536,7 +538,7 @@ fun ScriptsScreen(
                             showCreateDialog = false
                             Toast.makeText(context, AppStrings.get("scripts_created", lang), Toast.LENGTH_SHORT).show()
                         }
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -544,7 +546,7 @@ fun ScriptsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCreateDialog = false }) {
+                TextButton(onClick = rememberHapticAction({ showCreateDialog = false })) {
                     Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
                 }
             }
@@ -598,7 +600,7 @@ fun ScriptsScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         if (scriptUrl.isNotBlank()) {
                             isDownloading = true
                             scope.launch {
@@ -624,7 +626,7 @@ fun ScriptsScreen(
                                 }
                             }
                         }
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = LoonBlue, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp),
                     enabled = !isDownloading
@@ -637,7 +639,7 @@ fun ScriptsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showImportUrlDialog = false }, enabled = !isDownloading) {
+                TextButton(onClick = rememberHapticAction({ showImportUrlDialog = false }), enabled = !isDownloading) {
                     Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
                 }
             }
@@ -671,7 +673,7 @@ fun ScriptsScreen(
                             fontSize = 17.sp,
                             color = LoonTextPrimary
                         )
-                        IconButton(onClick = { editingScript = null }, modifier = Modifier.size(28.dp)) {
+                        IconButton(onClick = rememberHapticAction({ editingScript = null }), modifier = Modifier.size(28.dp)) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = AppStrings.get("scripts_close", lang),
@@ -710,17 +712,17 @@ fun ScriptsScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(onClick = { editingScript = null }) {
+                        TextButton(onClick = rememberHapticAction({ editingScript = null })) {
                             Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
-                            onClick = {
+                            onClick = rememberHapticAction({
                                 ScriptManager.updateScriptCode(context, target, scriptCodeInput)
                                 refresh()
                                 editingScript = null
                                 Toast.makeText(context, AppStrings.get("scripts_saved", lang), Toast.LENGTH_SHORT).show()
-                            },
+                            }),
                             colors = ButtonDefaults.buttonColors(containerColor = LoonBlue),
                             shape = RoundedCornerShape(10.dp)
                         ) {
@@ -750,11 +752,11 @@ fun ScriptsScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         ScriptManager.deleteScript(context, target.id)
                         refresh()
                         deleteConfirmScript = null
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = RedDanger, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -762,7 +764,7 @@ fun ScriptsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteConfirmScript = null }) {
+                TextButton(onClick = rememberHapticAction({ deleteConfirmScript = null })) {
                     Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
                 }
             }

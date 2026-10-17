@@ -31,6 +31,9 @@ import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @Composable
 fun NetworkShareScreen(
@@ -101,7 +104,7 @@ fun NetworkShareScreen(
                 .padding(bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.padding(end = 6.dp)) {
+            IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = AppStrings.get("back", lang),
@@ -152,7 +155,7 @@ fun NetworkShareScreen(
                             }
                             Switch(
                                 checked = allowLan,
-                                onCheckedChange = { onAllowLanChanged(it) }
+                                onCheckedChange = rememberHapticValueAction({ onAllowLanChanged(it) })
                             )
                         }
 
@@ -247,7 +250,7 @@ fun NetworkShareScreen(
                                     }
 
                                     IconButton(
-                                        onClick = { copyToClipboard("代理地址", "$ip:$port") },
+                                        onClick = rememberHapticAction({ copyToClipboard("代理地址", "$ip:$port") }),
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(Icons.Default.ContentCopy, contentDescription = "复制", tint = LoonBlue, modifier = Modifier.size(16.dp))
@@ -317,7 +320,7 @@ fun NetworkShareScreen(
                                     ) {
                                         Text(title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = LoonBlue)
                                         IconButton(
-                                            onClick = { copyToClipboard(label, cmd) },
+                                            onClick = rememberHapticAction({ copyToClipboard(label, cmd) }),
                                             modifier = Modifier.size(24.dp)
                                         ) {
                                             Icon(Icons.Default.ContentCopy, contentDescription = "复制", tint = LoonTextSecondary, modifier = Modifier.size(14.dp))
@@ -370,7 +373,7 @@ fun NetworkShareScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(10.dp))
-                                        .clickable { selectedPlatform = key }
+                                        .hapticClickable { selectedPlatform = key }
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
                                         Text(

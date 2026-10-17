@@ -25,6 +25,9 @@ import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @Composable
 fun AppearanceScreen(
@@ -58,7 +61,7 @@ fun AppearanceScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = onBack,
+                onClick = rememberHapticAction(onBack),
                 modifier = Modifier.size(36.dp)
             ) {
                 Icon(
@@ -113,7 +116,7 @@ fun AppearanceScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onThemeModeChanged(mode) }
+                                    .hapticClickable { onThemeModeChanged(mode) }
                                     .padding(horizontal = 16.dp, vertical = 14.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -173,7 +176,7 @@ fun AppearanceScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
+                                    .hapticClickable {
                                         currentLanguage = code
                                         settingsManager.appLanguage = code
                                         onLanguageChanged(code)
@@ -261,7 +264,7 @@ fun AppearanceScreen(
                                             if (isSel) LoonBlue else LoonCardBorder,
                                             RoundedCornerShape(10.dp)
                                         )
-                                        .clickable { onNodeColumnsChanged(col) },
+                                        .hapticClickable { onNodeColumnsChanged(col) },
                                     color = if (isSel) LoonEditBlueBg else LoonCard
                                 ) {
                                     Box(
@@ -298,7 +301,7 @@ fun AppearanceScreen(
                             )
                             Switch(
                                 checked = showGroupIcons,
-                                onCheckedChange = onShowGroupIconsChanged
+                                onCheckedChange = rememberHapticValueAction(onShowGroupIconsChanged)
                             )
                         }
                     }

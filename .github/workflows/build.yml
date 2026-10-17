@@ -102,6 +102,9 @@ jobs:
           if [[ "${SOURCE_REF#refs/tags/}" == v1.0.2 ]]; then
             grep -q "versionCode='6' versionName='1.0.2'" build_output/apk-info.txt
           fi
+          if [[ "${SOURCE_REF#refs/tags/}" == v1.0.3 ]]; then
+            grep -q "versionCode='7' versionName='1.0.3'" build_output/apk-info.txt
+          fi
           cp "$APK" build_output/Nexus-arm64-v8a-release.apk
           git rev-parse HEAD > build_output/source-commit.txt
           printf '%s\n' "$GITHUB_WORKFLOW_SHA" > build_output/workflow-commit.txt

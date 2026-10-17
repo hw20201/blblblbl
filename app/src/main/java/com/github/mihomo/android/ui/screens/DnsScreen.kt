@@ -27,6 +27,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.InetAddress
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
 
 data class DnsQueryResult(
     val domain: String,
@@ -115,7 +117,7 @@ fun DnsScreen(
                 .padding(bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.padding(end = 6.dp)) {
+            IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = AppStrings.get("back", lang),
@@ -166,7 +168,7 @@ fun DnsScreen(
                             }
                             Switch(
                                 checked = fakeIpEnabled,
-                                onCheckedChange = { onFakeIpEnabledChanged(it) }
+                                onCheckedChange = rememberHapticValueAction({ onFakeIpEnabledChanged(it) })
                             )
                         }
 
@@ -233,7 +235,7 @@ fun DnsScreen(
                             )
 
                             Button(
-                                onClick = { executeDnsLookup(testDomainInput) },
+                                onClick = rememberHapticAction({ executeDnsLookup(testDomainInput) }),
                                 enabled = testDomainInput.isNotBlank() && !isQuerying,
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = LoonBlue),

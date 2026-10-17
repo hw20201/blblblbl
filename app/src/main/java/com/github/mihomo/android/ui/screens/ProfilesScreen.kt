@@ -46,6 +46,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 private fun formatRelativeTime(timestamp: Long): String {
     val diff = System.currentTimeMillis() - timestamp
@@ -158,7 +161,7 @@ fun ProfilesScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (onBack != null) {
                     IconButton(
-                        onClick = onBack,
+                        onClick = rememberHapticAction(onBack),
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
                         Icon(
@@ -178,7 +181,7 @@ fun ProfilesScreen(
 
             // Top action button (Apple-style pure black plus icon)
             IconButton(
-                onClick = { showAddDialog = true },
+                onClick = rememberHapticAction({ showAddDialog = true }),
                 modifier = Modifier.size(36.dp)
             ) {
                 Icon(
@@ -333,7 +336,7 @@ fun ProfilesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .hapticClickable {
                                 showAddDialog = false
                                 onImportLocalFile?.invoke()
                             }
@@ -394,14 +397,14 @@ fun ProfilesScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         if (subUrl.isNotBlank()) {
                             onAddSubscription(subName.trim(), subUrl.trim())
                             subName = ""
                             subUrl = ""
                             showAddDialog = false
                         }
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = LoonBlue, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -409,7 +412,7 @@ fun ProfilesScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
+                TextButton(onClick = rememberHapticAction({ showAddDialog = false })) {
                     Text("取消", color = LoonTextSecondary)
                 }
             }
@@ -470,7 +473,7 @@ fun ProfilesScreen(
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
+                                        .hapticClickable {
                                             selectedScriptIds = if (isChecked) {
                                                 selectedScriptIds - script.id
                                             } else {
@@ -486,13 +489,13 @@ fun ProfilesScreen(
                                     ) {
                                         Checkbox(
                                             checked = isChecked,
-                                            onCheckedChange = { checked ->
+                                            onCheckedChange = rememberHapticValueAction({ checked ->
                                                 selectedScriptIds = if (checked) {
                                                     selectedScriptIds + script.id
                                                 } else {
                                                     selectedScriptIds - script.id
                                                 }
-                                            },
+                                            }),
                                             colors = CheckboxDefaults.colors(checkedColor = LoonBlue)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -521,7 +524,7 @@ fun ProfilesScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         val updated = target.copy(
                             scriptEnabled = selectedScriptIds.isNotEmpty(),
                             scriptIds = selectedScriptIds.toList()
@@ -541,7 +544,7 @@ fun ProfilesScreen(
                         }
                         overrideDialogProfile = null
                         Toast.makeText(context, "覆写设置已保存", Toast.LENGTH_SHORT).show()
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = LoonBlue, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -549,7 +552,7 @@ fun ProfilesScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { overrideDialogProfile = null }) {
+                TextButton(onClick = rememberHapticAction({ overrideDialogProfile = null })) {
                     Text("取消", color = LoonTextSecondary)
                 }
             }
@@ -633,7 +636,7 @@ fun ProfilesScreen(
                                         Text("自动更新", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = LoonTextPrimary)
                                         Text("在后台定时拉取最新订阅", fontSize = 11.sp, color = LoonTextMuted)
                                     }
-                                    Switch(checked = editAutoUpdate, onCheckedChange = { editAutoUpdate = it })
+                                    Switch(checked = editAutoUpdate, onCheckedChange = rememberHapticValueAction({ editAutoUpdate = it }))
                                 }
 
                                 if (editAutoUpdate) {
@@ -680,7 +683,7 @@ fun ProfilesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .hapticClickable {
                                 fullEditDialogProfile = null
                                 if (onNavigateToOverride != null) {
                                     onNavigateToOverride(target)
@@ -715,7 +718,7 @@ fun ProfilesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .hapticClickable {
                                 onlineEditorProfile = target
                             }
                     ) {
@@ -739,7 +742,7 @@ fun ProfilesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .hapticClickable {
                                 filePickerLauncher.launch("*/*")
                             }
                     ) {
@@ -759,7 +762,7 @@ fun ProfilesScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         val intervalHours = (intervalHoursText.toIntOrNull() ?: 24).coerceAtLeast(1)
                         val updated = target.copy(
                             name = editName.ifBlank { target.name },
@@ -774,7 +777,7 @@ fun ProfilesScreen(
                         onUpdateProfile(updated)
                         fullEditDialogProfile = null
                         Toast.makeText(context, "配置修改已保存", Toast.LENGTH_SHORT).show()
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = LoonBlue, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -782,7 +785,7 @@ fun ProfilesScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { fullEditDialogProfile = null }) {
+                TextButton(onClick = rememberHapticAction({ fullEditDialogProfile = null })) {
                     Text("取消", color = LoonTextSecondary)
                 }
             }
@@ -826,7 +829,7 @@ fun ProfilesScreen(
                             fontSize = 17.sp,
                             color = LoonTextPrimary
                         )
-                        IconButton(onClick = { onlineEditorProfile = null }, modifier = Modifier.size(28.dp)) {
+                        IconButton(onClick = rememberHapticAction({ onlineEditorProfile = null }), modifier = Modifier.size(28.dp)) {
                             Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
                         }
                     }
@@ -861,12 +864,12 @@ fun ProfilesScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(onClick = { onlineEditorProfile = null }) {
+                        TextButton(onClick = rememberHapticAction({ onlineEditorProfile = null })) {
                             Text("取消", color = LoonTextSecondary)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
-                            onClick = {
+                            onClick = rememberHapticAction({
                                 val ok = ConfigManager.saveProfileContent(context, target.id, yamlText)
                                 if (ok) {
                                     Toast.makeText(context, "配置内容已保存", Toast.LENGTH_SHORT).show()
@@ -879,7 +882,7 @@ fun ProfilesScreen(
                                 } else {
                                     Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
                                 }
-                            },
+                            }),
                             colors = ButtonDefaults.buttonColors(containerColor = LoonBlue),
                             shape = RoundedCornerShape(10.dp)
                         ) {
@@ -906,10 +909,10 @@ fun ProfilesScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         onDeleteProfile(target)
                         deleteConfirmProfile = null
-                    },
+                    }),
                     colors = ButtonDefaults.buttonColors(containerColor = RedDanger, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -917,7 +920,7 @@ fun ProfilesScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteConfirmProfile = null }) {
+                TextButton(onClick = rememberHapticAction({ deleteConfirmProfile = null })) {
                     Text("取消", color = LoonTextSecondary)
                 }
             }
@@ -950,7 +953,7 @@ private fun LoonProfileCard(
                 shape = RoundedCornerShape(18.dp)
             )
             .shadow(2.dp, RoundedCornerShape(18.dp), spotColor = Color(0x08000000))
-            .clickable { onClick() },
+            .hapticClickable { onClick() },
         color = LoonCard
     ) {
         Column(
@@ -975,7 +978,7 @@ private fun LoonProfileCard(
                 // 3-Dots Menu (...)
                 Box {
                     IconButton(
-                        onClick = { menuExpanded = true },
+                        onClick = rememberHapticAction({ menuExpanded = true }),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
@@ -997,20 +1000,20 @@ private fun LoonProfileCard(
                             leadingIcon = {
                                 Icon(Icons.Default.Code, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(18.dp))
                             },
-                            onClick = {
+                            onClick = rememberHapticAction({
                                 menuExpanded = false
                                 onOverride()
-                            }
+                            })
                         )
                         DropdownMenuItem(
                             text = { Text(AppStrings.get("profile_edit", lang), color = LoonTextPrimary, fontSize = 14.sp) },
                             leadingIcon = {
                                 Icon(Icons.Default.Edit, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(18.dp))
                             },
-                            onClick = {
+                            onClick = rememberHapticAction({
                                 menuExpanded = false
                                 onEdit()
-                            }
+                            })
                         )
                         if (item.url != null) {
                             DropdownMenuItem(
@@ -1018,10 +1021,10 @@ private fun LoonProfileCard(
                                 leadingIcon = {
                                     Icon(Icons.Default.Refresh, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(18.dp))
                                 },
-                                onClick = {
+                                onClick = rememberHapticAction({
                                     menuExpanded = false
                                     onUpdate()
-                                }
+                                })
                             )
                         }
                         if (onMoveUp != null) {
@@ -1030,10 +1033,10 @@ private fun LoonProfileCard(
                                 leadingIcon = {
                                     Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(18.dp))
                                 },
-                                onClick = {
+                                onClick = rememberHapticAction({
                                     menuExpanded = false
                                     onMoveUp()
-                                }
+                                })
                             )
                         }
                         if (onMoveDown != null) {
@@ -1042,10 +1045,10 @@ private fun LoonProfileCard(
                                 leadingIcon = {
                                     Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(18.dp))
                                 },
-                                onClick = {
+                                onClick = rememberHapticAction({
                                     menuExpanded = false
                                     onMoveDown()
-                                }
+                                })
                             )
                         }
                         HorizontalDivider(color = LoonCardBorder)
@@ -1054,10 +1057,10 @@ private fun LoonProfileCard(
                             leadingIcon = {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = RedDanger, modifier = Modifier.size(18.dp))
                             },
-                            onClick = {
+                            onClick = rememberHapticAction({
                                 menuExpanded = false
                                 onDelete()
-                            }
+                            })
                         )
                     }
                 }
@@ -1150,7 +1153,7 @@ private fun LoonProfileCard(
                     ),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable { onOverride() }
+                        .hapticClickable { onOverride() }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),

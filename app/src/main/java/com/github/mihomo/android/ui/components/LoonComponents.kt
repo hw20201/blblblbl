@@ -6,6 +6,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import com.github.mihomo.android.ui.components.hapticClickable
+import com.github.mihomo.android.ui.components.rememberHapticAction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -312,7 +314,7 @@ fun LoonShortcutCard(
                 shape = RoundedCornerShape(18.dp)
             )
             .shadow(2.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
-            .clickable(enabled = !isEditing) { onClick() },
+            .hapticClickable(if (!isEditing) onClick else null),
         color = LoonCard
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -386,7 +388,7 @@ fun LoonShortcutCard(
                         .size(22.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFFF3B30))
-                        .clickable { onDelete() },
+                        .hapticClickable(onDelete),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -977,10 +979,11 @@ private fun BottomNavItem(
                 scaleX = scale
                 scaleY = scale
             }
-            .clickable(
+            .then(Modifier.clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
+                indication = null,
+                onClick = rememberHapticAction(onClick)
+            ))
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

@@ -33,6 +33,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @Composable
 fun ProfileOverrideScreen(
@@ -67,7 +70,7 @@ fun ProfileOverrideScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = onBack,
+                onClick = rememberHapticAction(onBack),
                 modifier = Modifier.padding(end = 6.dp)
             ) {
                 Icon(
@@ -134,7 +137,7 @@ fun ProfileOverrideScreen(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .border(1.dp, LoonCardBorder, RoundedCornerShape(14.dp))
-                .clickable { onNavigateToScripts() },
+                .hapticClickable { onNavigateToScripts() },
             color = LoonCard,
             shape = RoundedCornerShape(14.dp)
         ) {
@@ -243,7 +246,7 @@ fun ProfileOverrideScreen(
                                 if (isChecked) LoonBlue else LoonCardBorder,
                                 RoundedCornerShape(14.dp)
                             )
-                            .clickable {
+                            .hapticClickable {
                                 if (isChecked) {
                                     selectedScriptIds.remove(script.id)
                                 } else {
@@ -280,13 +283,13 @@ fun ProfileOverrideScreen(
 
                             Checkbox(
                                 checked = isChecked,
-                                onCheckedChange = { checked ->
+                                onCheckedChange = rememberHapticValueAction({ checked ->
                                     if (checked) {
                                         selectedScriptIds.add(script.id)
                                     } else {
                                         selectedScriptIds.remove(script.id)
                                     }
-                                },
+                                }),
                                 colors = CheckboxDefaults.colors(
                                     checkedColor = LoonBlue,
                                     uncheckedColor = LoonTextMuted
@@ -302,7 +305,7 @@ fun ProfileOverrideScreen(
 
         // Save Button
         Button(
-            onClick = {
+            onClick = rememberHapticAction({
                 val updated = profile.copy(
                     scriptEnabled = selectedScriptIds.isNotEmpty(),
                     scriptIds = selectedScriptIds.toList()
@@ -325,7 +328,7 @@ fun ProfileOverrideScreen(
                 }
                 Toast.makeText(context, AppStrings.get("override_saved", lang), Toast.LENGTH_SHORT).show()
                 onBack()
-            },
+            }),
             colors = ButtonDefaults.buttonColors(containerColor = LoonBlue, contentColor = Color.White),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier

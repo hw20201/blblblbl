@@ -33,6 +33,8 @@ import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 data class StructuredRequest(
     val id: Long,
@@ -141,7 +143,7 @@ fun RequestLogsScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.padding(end = 6.dp)) {
+                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = AppStrings.get("back", lang),
@@ -157,14 +159,14 @@ fun RequestLogsScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { isPaused = !isPaused }, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = rememberHapticAction({ isPaused = !isPaused }), modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                         contentDescription = if (isPaused) "继续" else "暂停",
                         tint = if (isPaused) LoonGreen else LoonTextSecondary
                     )
                 }
-                IconButton(onClick = { LogRepository.clear() }, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = rememberHapticAction({ LogRepository.clear() }), modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.Default.DeleteSweep,
                         contentDescription = "清空",
@@ -224,7 +226,7 @@ fun RequestLogsScreen(
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                    IconButton(onClick = rememberHapticAction({ searchQuery = "" }), modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
                     }
                 }
@@ -262,7 +264,7 @@ fun RequestLogsScreen(
                     border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) LoonBlue else LoonCardBorder),
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { selectedProtocol = proto }
+                        .hapticClickable { selectedProtocol = proto }
                 ) {
                     Text(
                         text = if (proto == "ALL") "全部协议 (${requests.size})" else proto,
