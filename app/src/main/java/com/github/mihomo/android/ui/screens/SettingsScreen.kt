@@ -42,6 +42,9 @@ import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,12 +62,12 @@ fun SettingsScreen(
     onFakeIpEnabledChanged: (Boolean) -> Unit,
     onHapticEnabledChanged: (Boolean) -> Unit,
     onScriptsChanged: () -> Unit = {},
-    onNavigateToScripts: () -> Unit = {},
+    onNavigateToScripts: () -> Unit,
     onNavigateToProfiles: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
     onNavigateToLogs: () -> Unit,
-    onNavigateToAppearance: () -> Unit = {},
-    onNavigateToDns: () -> Unit = {}
+    onNavigateToAppearance: () -> Unit,
+    onNavigateToDns: () -> Unit
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -330,17 +333,17 @@ fun SettingsScreen(
             title = { Text(AppStrings.get("settings_reset_core", lang)) },
             text = { Text(AppStrings.get("settings_reset_core_confirm", lang)) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(onClick = rememberHapticAction({
                     showResetDialog = false
                     scope.launch {
                         withContext(Dispatchers.IO) { ClashCore.reset() }
                     }
-                }) {
+                })) {
                     Text(AppStrings.get("confirm", lang))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
+                TextButton(onClick = rememberHapticAction({ showResetDialog = false })) {
                     Text(AppStrings.get("cancel", lang))
                 }
             }
@@ -375,7 +378,7 @@ fun SettingsScreen(
                                     color = if (isSelected) LoonBlue else LoonCardBorder,
                                     shape = RoundedCornerShape(12.dp)
                                 )
-                                .clickable {
+                                .hapticClickable {
                                     currentLogLevel = lvl
                                     settingsManager.logLevel = lvl
                                     showLogLevelDialog = false
@@ -410,7 +413,7 @@ fun SettingsScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showLogLevelDialog = false }) {
+                TextButton(onClick = rememberHapticAction({ showLogLevelDialog = false })) {
                     Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
                 }
             }
@@ -428,17 +431,17 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .hapticClickable {
                                     onTunStackChanged(key)
                                     showTunDialog = false
                                 }
                                 .padding(vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RadioButton(selected = tunStack == key, onClick = {
+                            RadioButton(selected = tunStack == key, onClick = rememberHapticAction({
                                 onTunStackChanged(key)
                                 showTunDialog = false
-                            })
+                            }))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(desc, fontSize = 14.sp)
                         }
@@ -446,7 +449,7 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showTunDialog = false }) {
+                TextButton(onClick = rememberHapticAction({ showTunDialog = false })) {
                     Text(AppStrings.get("confirm", lang))
                 }
             },
@@ -494,13 +497,13 @@ private fun LoonSettingsItem(
     title: String,
     value: String = "",
     showChevron: Boolean = false,
-    onClick: () -> Unit = {}
+    onClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
+            .hapticClickable(onClick)
             .padding(vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -581,7 +584,7 @@ private fun LoonSettingsSwitchItem(
 
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = rememberHapticValueAction(onCheckedChange),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = LoonGreen,

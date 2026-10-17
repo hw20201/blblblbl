@@ -44,6 +44,9 @@ import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlin.math.roundToInt
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 data class ShortcutDef(
     val id: String,
@@ -74,10 +77,10 @@ fun DashboardScreen(
     onNavigateToProfiles: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
     onNavigateToLogs: () -> Unit,
-    onNavigateToRules: () -> Unit = {},
-    onNavigateToDns: () -> Unit = {},
-    onNavigateToRequests: () -> Unit = {},
-    onNavigateToNetworkShare: () -> Unit = {},
+    onNavigateToRules: () -> Unit,
+    onNavigateToDns: () -> Unit,
+    onNavigateToRequests: () -> Unit,
+    onNavigateToNetworkShare: () -> Unit,
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit
 ) {
@@ -221,7 +224,7 @@ fun DashboardScreen(
                             Row(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { showModeBottomSheet = true }
+                                    .hapticClickable { showModeBottomSheet = true }
                                     .padding(vertical = 3.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -248,7 +251,7 @@ fun DashboardScreen(
                     // Top Right iOS Switch
                     Switch(
                         checked = isRunning || isStarting,
-                        onCheckedChange = { onToggleVpn() },
+                        onCheckedChange = rememberHapticValueAction({ onToggleVpn() }),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = LoonGreen,
@@ -305,7 +308,7 @@ fun DashboardScreen(
                         border = null,
                         modifier = Modifier
                             .clip(CircleShape)
-                            .clickable { isEditingShortcuts = !isEditingShortcuts }
+                            .hapticClickable { isEditingShortcuts = !isEditingShortcuts }
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -518,7 +521,7 @@ fun DashboardScreen(
                         .height(52.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp))
-                        .clickable { showAddShortcutSheet = true },
+                        .hapticClickable { showAddShortcutSheet = true },
                     color = LoonCard
                 ) {
                     Row(
@@ -601,7 +604,7 @@ fun DashboardScreen(
                             }
 
                             IconButton(
-                                onClick = {
+                                onClick = rememberHapticAction({
                                     if (mainGroupName.isNotBlank() && !isTestingQuickSheet) {
                                         isTestingQuickSheet = true
                                         coroutineScope.launch {
@@ -610,7 +613,8 @@ fun DashboardScreen(
                                             isTestingQuickSheet = false
                                         }
                                     }
-                                },
+                                }),
+                                enabled = mainGroupName.isNotBlank() && !isTestingQuickSheet,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 AnimatedSpeedTestIcon(
@@ -681,7 +685,7 @@ fun DashboardScreen(
                                                 color = if (isSelected) LoonBlue else LoonCardBorder,
                                                 shape = RoundedCornerShape(18.dp)
                                             )
-                                            .clickable {
+                                            .hapticClickable {
                                                 onSelectProxy(mainGroupName, proxy)
                                                 showQuickNodeSelector = false
                                             },
@@ -788,7 +792,7 @@ fun DashboardScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = LoonTextPrimary
                             )
-                            IconButton(onClick = { showAddShortcutSheet = false }) {
+                            IconButton(onClick = rememberHapticAction({ showAddShortcutSheet = false })) {
                                 Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
                             }
                         }
@@ -817,7 +821,7 @@ fun DashboardScreen(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(12.dp))
                                             .border(1.dp, LoonCardBorder, RoundedCornerShape(12.dp))
-                                            .clickable {
+                                            .hapticClickable {
                                                 onUpdateVisibleShortcuts(visibleShortcuts + item.id)
                                             },
                                         color = LoonCard
@@ -905,7 +909,7 @@ fun DashboardScreen(
                                         color = if (isSelected) LoonOrange else LoonCardBorder,
                                         shape = RoundedCornerShape(16.dp)
                                     )
-                                    .clickable {
+                                    .hapticClickable {
                                         onModeSelected(mode)
                                         showModeBottomSheet = false
                                     },
@@ -967,7 +971,7 @@ fun DashboardScreen(
                         )
                     },
                     confirmButton = {
-                        TextButton(onClick = { activeDialogTitle = null }) {
+                        TextButton(onClick = rememberHapticAction({ activeDialogTitle = null })) {
                             Text("知道了", color = LoonBlue, fontWeight = FontWeight.Bold)
                         }
                     },

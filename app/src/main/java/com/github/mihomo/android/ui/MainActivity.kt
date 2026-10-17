@@ -39,8 +39,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
-import com.github.mihomo.android.ui.components.hapticTick
-import com.github.mihomo.android.ui.components.rememberHapticTick
+import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
 import com.github.mihomo.android.ui.theme.LoonBg
 import com.github.mihomo.android.ui.theme.MihomoTheme
@@ -119,7 +118,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleToggleVpn() {
-        window.decorView.hapticTick(settingsManager.hapticEnabled)
         val currentStatus = MihomoVpnService.vpnState.value.status
         if (currentStatus == VpnState.Status.RUNNING || currentStatus == VpnState.Status.STARTING) {
             MihomoVpnService.stop(this)
@@ -226,11 +224,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val hapticTick = rememberHapticTick(hapticEnabled)
-
         // Persistent node selection handler (Instant 0-delay optimistic update)
         fun handleSelectProxy(group: String, proxy: Proxy) {
-            hapticTick()
             settingsManager.setSelectedNode(group, proxy.name)
             if (group == mainProxyGroupName) {
                 activeNodeName = proxy.name
@@ -670,7 +665,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        CompositionLocalProvider(LocalAppLanguage provides appLanguage) {
+        CompositionLocalProvider(
+            LocalAppLanguage provides appLanguage,
+            // Read synchronously after each action, including the preference switch itself.
+            LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -813,7 +812,6 @@ class MainActivity : ComponentActivity() {
                         hapticEnabled = hapticEnabled,
                         themeMode = currentThemeMode,
                         onTunStackChanged = { stack ->
-                            hapticTick()
                             tunStack = stack
                             settingsManager.tunStack = stack
                         },
@@ -846,9 +844,6 @@ class MainActivity : ComponentActivity() {
                         onHapticEnabledChanged = { enabled ->
                             hapticEnabled = enabled
                             settingsManager.hapticEnabled = enabled
-                            // This callback runs before recomposition, so hapticTick still
-                            // captures the old preference. Use the new value for this tick.
-                            window.decorView.hapticTick(enabled)
                         },
                         onScriptsChanged = {
                             parseActiveProfile()
@@ -930,7 +925,6 @@ class MainActivity : ComponentActivity() {
                                     selectedProfileId = selectedProfileId,
                                     onBack = { currentSubScreen = null },
                                     onSelectProfile = { profile ->
-                                        hapticTick()
                                         selectedProfileId = profile.id
                                         settingsManager.selectedProfileId = profile.id
                                         parseActiveProfile()

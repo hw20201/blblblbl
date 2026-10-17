@@ -32,6 +32,8 @@ import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.data.ParsedRule
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @Composable
 fun RulesScreen(
@@ -79,7 +81,7 @@ fun RulesScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.padding(end = 6.dp)) {
+                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = AppStrings.get("back", lang),
@@ -115,7 +117,7 @@ fun RulesScreen(
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                    IconButton(onClick = rememberHapticAction({ searchQuery = "" }), modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
                     }
                 }
@@ -156,7 +158,7 @@ fun RulesScreen(
                         ),
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { selectedFilterType = type }
+                            .hapticClickable { selectedFilterType = type }
                     ) {
                         Text(
                             text = if (type == "ALL") "全部 (${rules.size})" else type,
@@ -218,7 +220,7 @@ fun RulesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .hapticClickable {
                                 val textToCopy = if (rule.payload.isNotBlank()) "${rule.type},${rule.payload},${rule.target}" else "${rule.type},${rule.target}"
                                 clipboardManager.setText(AnnotatedString(textToCopy))
                                 Toast.makeText(context, "已复制规则: $textToCopy", Toast.LENGTH_SHORT).show()

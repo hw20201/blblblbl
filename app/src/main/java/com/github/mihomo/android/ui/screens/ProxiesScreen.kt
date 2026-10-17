@@ -36,6 +36,9 @@ import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.mihomo.android.ui.components.RemoteIcon
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.rememberHapticValueAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @Composable
 fun AnimatedSpeedTestIcon(
@@ -102,12 +105,12 @@ fun ProxiesScreen(
     nodeColumns: Int = 1,
     onViewModeChanged: (String) -> Unit,
     onShowGroupIconsChanged: (Boolean) -> Unit,
-    onNodeColumnsChanged: (Int) -> Unit = {},
+    onNodeColumnsChanged: (Int) -> Unit,
     onSelectGroup: (String) -> Unit,
     onSelectProxy: (group: String, proxy: Proxy) -> Unit,
     onHealthCheck: (group: String) -> Unit,
     testingNodes: Set<String> = emptySet(),
-    onTestSingleNode: (group: String, node: String) -> Unit = { _, _ -> },
+    onTestSingleNode: (group: String, node: String) -> Unit,
     tabsListState: LazyListState = rememberLazyListState(),
     listModeState: LazyListState = rememberLazyListState(),
     groupRowState: LazyListState = rememberLazyListState(),
@@ -163,13 +166,14 @@ fun ProxiesScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Health check button (Pure Lightning Bolt with Animation, no text, no circle background)
                 IconButton(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         if (selectedGroupName.isNotBlank()) {
                             onHealthCheck(selectedGroupName)
                         } else if (visibleGroups.isNotEmpty()) {
                             onHealthCheck(visibleGroups.first())
                         }
-                    },
+                    }),
+                    enabled = selectedGroupName.isNotBlank() || visibleGroups.isNotEmpty(),
                     modifier = Modifier.size(36.dp)
                 ) {
                     AnimatedSpeedTestIcon(
@@ -183,7 +187,7 @@ fun ProxiesScreen(
 
                 // 3-Dots Settings Dialog Trigger (•••)
                 IconButton(
-                    onClick = { showOptionsMenu = true },
+                    onClick = rememberHapticAction({ showOptionsMenu = true }),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -254,7 +258,7 @@ fun ProxiesScreen(
                                             if (isSel) LoonBlue else LoonCardBorder,
                                             RoundedCornerShape(12.dp)
                                         )
-                                        .clickable { onViewModeChanged(mode) },
+                                        .hapticClickable { onViewModeChanged(mode) },
                                     color = if (isSel) LoonEditBlueBg else LoonCard,
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
@@ -298,7 +302,7 @@ fun ProxiesScreen(
                                             if (isSel) LoonBlue else LoonCardBorder,
                                             RoundedCornerShape(12.dp)
                                         )
-                                        .clickable { onNodeColumnsChanged(colCount) },
+                                        .hapticClickable { onNodeColumnsChanged(colCount) },
                                     color = if (isSel) LoonEditBlueBg else LoonCard,
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
@@ -334,7 +338,7 @@ fun ProxiesScreen(
                         )
                         Switch(
                             checked = showGroupIcons,
-                            onCheckedChange = { onShowGroupIconsChanged(it) }
+                            onCheckedChange = rememberHapticValueAction({ onShowGroupIconsChanged(it) })
                         )
                     }
                 }
@@ -362,7 +366,7 @@ fun ProxiesScreen(
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable { onSelectGroup(groupName) }
+                                .hapticClickable { onSelectGroup(groupName) }
                                 .border(
                                     width = 1.dp,
                                     color = if (isSelected) LoonBlue else LoonCardBorder,
@@ -629,7 +633,7 @@ private fun LoonGroupHeaderCard(
             .defaultMinSize(minHeight = 64.dp)
             .clip(RoundedCornerShape(16.dp))
             .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp))
-            .clickable { onToggleExpand() },
+            .hapticClickable { onToggleExpand() },
         color = LoonCard,
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -700,7 +704,7 @@ private fun LoonGroupHeaderCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
-                            onClick = { if (!isTesting) onHealthCheck() },
+                            onClick = rememberHapticAction({ if (!isTesting) onHealthCheck() }),
                             enabled = !isTesting,
                             modifier = Modifier.size(32.dp)
                         ) {
@@ -742,7 +746,7 @@ private fun LoonProxyItemCard(
     columns: Int = 1,
     isTesting: Boolean = false,
     onClick: () -> Unit,
-    onTestSingleNode: () -> Unit = {}
+    onTestSingleNode: () -> Unit
 ) {
     val nodeEmoji = extractLeadingEmoji(proxy.name)
     val displayName = if (nodeEmoji != null && proxy.name.startsWith(nodeEmoji)) {
@@ -781,7 +785,7 @@ private fun LoonProxyItemCard(
                         color = if (isSelected) LoonBlue else LoonCardBorder,
                         shape = RoundedCornerShape(18.dp)
                     )
-                    .clickable { onClick() },
+                    .hapticClickable { onClick() },
                 color = LoonCard
             ) {
                 Row(
@@ -823,8 +827,9 @@ private fun LoonProxyItemCard(
                             .defaultMinSize(minWidth = 54.dp, minHeight = 24.dp)
                             .clickable(
                                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null
-                            ) { onTestSingleNode() },
+                                indication = null,
+                                onClick = rememberHapticAction { onTestSingleNode() }
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         if (isTesting) {
@@ -860,7 +865,7 @@ private fun LoonProxyItemCard(
                         color = if (isSelected) LoonBlue else LoonCardBorder,
                         shape = RoundedCornerShape(16.dp)
                     )
-                    .clickable { onClick() },
+                    .hapticClickable { onClick() },
                 color = LoonCard
             ) {
                 Column(
@@ -905,8 +910,9 @@ private fun LoonProxyItemCard(
                                 .defaultMinSize(minWidth = 46.dp, minHeight = 20.dp)
                                 .clickable(
                                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                    indication = null
-                                ) { onTestSingleNode() },
+                                    indication = null,
+                                    onClick = rememberHapticAction { onTestSingleNode() }
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             if (isTesting) {
@@ -943,7 +949,7 @@ private fun LoonProxyItemCard(
                         color = if (isSelected) LoonBlue else LoonCardBorder,
                         shape = RoundedCornerShape(14.dp)
                     )
-                    .clickable { onClick() },
+                    .hapticClickable { onClick() },
                 color = LoonCard
             ) {
                 Column(
@@ -989,8 +995,9 @@ private fun LoonProxyItemCard(
                                 .defaultMinSize(minWidth = 38.dp, minHeight = 18.dp)
                                 .clickable(
                                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                    indication = null
-                                ) { onTestSingleNode() },
+                                    indication = null,
+                                    onClick = rememberHapticAction { onTestSingleNode() }
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             if (isTesting) {

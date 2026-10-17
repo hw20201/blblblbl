@@ -36,6 +36,8 @@ import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import com.github.mihomo.android.ui.components.rememberHapticAction
+import com.github.mihomo.android.ui.components.hapticClickable
 
 @Composable
 fun LogsScreen(
@@ -87,7 +89,7 @@ fun LogsScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = AppStrings.get("back", lang),
@@ -113,7 +115,7 @@ fun LogsScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Auto scroll pause/resume toggle
                 IconButton(
-                    onClick = { autoScrollEnabled = !autoScrollEnabled },
+                    onClick = rememberHapticAction({ autoScrollEnabled = !autoScrollEnabled }),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -125,10 +127,10 @@ fun LogsScreen(
 
                 // Search toggle
                 IconButton(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         isSearchVisible = !isSearchVisible
                         if (!isSearchVisible) searchQuery = ""
-                    },
+                    }),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -140,13 +142,13 @@ fun LogsScreen(
 
                 // Copy all logs
                 IconButton(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         val text = filteredLogs.joinToString("\n") {
                             "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}"
                         }
                         clipboardManager.setText(AnnotatedString(text))
                         Toast.makeText(context, AppStrings.get("logs_copied", lang), Toast.LENGTH_SHORT).show()
-                    },
+                    }),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -158,7 +160,7 @@ fun LogsScreen(
 
                 // Export/Share logs
                 IconButton(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         val text = filteredLogs.joinToString("\n") {
                             "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}"
                         }
@@ -167,7 +169,7 @@ fun LogsScreen(
                             putExtra(Intent.EXTRA_TEXT, text)
                         }
                         context.startActivity(Intent.createChooser(intent, AppStrings.get("logs_export", lang)))
-                    },
+                    }),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -179,10 +181,10 @@ fun LogsScreen(
 
                 // Clear logs
                 IconButton(
-                    onClick = {
+                    onClick = rememberHapticAction({
                         LogRepository.clear()
                         Toast.makeText(context, "日志已清空", Toast.LENGTH_SHORT).show()
-                    },
+                    }),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -216,7 +218,7 @@ fun LogsScreen(
                 ),
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                        IconButton(onClick = rememberHapticAction({ searchQuery = "" }), modifier = Modifier.size(24.dp)) {
                             Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
                         }
                     }
@@ -252,7 +254,7 @@ fun LogsScreen(
                     ),
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { selectedLevel = lvl }
+                        .hapticClickable { selectedLevel = lvl }
                 ) {
                     Text(
                         text = title,
@@ -337,7 +339,7 @@ fun LogsScreen(
                         .align(Alignment.BottomEnd)
                         .padding(14.dp)
                         .clip(CircleShape)
-                        .clickable {
+                        .hapticClickable {
                             autoScrollEnabled = true
                             scope.launch {
                                 listState.animateScrollToItem(filteredLogs.size - 1)
@@ -375,7 +377,7 @@ private fun CleanLogItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
-            .clickable { onCopy() }
+            .hapticClickable { onCopy() }
             .padding(vertical = 4.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.Top
     ) {
