@@ -37,7 +37,7 @@ class BrandIconResourcesTest {
                 if (xml.eventType == XmlPullParser.START_TAG && xml.name == "path") {
                     val color = xml.getAttributeIntValue(androidNs, "fillColor", 0)
                     assertEquals(255, Color.alpha(color))
-                    assertEquals(Color.rgb(16, 24, 35), color)
+                    assertEquals(Color.BLACK, color)
                     paths++
                 }
             }
@@ -96,7 +96,7 @@ class BrandIconResourcesTest {
         val cachedBitmap = ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
             service, "getNotificationLargeIcon"
         )
-        val expected = requireNotNull(service.getDrawable(R.mipmap.ic_launcher)).let {
+        val expected = requireNotNull(service.getDrawable(R.drawable.ic_notification_brand)).let {
             it.toBitmap(cachedBitmap.width, cachedBitmap.height)
         }
         assertTrue(cachedBitmap.sameAs(expected))

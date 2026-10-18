@@ -1,14 +1,12 @@
 # Nexus 图标
 
-采用深炭灰底 `#101823`，原 Nexus 斜体 N 轮廓，青色 `#38E1E8` 至靛蓝 `#596AF8` 的轻量渐变。不增加微小网络节点或钥匙细节，保证小尺寸辨识度。
+应用启动图标采用用户提供的黑底白猫图，原图保存在 `nexus-launcher.webp`。保留猫脸、眼睛、嘴角和胡须，通过去掉原图外围白角、提取透明前景、居中缩放和增加安全留白适配 Android；不重新绘制猫脸。
 
-`nexus-icon.svg` 是可编辑主源。`scripts/generate-icons.py` 生成 Android VectorDrawable、普通/圆形 mipmap、108dp 透明前景、Android 13 单色图层，以及通知栏/快捷设置的 24dp 白色 N。资源均纳入源码，不需要构建 Android 时联网生成。
+`scripts/generate-icons.py` 只生成启动图标：五组密度的普通/圆形 mipmap、108dp 透明前景、Android 13 单色图层引用和 512px web 图标。自适应图标使用纯黑背景，前景落在安全圆内，由系统决定最终圆形或圆角外形。
 
 ```sh
-python3 -m pip install cairosvg
+python3 -m pip install pillow numpy opencv-python-headless
 python3 scripts/generate-icons.py
 ```
 
-自适应图标由完整深色背景与透明前景分层，未把圆角或阴影烘焙进图层。通知小图标仅有白色前景与透明背景，实际状态栏颜色由系统决定；通知卡片保留系统样式、停止按钮及低打扰设置，只统一 N 图标和强调色。
-
-[Android 自适应图标规范](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)；[通知构建与小图标](https://developer.android.com/develop/ui/views/notifications/build-notification)。系统另行显示的 VPN 钥匙/盾牌提示由 Android 控制，本次更改不隐藏或替换该系统安全提示。
+通知与快捷设置继续保留原 N 图案：`nexus-icon.svg` 留作原品牌源；`ic_notification_brand` 及其背景/前景为原通知大图案的独立副本，`ic_zz_notification_nexus_v107`、`ic_stat_nexus` 和 `ic_qs_tile` 不变。生成脚本不写入通知或快捷设置资源，也不改变强调色、通知行为、VPN 或 MIPS 功能。

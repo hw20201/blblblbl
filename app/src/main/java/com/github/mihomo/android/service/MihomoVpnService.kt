@@ -92,9 +92,9 @@ class MihomoVpnService : VpnService() {
     private var trafficMonitorJob: Job? = null
     private var startJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
-    // Rasterize the existing N artwork once, not on each traffic update.
+    // Preserve the existing notification N artwork independently of the launcher icon.
     private val notificationLargeIcon by lazy {
-        requireNotNull(getDrawable(R.mipmap.ic_launcher)).toBitmap(
+        requireNotNull(getDrawable(R.drawable.ic_notification_brand)).toBitmap(
             width = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width),
             height = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_height)
         )
