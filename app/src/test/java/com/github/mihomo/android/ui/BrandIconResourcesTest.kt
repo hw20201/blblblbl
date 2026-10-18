@@ -8,7 +8,7 @@ import com.github.mihomo.android.service.MihomoVpnService
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,29 +83,21 @@ class BrandIconResourcesTest {
             "buildNotification",
             ReflectionHelpers.ClassParameter.from(String::class.java, "Connected")
         )
-        assertEquals(R.drawable.ic_stat_nexus, notification.smallIcon.resId)
+        assertEquals(R.drawable.ic_qs_tile, notification.smallIcon.resId)
         assertEquals(service.packageName, notification.smallIcon.resPackage)
         assertEquals("com.github.mihomo.android", service.packageName)
         assertEquals(R.mipmap.ic_launcher, service.applicationInfo.icon)
         assertEquals("Nexus", notification.extras.getString(Notification.EXTRA_TITLE))
-        val largeIcon = requireNotNull(notification.getLargeIcon())
-        assertEquals(android.graphics.drawable.Icon.TYPE_BITMAP, largeIcon.type)
-        val artwork = largeIcon.loadDrawable(service) as android.graphics.drawable.BitmapDrawable
-        assertTrue(artwork.bitmap.width > 0)
-        assertTrue(artwork.bitmap.height > 0)
-        val cachedBitmap = ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
-            service, "getNotificationLargeIcon"
-        )
+        assertNull(notification.getLargeIcon())
+        assertNull(notification.extras.get(Notification.EXTRA_LARGE_ICON))
+        assertNull(notification.extras.getString(Notification.EXTRA_TEMPLATE))
         val updatedNotification = ReflectionHelpers.callInstanceMethod<Notification>(
             service,
             "buildNotification",
             ReflectionHelpers.ClassParameter.from(String::class.java, "Updated traffic")
         )
-        assertNotNull(updatedNotification.getLargeIcon())
-        // Notification.Builder may copy the bitmap; assert our source cache, not its copy.
-        assertSame(cachedBitmap, ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
-            service, "getNotificationLargeIcon"
-        ))
+        assertEquals(R.drawable.ic_qs_tile, updatedNotification.smallIcon.resId)
+        assertNull(updatedNotification.getLargeIcon())
         val launchIntent = shadowOf(notification.contentIntent).savedIntent
         assertEquals(service.packageName, launchIntent.component?.packageName)
         assertEquals("com.github.mihomo.android.ui.MainActivity", launchIntent.component?.className)
@@ -116,6 +108,53 @@ class BrandIconResourcesTest {
         val stopIntent = shadowOf(notification.actions[0].actionIntent).savedIntent
         assertEquals(MihomoVpnService.ACTION_STOP, stopIntent.action)
         assertEquals(MihomoVpnService::class.java.name, stopIntent.component?.className)
+    }
+
+    @Test
+    @Config(sdk = [28, 33])
+    fun foregroundAndTrafficUpdatesUseTileSmallIconWithoutLargeIcon() {
+        val service = Robolectric.buildService(MihomoVpnService::class.java).create().get()
+        // The patch selects the same transparent white N used by the quick-settings tile.
+        val resources = service.resources
+        resources.getXml(R.drawable.ic_qs_tile).use { tile ->
+            resources.getXml(R.drawable.ic_stat_nexus).use { status ->
+                fun paths(xml: org.xmlpull.v1.XmlPullParser): List<Pair<String?, String?>> {
+                    val result = mutableListOf<Pair<String?, String?>>()
+                    while (xml.next() != XmlPullParser.END_DOCUMENT) {
+                        if (xml.eventType == XmlPullParser.START_TAG && xml.name == "path") {
+                            result += xml.getAttributeValue(androidNs, "fillColor") to
+                                xml.getAttributeValue(androidNs, "pathData")
+                        }
+                    }
+                    return result
+                }
+                assertEquals(paths(status), paths(tile))
+            }
+        }
+        ReflectionHelpers.callInstanceMethod<Unit>(
+            service, "startForegroundServiceNotification",
+            ReflectionHelpers.ClassParameter.from(String::class.java, "启动 Nexus 核心")
+        )
+        val startup = requireNotNull(shadowOf(service).lastForegroundNotification)
+        assertEquals(R.drawable.ic_qs_tile, startup.smallIcon.resId)
+        assertNull(startup.getLargeIcon())
+        assertNull(startup.extras.get(Notification.EXTRA_LARGE_ICON))
+        assertEquals("启动 Nexus 核心", startup.extras.getString(Notification.EXTRA_TEXT))
+
+        ReflectionHelpers.callInstanceMethod<Unit>(
+            service, "updateNotification",
+            ReflectionHelpers.ClassParameter.from(String::class.java, "↑ 1 KB/s   ↓ 2 KB/s")
+        )
+        val manager = service.getSystemService(android.app.NotificationManager::class.java)
+        val refreshed = requireNotNull(shadowOf(manager).getNotification(1001))
+        assertEquals(R.drawable.ic_qs_tile, refreshed.smallIcon.resId)
+        assertNull(refreshed.getLargeIcon())
+        assertNull(refreshed.extras.get(Notification.EXTRA_LARGE_ICON))
+        assertEquals("↑ 1 KB/s   ↓ 2 KB/s", refreshed.extras.getString(Notification.EXTRA_TEXT))
+        assertTrue(refreshed.flags and Notification.FLAG_ONGOING_EVENT != 0)
+        assertTrue(refreshed.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+        assertEquals(MihomoVpnService.ACTION_STOP,
+            shadowOf(refreshed.actions.single().actionIntent).savedIntent.action)
     }
 
     private fun assertAdaptiveIcons() {
