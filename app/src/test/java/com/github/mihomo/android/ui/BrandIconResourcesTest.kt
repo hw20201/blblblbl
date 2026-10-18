@@ -8,6 +8,7 @@ import com.github.mihomo.android.service.MihomoVpnService
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -74,7 +75,7 @@ class BrandIconResourcesTest {
     }
 
     @Test
-    @Config(sdk = [28])
+    @Config(sdk = [28, 33])
     fun notificationUsesBrandStatusIconAndPreservesOngoingStopActionBehavior() {
         val service = Robolectric.buildService(MihomoVpnService::class.java).create().get()
         val notification = ReflectionHelpers.callInstanceMethod<Notification>(
@@ -83,6 +84,31 @@ class BrandIconResourcesTest {
             ReflectionHelpers.ClassParameter.from(String::class.java, "Connected")
         )
         assertEquals(R.drawable.ic_stat_nexus, notification.smallIcon.resId)
+        assertEquals(service.packageName, notification.smallIcon.resPackage)
+        assertEquals("com.github.mihomo.android", service.packageName)
+        assertEquals(R.mipmap.ic_launcher, service.applicationInfo.icon)
+        assertEquals("Nexus", notification.extras.getString(Notification.EXTRA_TITLE))
+        val largeIcon = requireNotNull(notification.getLargeIcon())
+        assertEquals(android.graphics.drawable.Icon.TYPE_BITMAP, largeIcon.type)
+        val artwork = largeIcon.loadDrawable(service) as android.graphics.drawable.BitmapDrawable
+        assertTrue(artwork.bitmap.width > 0)
+        assertTrue(artwork.bitmap.height > 0)
+        val cachedBitmap = ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
+            service, "getNotificationLargeIcon"
+        )
+        val updatedNotification = ReflectionHelpers.callInstanceMethod<Notification>(
+            service,
+            "buildNotification",
+            ReflectionHelpers.ClassParameter.from(String::class.java, "Updated traffic")
+        )
+        assertNotNull(updatedNotification.getLargeIcon())
+        // Notification.Builder may copy the bitmap; assert our source cache, not its copy.
+        assertSame(cachedBitmap, ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
+            service, "getNotificationLargeIcon"
+        ))
+        val launchIntent = shadowOf(notification.contentIntent).savedIntent
+        assertEquals(service.packageName, launchIntent.component?.packageName)
+        assertEquals("com.github.mihomo.android.ui.MainActivity", launchIntent.component?.className)
         assertEquals(Color.rgb(56, 225, 232), notification.color)
         assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
         assertTrue(notification.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)

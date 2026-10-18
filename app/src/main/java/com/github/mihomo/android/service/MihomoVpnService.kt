@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.toBitmap
 import com.github.kr328.clash.core.util.*
 import com.github.mihomo.android.R
 import com.github.mihomo.android.core.ClashCore
@@ -91,6 +92,15 @@ class MihomoVpnService : VpnService() {
     private var trafficMonitorJob: Job? = null
     private var startJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
+    // The small icon is a tinted status-bar mask. Supply the branded launcher artwork
+    // separately for notification templates that display a large icon. Rasterize once,
+    // not on every one-second traffic update; BitmapFactory cannot decode adaptive XML.
+    private val notificationLargeIcon by lazy {
+        requireNotNull(getDrawable(R.mipmap.ic_launcher)).toBitmap(
+            width = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width),
+            height = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_height)
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -352,6 +362,7 @@ class MihomoVpnService : VpnService() {
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_nexus)
+            .setLargeIcon(notificationLargeIcon)
             .setColor(getColor(R.color.nexus_brand_accent))
             .setContentTitle(getString(R.string.app_name))
             .setContentText(content)
