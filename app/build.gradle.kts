@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -10,7 +11,7 @@ plugins {
 // Release signing is never committed to the repo. Provide it via local.properties
 // (releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
 // or the RELEASE_* environment variables (e.g. CI secrets). Without them,
-// release builds fall back to the debug key.
+// release builds remain unsigned and must never fall back to the debug key.
 val signingProperties = Properties().apply {
     val localFile = rootProject.file("local.properties")
     if (localFile.exists()) localFile.inputStream().use { load(it) }
@@ -27,6 +28,30 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
     !releaseKeyAlias.isNullOrBlank() &&
     !releaseKeyPassword.isNullOrBlank() &&
     !releaseStorePassword.isNullOrBlank()
+
+val nativeChecksums = rootProject.file("native/SHA256SUMS")
+val nativeLibraries = listOf("libclash.so", "libbridge.so").associate { name ->
+    val path = "app/src/main/jniLibs/arm64-v8a/$name"
+    path to rootProject.file(path)
+}
+val verifyNativeLibraries by tasks.registering {
+    inputs.file(nativeChecksums)
+    inputs.files(nativeLibraries.values)
+    doLast {
+        val expected = nativeChecksums.readLines().filter { it.isNotBlank() }.associate { line ->
+            val parts = line.trim().split(Regex("\\s+"), limit = 2)
+            check(parts.size == 2) { "Malformed native/SHA256SUMS" }
+            parts[1] to parts[0]
+        }
+        check(expected.keys == nativeLibraries.keys) { "Native library pair manifest is incomplete" }
+        for ((path, library) in nativeLibraries) {
+            val actual = MessageDigest.getInstance("SHA-256").digest(library.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            check(actual == expected[path]) { "Mismatched native library $path; rebuild the matching pair" }
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 
 android {
     namespace = "com.github.mihomo.android"
@@ -63,10 +88,9 @@ android {
             // (verified on device). Keep rules are kept in proguard-rules.pro for reference.
             isMinifyEnabled = false
             isShrinkResources = false
+            isDebuggable = false
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
-            } else {
-                signingConfig = signingConfigs.getByName("debug")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

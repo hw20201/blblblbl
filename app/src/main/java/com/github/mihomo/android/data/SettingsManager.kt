@@ -22,9 +22,20 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("tunnel_mode", "rule") ?: "rule"
         set(value) = prefs.edit().putString("tunnel_mode", value).apply()
 
-    var tunStack: String
-        get() = prefs.getString("tun_stack", "mixed") ?: "mixed"
-        set(value) = prefs.edit().putString("tun_stack", value).apply()
+    var tunStack: TunStack
+        get() = if (!prefs.contains("tun_stack")) {
+            TunStack.DEFAULT
+        } else {
+            TunStack.fromKey(prefs.getString("tun_stack", null)) ?: TunStack.MIXED
+        }
+        set(value) = prefs.edit().putString("tun_stack", value.key).apply()
+
+    /** Writes a raw value only when it is one of the supported stack identifiers. */
+    fun setTunStack(value: String): Boolean {
+        val stack = TunStack.fromKey(value) ?: return false
+        tunStack = stack
+        return true
+    }
 
     var perAppProxyMode: PerAppProxyMode
         get() {

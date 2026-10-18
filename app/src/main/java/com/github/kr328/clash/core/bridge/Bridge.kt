@@ -22,11 +22,7 @@ object Bridge {
             runCatching {
                 android.system.Os.setenv("GODEBUG", "cpu.all=off", true)
             }
-            try {
-                System.loadLibrary("clash")
-            } catch (e: Throwable) {
-                Log.w(TAG, "libclash load: ${e.message}")
-            }
+            System.loadLibrary("clash")
             System.loadLibrary("bridge")
 
             // Deliberately keep an open fd to the APK: the native core locates the package through
@@ -86,7 +82,10 @@ object Bridge {
     external fun nativeNotifyDnsChanged(dnsList: String)
     external fun nativeNotifyTimeZoneChanged(name: String, offset: Int)
     external fun nativeNotifyInstalledAppChanged(uidList: String)
-    external fun nativeStartTun(fd: Int, stack: String, gateway: String, portal: String, dns: String, cb: TunInterface)
+    /** Version 1: strict stack selection, borrowed input FD, and checked startup status. */
+    external fun nativeTunStackContract(): Int
+    /** Borrows fd for this call; the native listener owns a separate duplicate. Zero means started. */
+    external fun nativeStartTun(fd: Int, stack: String, gateway: String, portal: String, dns: String, cb: TunInterface): Int
     external fun nativeStopTun()
     external fun nativeStartHttp(listenAt: String): String?
     external fun nativeStopHttp()

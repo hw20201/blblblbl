@@ -124,7 +124,7 @@ object ClashCore {
 
     fun startTun(
         fd: Int,
-        stack: String = "mixed",
+        stack: String = com.github.mihomo.android.data.TunStack.DEFAULT.key,
         gateway: String = "172.19.0.1/30,fdfe:dcba:9876::1/126",
         portal: String = "172.19.0.2,fdfe:dcba:9876::2",
         dns: String = "172.19.0.2,fdfe:dcba:9876::2",
@@ -135,7 +135,7 @@ object ClashCore {
             vpnService.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         } else null
 
-        Bridge.nativeStartTun(fd, stack, gateway, portal, dns, object : TunInterface {
+        val callback = object : TunInterface {
             override fun markSocket(fd: Int) {
                 vpnService.protect(fd)
             }
@@ -155,7 +155,11 @@ object ClashCore {
                 }
                 return 0
             }
-        })
+        }
+        val started = TunStartup.start(stack, Bridge::nativeTunStackContract) { selected ->
+            Bridge.nativeStartTun(fd, selected, gateway, portal, dns, callback)
+        }
+        Log.i(TAG, "Native TUN listener started: ${started.displayName}")
     }
 
     fun stopTun() {
@@ -294,7 +298,6 @@ object ClashCore {
         runCatching { Bridge.nativeReset() }
     }
 }
-
 
 
 

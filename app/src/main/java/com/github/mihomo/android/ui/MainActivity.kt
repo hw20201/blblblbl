@@ -805,15 +805,16 @@ class MainActivity : ComponentActivity() {
                     }
                     2 -> SettingsScreen(
                         scrollState = settingsScrollState,
-                        tunStack = tunStack,
+                        tunStack = tunStack.key,
                         bootOnStartup = bootOnStartup,
                         allowLan = allowLan,
                         fakeIpEnabled = fakeIpEnabled,
                         hapticEnabled = hapticEnabled,
                         themeMode = currentThemeMode,
                         onTunStackChanged = { stack ->
-                            tunStack = stack
-                            settingsManager.tunStack = stack
+                            if (settingsManager.setTunStack(stack)) {
+                                tunStack = settingsManager.tunStack
+                            }
                         },
                         onBootOnStartupChanged = { enabled ->
                             bootOnStartup = enabled

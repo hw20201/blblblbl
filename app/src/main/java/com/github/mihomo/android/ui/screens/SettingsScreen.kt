@@ -133,9 +133,11 @@ fun SettingsScreen(
                 iconBg = Color(0xFF3B82F6),
                 title = AppStrings.get("settings_tun_stack", lang),
                 value = when (tunStack) {
-                    "mixed" -> "Mixed"
-                    "gvisor" -> "gVisor"
-                    else -> "System"
+                    "system" -> com.github.mihomo.android.data.TunStack.SYSTEM.displayName
+                    "mixed" -> com.github.mihomo.android.data.TunStack.MIXED.displayName
+                    "gvisor" -> com.github.mihomo.android.data.TunStack.GVISOR.displayName
+                    "mips" -> com.github.mihomo.android.data.TunStack.MIPS.displayName
+                    else -> tunStack
                 },
                 showChevron = true,
                 onClick = { showTunDialog = true }
@@ -427,7 +429,11 @@ fun SettingsScreen(
             title = { Text(AppStrings.get("settings_tun_stack", lang), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    listOf("mixed" to "Mixed (混合栈，兼顾兼容与性能)", "gvisor" to "gVisor (用户态栈，高隔离)").forEach { (key, desc) ->
+                    Text(AppStrings.get("settings_tun_stack_fallback", lang), fontSize = 13.sp, color = LoonTextSecondary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    com.github.mihomo.android.data.TunStack.entries.forEach { stack ->
+                        val key = stack.key
+                        val desc = AppStrings.get("tun_stack_${key}_desc", lang)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
