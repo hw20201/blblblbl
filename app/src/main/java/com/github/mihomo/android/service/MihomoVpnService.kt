@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.toBitmap
 import com.github.kr328.clash.core.util.*
 import com.github.mihomo.android.R
 import com.github.mihomo.android.core.ClashCore
@@ -91,6 +92,13 @@ class MihomoVpnService : VpnService() {
     private var trafficMonitorJob: Job? = null
     private var startJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
+    // Rasterize the existing N artwork once, not on each traffic update.
+    private val notificationLargeIcon by lazy {
+        requireNotNull(getDrawable(R.mipmap.ic_launcher)).toBitmap(
+            width = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width),
+            height = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_height)
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -350,10 +358,10 @@ class MihomoVpnService : VpnService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Keep the standard template small-icon-only. A launcher large icon adds a
-        // separate artwork slot; its placement is controlled by Android/the device ROM.
+        // Use a dedicated small-icon identity and explicit N artwork for this comparison.
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_qs_tile)
+            .setSmallIcon(R.drawable.ic_notification_nexus_v107)
+            .setLargeIcon(notificationLargeIcon)
             .setColor(getColor(R.color.nexus_brand_accent))
             .setContentTitle(getString(R.string.app_name))
             .setContentText(content)

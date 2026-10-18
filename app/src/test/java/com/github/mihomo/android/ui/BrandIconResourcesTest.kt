@@ -3,12 +3,15 @@ package com.github.mihomo.android.ui
 import android.app.Notification
 import android.graphics.Color
 import android.graphics.drawable.AdaptiveIconDrawable
+import androidx.core.graphics.drawable.toBitmap
 import com.github.mihomo.android.R
 import com.github.mihomo.android.service.MihomoVpnService
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,21 +86,31 @@ class BrandIconResourcesTest {
             "buildNotification",
             ReflectionHelpers.ClassParameter.from(String::class.java, "Connected")
         )
-        assertEquals(R.drawable.ic_qs_tile, notification.smallIcon.resId)
+        assertEquals(R.drawable.ic_notification_nexus_v107, notification.smallIcon.resId)
         assertEquals(service.packageName, notification.smallIcon.resPackage)
         assertEquals("com.github.mihomo.android", service.packageName)
         assertEquals(R.mipmap.ic_launcher, service.applicationInfo.icon)
         assertEquals("Nexus", notification.extras.getString(Notification.EXTRA_TITLE))
-        assertNull(notification.getLargeIcon())
-        assertNull(notification.extras.get(Notification.EXTRA_LARGE_ICON))
+        assertNotNull(notification.getLargeIcon())
+        assertNotNull(notification.extras.get(Notification.EXTRA_LARGE_ICON))
+        val cachedBitmap = ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
+            service, "getNotificationLargeIcon"
+        )
+        val expected = requireNotNull(service.getDrawable(R.mipmap.ic_launcher)).let {
+            it.toBitmap(cachedBitmap.width, cachedBitmap.height)
+        }
+        assertTrue(cachedBitmap.sameAs(expected))
         assertNull(notification.extras.getString(Notification.EXTRA_TEMPLATE))
         val updatedNotification = ReflectionHelpers.callInstanceMethod<Notification>(
             service,
             "buildNotification",
             ReflectionHelpers.ClassParameter.from(String::class.java, "Updated traffic")
         )
-        assertEquals(R.drawable.ic_qs_tile, updatedNotification.smallIcon.resId)
-        assertNull(updatedNotification.getLargeIcon())
+        assertEquals(R.drawable.ic_notification_nexus_v107, updatedNotification.smallIcon.resId)
+        assertNotNull(updatedNotification.getLargeIcon())
+        assertSame(cachedBitmap, ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(
+            service, "getNotificationLargeIcon"
+        ))
         val launchIntent = shadowOf(notification.contentIntent).savedIntent
         assertEquals(service.packageName, launchIntent.component?.packageName)
         assertEquals("com.github.mihomo.android.ui.MainActivity", launchIntent.component?.className)
@@ -112,11 +125,15 @@ class BrandIconResourcesTest {
 
     @Test
     @Config(sdk = [28, 33])
-    fun foregroundAndTrafficUpdatesUseTileSmallIconWithoutLargeIcon() {
+    fun foregroundAndTrafficUpdatesUseDedicatedSmallIconAndLargeNArtwork() {
         val service = Robolectric.buildService(MihomoVpnService::class.java).create().get()
-        // The patch selects the same transparent white N used by the quick-settings tile.
+        // Keep the transparent white N artwork, but give notifications their own identity.
+        assertNotEquals(R.drawable.ic_qs_tile, R.drawable.ic_notification_nexus_v107)
+        assertNotEquals(R.drawable.ic_stat_nexus, R.drawable.ic_notification_nexus_v107)
         val resources = service.resources
-        resources.getXml(R.drawable.ic_qs_tile).use { tile ->
+        assertEquals("ic_notification_nexus_v107",
+            resources.getResourceEntryName(R.drawable.ic_notification_nexus_v107))
+        resources.getXml(R.drawable.ic_notification_nexus_v107).use { tile ->
             resources.getXml(R.drawable.ic_stat_nexus).use { status ->
                 fun paths(xml: org.xmlpull.v1.XmlPullParser): List<Pair<String?, String?>> {
                     val result = mutableListOf<Pair<String?, String?>>()
@@ -136,9 +153,9 @@ class BrandIconResourcesTest {
             ReflectionHelpers.ClassParameter.from(String::class.java, "启动 Nexus 核心")
         )
         val startup = requireNotNull(shadowOf(service).lastForegroundNotification)
-        assertEquals(R.drawable.ic_qs_tile, startup.smallIcon.resId)
-        assertNull(startup.getLargeIcon())
-        assertNull(startup.extras.get(Notification.EXTRA_LARGE_ICON))
+        assertEquals(R.drawable.ic_notification_nexus_v107, startup.smallIcon.resId)
+        assertNotNull(startup.getLargeIcon())
+        assertNotNull(startup.extras.get(Notification.EXTRA_LARGE_ICON))
         assertEquals("启动 Nexus 核心", startup.extras.getString(Notification.EXTRA_TEXT))
 
         ReflectionHelpers.callInstanceMethod<Unit>(
@@ -147,9 +164,9 @@ class BrandIconResourcesTest {
         )
         val manager = service.getSystemService(android.app.NotificationManager::class.java)
         val refreshed = requireNotNull(shadowOf(manager).getNotification(1001))
-        assertEquals(R.drawable.ic_qs_tile, refreshed.smallIcon.resId)
-        assertNull(refreshed.getLargeIcon())
-        assertNull(refreshed.extras.get(Notification.EXTRA_LARGE_ICON))
+        assertEquals(R.drawable.ic_notification_nexus_v107, refreshed.smallIcon.resId)
+        assertNotNull(refreshed.getLargeIcon())
+        assertNotNull(refreshed.extras.get(Notification.EXTRA_LARGE_ICON))
         assertEquals("↑ 1 KB/s   ↓ 2 KB/s", refreshed.extras.getString(Notification.EXTRA_TEXT))
         assertTrue(refreshed.flags and Notification.FLAG_ONGOING_EVENT != 0)
         assertTrue(refreshed.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
