@@ -150,7 +150,7 @@ fun ProxiesScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -158,8 +158,9 @@ fun ProxiesScreen(
                 Text(
                     text = AppStrings.get("proxies_title", lang),
                     color = LoonTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.5).sp
                 )
             }
 
@@ -355,8 +356,10 @@ fun ProxiesScreen(
                     state = groupRowState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(bottom = 12.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(LoonCard.copy(alpha = 0.72f)),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(visibleGroups.size, key = { visibleGroups[it] }) { index ->
                         val groupName = visibleGroups[index]
@@ -365,18 +368,13 @@ fun ProxiesScreen(
 
                         Surface(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .hapticClickable { onSelectGroup(groupName) }
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isSelected) LoonBlue else LoonCardBorder,
-                                    shape = RoundedCornerShape(16.dp)
-                                ),
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) LoonEditBlueBg else LoonCard
+                                .clip(RoundedCornerShape(8.dp))
+                                .hapticClickable { onSelectGroup(groupName) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) LoonBg else Color.Transparent
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (showGroupIcons && !groupIconUrl.isNullOrBlank()) {
@@ -390,7 +388,7 @@ fun ProxiesScreen(
                                 }
                                 Text(
                                     text = groupName,
-                                    color = if (isSelected) LoonBlue else LoonTextSecondary,
+                                    color = if (isSelected) LoonTextPrimary else LoonTextSecondary,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )
@@ -434,7 +432,7 @@ fun ProxiesScreen(
                             .fillMaxSize()
                             .bounceOverscroll(allowTop = false, allowBottom = true),
                         contentPadding = PaddingValues(bottom = 110.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         items(
                             items = chunkedRows,
@@ -670,7 +668,10 @@ private fun LoonGroupHeaderCard(
                         text = groupName,
                         color = LoonTextPrimary,
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -778,7 +779,7 @@ private fun LoonProxyItemCard(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(58.dp)
+                    .heightIn(min = 58.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .border(
                         width = if (isSelected) 1.5.dp else 1.dp,
@@ -804,13 +805,14 @@ private fun LoonProxyItemCard(
                             )
                         }
 
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = displayName,
                                 color = if (isSelected) LoonBlue else LoonTextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -858,7 +860,7 @@ private fun LoonProxyItemCard(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(68.dp)
+                    .heightIn(min = 68.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .border(
                         width = if (isSelected) 1.5.dp else 1.dp,
@@ -890,7 +892,9 @@ private fun LoonProxyItemCard(
                             color = if (isSelected) LoonBlue else LoonTextPrimary,
                             fontSize = 13.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
 
@@ -942,7 +946,7 @@ private fun LoonProxyItemCard(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .heightIn(min = 56.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .border(
                         width = if (isSelected) 1.5.dp else 1.dp,

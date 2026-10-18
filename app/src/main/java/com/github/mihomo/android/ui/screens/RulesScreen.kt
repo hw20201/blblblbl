@@ -32,8 +32,13 @@ import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.data.ParsedRule
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.CupertinoNavBar
+import com.github.mihomo.android.ui.components.CupertinoSegmentedControl
 import com.github.mihomo.android.ui.components.rememberHapticAction
 import com.github.mihomo.android.ui.components.hapticClickable
+
+internal fun validRuleTypeSelection(selection: String, availableTypes: List<String>): String =
+    if (selection == "ALL" || selection in availableTypes) selection else "ALL"
 
 @Composable
 fun RulesScreen(
@@ -47,20 +52,30 @@ fun RulesScreen(
     val lang = LocalAppLanguage.current
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilterType by remember { mutableStateOf("ALL") }
+    var selectedBehavior by remember { mutableStateOf("ALL") }
 
     val filterTypes = remember(rules) {
         val types = rules.map { it.type.uppercase() }.distinct().sorted()
         listOf("ALL") + types
     }
+    LaunchedEffect(filterTypes) {
+        selectedFilterType = validRuleTypeSelection(selectedFilterType, filterTypes)
+    }
 
-    val filteredRules = remember(rules, searchQuery, selectedFilterType) {
+    val filteredRules = remember(rules, searchQuery, selectedFilterType, selectedBehavior) {
         rules.filter { rule ->
             val matchType = selectedFilterType == "ALL" || rule.type.equals(selectedFilterType, ignoreCase = true)
+            val matchBehavior = when (selectedBehavior) {
+                "DIRECT" -> rule.target.equals("DIRECT", ignoreCase = true)
+                "REJECT" -> rule.target.contains("REJECT", ignoreCase = true)
+                "PROXY" -> !rule.target.equals("DIRECT", ignoreCase = true) && !rule.target.contains("REJECT", ignoreCase = true)
+                else -> true
+            }
             val matchQuery = searchQuery.isBlank() ||
                 rule.payload.contains(searchQuery, ignoreCase = true) ||
                 rule.target.contains(searchQuery, ignoreCase = true) ||
                 rule.type.contains(searchQuery, ignoreCase = true)
-            matchType && matchQuery
+            matchType && matchBehavior && matchQuery
         }
     }
 
@@ -71,41 +86,33 @@ fun RulesScreen(
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 24.dp)
+            .navigationBarsPadding()
     ) {
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = AppStrings.get("back", lang),
-                        tint = LoonTextPrimary
-                    )
-                }
-                Text(
-                    text = AppStrings.get("rules_screen_title", lang),
-                    color = LoonTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "${tunnelMode.displayName} · 共 $totalRules 条",
-                    color = LoonTextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
+        // Cupertino navigation bar; the rule-type filter and search remain available below.
+        CupertinoNavBar(
+            title = AppStrings.get("rules_screen_title", lang),
+            subtitle = "${tunnelMode.displayName} · 共 $totalRules 条",
+            showBackButton = true,
+            onBack = onBack
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        CupertinoSegmentedControl(
+            items = listOf("ALL", "PROXY", "DIRECT", "REJECT"),
+            selectedItem = selectedBehavior,
+            onItemSelected = { selectedBehavior = it },
+            labelProvider = { behavior ->
+                when (behavior) {
+                    "ALL" -> "全部"
+                    "PROXY" -> "代理"
+                    "DIRECT" -> "直连"
+                    "REJECT" -> "拦截"
+                    else -> behavior
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+        )
 
         // Search Bar
         OutlinedTextField(
@@ -202,7 +209,6 @@ fun RulesScreen(
                 modifier = Modifier
                     .weight(1f)
                     .bounceOverscroll(allowTop = false, allowBottom = true),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(filteredRules) { index, rule ->
                     val badgeColor = when {
@@ -213,13 +219,13 @@ fun RulesScreen(
                         else -> Color(0xFF6B7280)
                     }
 
+                    Column(modifier = Modifier.fillMaxWidth()) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = LoonCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .hapticClickable {
                                 val textToCopy = if (rule.payload.isNotBlank()) "${rule.type},${rule.payload},${rule.target}" else "${rule.type},${rule.target}"
                                 clipboardManager.setText(AnnotatedString(textToCopy))
@@ -229,7 +235,7 @@ fun RulesScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -250,7 +256,7 @@ fun RulesScreen(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = badgeColor,
-                                    modifier = Modifier.padding(end = 8.dp)
+                                    modifier = Modifier.padding(end = 10.dp)
                                 )
 
                                 if (rule.payload.isNotBlank()) {
@@ -264,7 +270,7 @@ fun RulesScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                 } else {
-                                    Spacer(modifier = Modifier.weight(1f))
+                                    Text("MATCH ALL", fontSize = 12.sp, color = LoonTextMuted, modifier = Modifier.weight(1f))
                                 }
                             }
 
@@ -282,7 +288,7 @@ fun RulesScreen(
 
                                 Text(
                                     text = rule.target.ifBlank { "DIRECT" },
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = when (rule.target.uppercase()) {
                                         "DIRECT" -> Color(0xFF10B981)
@@ -292,6 +298,14 @@ fun RulesScreen(
                                 )
                             }
                         }
+                    }
+                    if (index < filteredRules.lastIndex) {
+                        androidx.compose.material3.HorizontalDivider(
+                            modifier = Modifier.padding(start = 14.dp),
+                            color = LoonSeparator,
+                            thickness = 0.5.dp
+                        )
+                    }
                     }
                 }
             }

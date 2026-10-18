@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.LogRepository
 import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -107,30 +108,15 @@ fun DnsScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 24.dp)
     ) {
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = AppStrings.get("back", lang),
-                    tint = LoonTextPrimary
-                )
-            }
-            Text(
-                text = AppStrings.get("dns_screen_title", lang),
-                color = LoonTextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        CupertinoNavBar(
+            title = AppStrings.get("dns_screen_title", lang),
+            showBackButton = true,
+            onBack = onBack
+        )
 
         LazyColumn(
             modifier = Modifier
@@ -143,7 +129,7 @@ fun DnsScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -166,9 +152,9 @@ fun DnsScreen(
                                     color = LoonTextMuted
                                 )
                             }
-                            Switch(
+                            CupertinoSwitch(
                                 checked = fakeIpEnabled,
-                                onCheckedChange = rememberHapticValueAction({ onFakeIpEnabledChanged(it) })
+                                onCheckedChange = onFakeIpEnabledChanged
                             )
                         }
 
@@ -200,7 +186,7 @@ fun DnsScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -254,7 +240,7 @@ fun DnsScreen(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = LoonBg,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
@@ -300,7 +286,7 @@ fun DnsScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -350,7 +336,7 @@ fun DnsScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -377,7 +363,7 @@ fun DnsScreen(
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = LoonBg,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder)
+                                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder)
                                 ) {
                                     Text(
                                         text = domain,
@@ -414,7 +400,7 @@ fun DnsScreen(
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = LoonCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(20.dp)) {
@@ -432,7 +418,7 @@ fun DnsScreen(
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = LoonCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(

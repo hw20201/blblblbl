@@ -33,6 +33,7 @@ import com.github.mihomo.android.data.LogEntry
 import com.github.mihomo.android.data.LogRepository
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.CupertinoNavBar
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -53,6 +54,7 @@ fun LogsScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
     var autoScrollEnabled by remember { mutableStateOf(true) }
+    var showMoreActions by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
@@ -66,7 +68,7 @@ fun LogsScreen(
     }
 
     // Auto-scroll to bottom only when autoScrollEnabled is true
-    LaunchedEffect(filteredLogs.size, autoScrollEnabled) {
+    LaunchedEffect(filteredLogs.lastOrNull()?.id, autoScrollEnabled) {
         if (autoScrollEnabled && filteredLogs.isNotEmpty()) {
             listState.animateScrollToItem(filteredLogs.size - 1)
         }
@@ -79,122 +81,64 @@ fun LogsScreen(
             .statusBarsPadding()
             .padding(horizontal = 16.dp)
             .padding(top = 16.dp, bottom = 20.dp)
+            .navigationBarsPadding()
     ) {
-        // Top Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = AppStrings.get("back", lang),
-                        tint = LoonTextPrimary
-                    )
-                }
-                Spacer(modifier = Modifier.width(6.dp))
-                Column {
-                    Text(
-                        text = AppStrings.get("logs_title", lang),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = LoonTextPrimary
-                    )
-                    Text(
-                        text = "${filteredLogs.size} 条记录",
-                        fontSize = 11.5.sp,
-                        color = LoonTextSecondary
-                    )
-                }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Auto scroll pause/resume toggle
-                IconButton(
-                    onClick = rememberHapticAction({ autoScrollEnabled = !autoScrollEnabled }),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = if (autoScrollEnabled) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+        // Cupertino navigation bar retains the live stream controls and log utilities.
+        CupertinoNavBar(
+            title = AppStrings.get("logs_title", lang),
+            subtitle = "${filteredLogs.size} 条记录",
+            showBackButton = true,
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = rememberHapticAction({ autoScrollEnabled = !autoScrollEnabled }), modifier = Modifier.size(34.dp)) {
+                    Icon(if (autoScrollEnabled) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
                         contentDescription = if (autoScrollEnabled) "暂停自动滚动" else "恢复自动滚动",
-                        tint = if (autoScrollEnabled) LoonBlue else LoonOrange
-                    )
+                        tint = if (autoScrollEnabled) LoonBlue else LoonOrange)
                 }
-
-                // Search toggle
-                IconButton(
-                    onClick = rememberHapticAction({
-                        isSearchVisible = !isSearchVisible
-                        if (!isSearchVisible) searchQuery = ""
-                    }),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "搜索日志",
-                        tint = if (isSearchVisible || searchQuery.isNotBlank()) LoonBlue else LoonTextSecondary
-                    )
+                IconButton(onClick = rememberHapticAction({
+                    isSearchVisible = !isSearchVisible
+                    if (!isSearchVisible) searchQuery = ""
+                }), modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.Search, contentDescription = "搜索日志", tint = if (isSearchVisible || searchQuery.isNotBlank()) LoonBlue else LoonTextSecondary)
                 }
-
-                // Copy all logs
-                IconButton(
-                    onClick = rememberHapticAction({
-                        val text = filteredLogs.joinToString("\n") {
-                            "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}"
-                        }
-                        clipboardManager.setText(AnnotatedString(text))
-                        Toast.makeText(context, AppStrings.get("logs_copied", lang), Toast.LENGTH_SHORT).show()
-                    }),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = AppStrings.get("logs_copy", lang),
-                        tint = LoonTextSecondary
-                    )
-                }
-
-                // Export/Share logs
-                IconButton(
-                    onClick = rememberHapticAction({
-                        val text = filteredLogs.joinToString("\n") {
-                            "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}"
-                        }
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, text)
-                        }
-                        context.startActivity(Intent.createChooser(intent, AppStrings.get("logs_export", lang)))
-                    }),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = AppStrings.get("logs_export", lang),
-                        tint = LoonTextSecondary
-                    )
-                }
-
-                // Clear logs
-                IconButton(
-                    onClick = rememberHapticAction({
-                        LogRepository.clear()
-                        Toast.makeText(context, "日志已清空", Toast.LENGTH_SHORT).show()
-                    }),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteSweep,
-                        contentDescription = AppStrings.get("logs_clear", lang),
-                        tint = LoonTextSecondary
-                    )
+                Box {
+                    IconButton(onClick = rememberHapticAction({ showMoreActions = true }), modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "更多日志操作", tint = LoonTextSecondary)
+                    }
+                    DropdownMenu(expanded = showMoreActions, onDismissRequest = { showMoreActions = false }) {
+                        DropdownMenuItem(
+                            text = { Text(AppStrings.get("logs_copy", lang)) },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                            onClick = rememberHapticAction {
+                                showMoreActions = false
+                                val text = filteredLogs.joinToString("\n") { "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}" }
+                                clipboardManager.setText(AnnotatedString(text))
+                                Toast.makeText(context, AppStrings.get("logs_copied", lang), Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(AppStrings.get("logs_export", lang)) },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = rememberHapticAction {
+                                showMoreActions = false
+                                val text = filteredLogs.joinToString("\n") { "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}" }
+                                val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+                                context.startActivity(Intent.createChooser(intent, AppStrings.get("logs_export", lang)))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(AppStrings.get("logs_clear", lang)) },
+                            leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                            onClick = rememberHapticAction {
+                                showMoreActions = false
+                                LogRepository.clear()
+                                Toast.makeText(context, "日志已清空", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 }
             }
-        }
+        )
 
         // Search Input Field (Collapsible)
         AnimatedVisibility(

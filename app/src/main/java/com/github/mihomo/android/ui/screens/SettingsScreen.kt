@@ -41,6 +41,7 @@ import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -115,19 +116,7 @@ fun SettingsScreen(
             .padding(top = 16.dp)
     ) {
         // Top Title
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = AppStrings.get("settings_title", lang),
-                color = LoonTextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        CupertinoNavBar(title = AppStrings.get("settings_title", lang))
 
         // Scrollable content area below Top Title
         Column(
@@ -140,7 +129,7 @@ fun SettingsScreen(
         ) {
             // Section 1: 基础网络与 TUN
             LoonSectionHeader(title = AppStrings.get("settings_core_service", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsItem(
                 icon = Icons.Default.VpnKey,
                 iconBg = Color(0xFF3B82F6),
@@ -215,7 +204,7 @@ fun SettingsScreen(
 
         // Section: 外观与个性化
         LoonSectionHeader(title = AppStrings.get("settings_general", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsItem(
                 icon = Icons.Default.Palette,
                 iconBg = Color(0xFF8B5CF6),
@@ -242,7 +231,7 @@ fun SettingsScreen(
 
         // Section 2: 脚本
         LoonSectionHeader(title = AppStrings.get("settings_scripts", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsItem(
                 icon = Icons.Default.Code,
                 iconBg = Color(0xFF3B82F6),
@@ -257,7 +246,7 @@ fun SettingsScreen(
 
         // Section 3: 分流与规则
         LoonSectionHeader(title = AppStrings.get("settings_routing_section", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsItem(
                 icon = Icons.Default.Apps,
                 iconBg = Color(0xFF8B5CF6),
@@ -289,7 +278,7 @@ fun SettingsScreen(
 
         // Section 4: DNS 设置
         LoonSectionHeader(title = AppStrings.get("settings_dns_section", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsSwitchItem(
                 icon = Icons.Default.Dns,
                 iconBg = Color(0xFF0284C7),
@@ -312,7 +301,7 @@ fun SettingsScreen(
 
         // Section 5: 内核与日志
         LoonSectionHeader(title = AppStrings.get("settings_core_section", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsItem(
                 icon = Icons.Default.Terminal,
                 iconBg = Color(0xFF6366F1),
@@ -335,7 +324,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Info,
                 iconBg = Color(0xFF4B5563),
                 title = AppStrings.get("settings_core_version", lang),
-                value = coreVersion.ifBlank { "v1.18.x" },
+                value = coreVersion.ifBlank { "—" },
                 showChevron = false
             )
             LoonDivider()
@@ -361,7 +350,7 @@ fun SettingsScreen(
 
         // Section: 关于
         LoonSectionHeader(title = AppStrings.get("settings_about", lang))
-        LoonGroupCard {
+        CupertinoGroupedSection(horizontalPadding = 0.dp) {
             LoonSettingsItem(
                 icon = Icons.Default.Info,
                 iconBg = LoonBlue,
@@ -606,23 +595,6 @@ private fun LoonSectionHeader(title: String) {
 }
 
 @Composable
-private fun LoonGroupCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(0.5.dp, LoonCardBorder.copy(alpha = 0.45f), RoundedCornerShape(16.dp)),
-        color = LoonCard,
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-            content = content
-        )
-    }
-}
-
-@Composable
 private fun LoonSettingsItem(
     icon: ImageVector,
     iconBg: Color,
@@ -631,53 +603,10 @@ private fun LoonSettingsItem(
     showChevron: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .hapticClickable(onClick)
-            .padding(vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = title,
-                color = LoonTextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (value.isNotBlank()) {
-                Text(
-                    text = value,
-                    color = LoonTextSecondary,
-                    fontSize = 13.sp
-                )
-            }
-            if (showChevron) {
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = Color(0xFFBAC0CC),
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-        }
-    }
+    CupertinoCell(
+        title = title, icon = icon, iconBg = iconBg,
+        value = value, showChevron = showChevron, onClick = onClick
+    )
 }
 
 @Composable
@@ -689,63 +618,13 @@ private fun LoonSettingsSwitchItem(
     onCheckedChange: (Boolean) -> Unit,
     subtitle: String? = null
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = title,
-                    color = LoonTextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        color = LoonTextSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-            }
-        }
-
-        Switch(
-            checked = checked,
-            onCheckedChange = rememberHapticValueAction(onCheckedChange),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = LoonGreen,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = Color(0xFFE2E4EB),
-                uncheckedBorderColor = Color.Transparent,
-                checkedBorderColor = Color.Transparent
-            )
-        )
-    }
+    CupertinoCell(
+        title = title, subtitle = subtitle, icon = icon, iconBg = iconBg,
+        trailing = { CupertinoSwitch(checked = checked, onCheckedChange = onCheckedChange) }
+    )
 }
 
 @Composable
 private fun LoonDivider() {
-    val isDark = LocalLoonColors.current.isDark
-    HorizontalDivider(
-        color = if (isDark) Color(0xFF2B3244).copy(alpha = 0.35f) else Color(0xFFE5E7EB).copy(alpha = 0.4f),
-        thickness = 0.5.dp,
-        modifier = Modifier.padding(start = 44.dp)
-    )
+    CupertinoIndentedDivider()
 }

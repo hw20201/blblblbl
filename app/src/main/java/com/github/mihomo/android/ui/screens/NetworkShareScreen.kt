@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -94,30 +95,15 @@ fun NetworkShareScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 24.dp)
     ) {
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = AppStrings.get("back", lang),
-                    tint = LoonTextPrimary
-                )
-            }
-            Text(
-                text = AppStrings.get("network_share_screen_title", lang),
-                color = LoonTextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        CupertinoNavBar(
+            title = AppStrings.get("network_share_screen_title", lang),
+            showBackButton = true,
+            onBack = onBack
+        )
 
         LazyColumn(
             modifier = Modifier
@@ -130,7 +116,7 @@ fun NetworkShareScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -153,9 +139,9 @@ fun NetworkShareScreen(
                                     color = LoonTextMuted
                                 )
                             }
-                            Switch(
+                            CupertinoSwitch(
                                 checked = allowLan,
-                                onCheckedChange = rememberHapticValueAction({ onAllowLanChanged(it) })
+                                onCheckedChange = onAllowLanChanged
                             )
                         }
 
@@ -202,7 +188,7 @@ fun NetworkShareScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -226,7 +212,7 @@ fun NetworkShareScreen(
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = LoonBg,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
@@ -267,7 +253,7 @@ fun NetworkShareScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -307,7 +293,7 @@ fun NetworkShareScreen(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = LoonBg,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
@@ -346,7 +332,7 @@ fun NetworkShareScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {

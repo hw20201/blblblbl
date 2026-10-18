@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.CupertinoNavBar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -149,49 +150,22 @@ fun ProfilesScreen(
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 100.dp)
+            .navigationBarsPadding()
     ) {
-        // Top Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = rememberHapticAction(onBack),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = LoonTextPrimary
-                        )
-                    }
+        // Cupertino navigation bar; keep native profile actions and reorderable list below.
+        CupertinoNavBar(
+            title = AppStrings.get("profiles_title", lang),
+            showBackButton = onBack != null,
+            onBack = onBack,
+            actions = {
+                IconButton(
+                    onClick = rememberHapticAction({ showAddDialog = true }),
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = AppStrings.get("profiles_add", lang), tint = LoonBlue)
                 }
-                Text(
-                    text = AppStrings.get("profiles_title", lang),
-                    color = LoonTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
             }
-
-            // Top action button (Apple-style pure black plus icon)
-            IconButton(
-                onClick = rememberHapticAction({ showAddDialog = true }),
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = AppStrings.get("profiles_add", lang),
-                    tint = LoonTextPrimary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
+        )
 
         if (profiles.isEmpty()) {
             Box(
@@ -623,7 +597,7 @@ fun ProfilesScreen(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = LoonBg,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -993,7 +967,7 @@ private fun LoonProfileCard(
                         onDismissRequest = { menuExpanded = false },
                         shape = RoundedCornerShape(18.dp),
                         containerColor = LoonCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder)
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder)
                     ) {
                         DropdownMenuItem(
                             text = { Text(AppStrings.get("profile_override", lang), color = LoonTextPrimary, fontSize = 14.sp) },

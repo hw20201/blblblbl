@@ -45,7 +45,6 @@ import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlin.math.roundToInt
 import com.github.mihomo.android.ui.components.rememberHapticAction
-import com.github.mihomo.android.ui.components.rememberHapticValueAction
 import com.github.mihomo.android.ui.components.hapticClickable
 import com.github.mihomo.android.data.DashboardData
 
@@ -203,15 +202,17 @@ fun DashboardScreen(
                     .padding(horizontal = 20.dp)
                     .padding(top = 16.dp, bottom = 110.dp)
             ) {
-                // Header: LOON (MIHOMO) & Mode Selector + iOS Switch
-                Row(
+                // Cupertino-style brand title with mode selection as its subtitle.
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 4.dp, bottom = 18.dp)
                 ) {
-                    Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = "NEXUS",
                             color = LoonOrange,
@@ -219,50 +220,35 @@ fun DashboardScreen(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 0.5.sp
                         )
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .hapticClickable { showModeBottomSheet = true }
-                                    .padding(vertical = 3.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = when (currentMode) {
-                                        TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
-                                        TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
-                                        TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
-                                    },
-                                    color = LoonOrangeLight,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = LoonOrangeLight,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Top Right iOS Switch
-                    Switch(
-                        checked = isRunning || isStarting,
-                        onCheckedChange = rememberHapticValueAction({ onToggleVpn() }),
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = LoonGreen,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFE2E4EB),
-                            uncheckedBorderColor = Color.Transparent,
-                            checkedBorderColor = Color.Transparent
+                        CupertinoSwitch(
+                            checked = isRunning || isStarting,
+                            onCheckedChange = { onToggleVpn() }
                         )
-                    )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .hapticClickable { showModeBottomSheet = true }
+                            .padding(vertical = 3.dp, horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = when (currentMode) {
+                                TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
+                                TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
+                                TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
+                            },
+                            color = LoonOrangeLight,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = LoonOrangeLight,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
                 // Dual Traffic Cards Row (Upload & Download)
@@ -301,36 +287,16 @@ fun DashboardScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    val editBtnBg = if (isDarkTheme) Color(0xFF252A37) else Color(0xFFE8EBF2)
-                    val editContentColor = if (isEditingShortcuts) Color(0xFFF59E0B) else Color(0xFF2563EB)
-
-                    Surface(
-                        shape = CircleShape,
-                        color = editBtnBg,
-                        border = null,
+                    Text(
+                        text = if (isEditingShortcuts) AppStrings.get("shortcuts_done", lang) else AppStrings.get("shortcuts_edit", lang),
+                        color = LoonBlue,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(8.dp))
                             .hapticClickable { isEditingShortcuts = !isEditingShortcuts }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (isEditingShortcuts) Icons.Default.Check else Icons.Default.Edit,
-                                contentDescription = null,
-                                tint = editContentColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isEditingShortcuts) AppStrings.get("shortcuts_done", lang) else AppStrings.get("shortcuts_edit", lang),
-                                color = editContentColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
 
                 // Order according to user preference (Default: nodes, profiles, ...)
@@ -669,34 +635,29 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(0.dp)
                             ) {
                                 itemsIndexed(
                                     items = filteredNodes,
                                     key = { index, proxy -> "${proxy.name}_$index" }
-                                ) { _, proxy ->
+                                ) { index, proxy ->
                                     val isSelected = proxy.name == activeNodeName
                                     val nodeEmoji = extractLeadingEmoji(proxy.name)
 
                                     Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .border(
-                                                width = if (isSelected) 1.5.dp else 1.dp,
-                                                color = if (isSelected) LoonBlue else LoonCardBorder,
-                                                shape = RoundedCornerShape(18.dp)
-                                            )
+                                            .clip(RoundedCornerShape(10.dp))
                                             .hapticClickable {
                                                 onSelectProxy(mainGroupName, proxy)
                                                 showQuickNodeSelector = false
                                             },
-                                        color = LoonCard
+                                        color = Color.Transparent
                                     ) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                                                .padding(horizontal = 8.dp, vertical = 11.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
@@ -708,13 +669,14 @@ fun DashboardScreen(
                                                         modifier = Modifier.padding(end = 8.dp)
                                                     )
                                                 }
-                                                Column {
+                                                Column(modifier = Modifier.weight(1f)) {
                                                     Text(
                                                         text = proxy.name,
                                                         color = if (isSelected) LoonBlue else LoonTextPrimary,
                                                         fontSize = 14.sp,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                        maxLines = 1
+                                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                     )
                                                     Spacer(modifier = Modifier.height(2.dp))
                                                     Text(
@@ -725,6 +687,14 @@ fun DashboardScreen(
                                                 }
                                             }
 
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = "已选择",
+                                                    tint = LoonBlue,
+                                                    modifier = Modifier.size(18.dp).padding(end = 6.dp)
+                                                )
+                                            }
                                             if (isTestingQuickSheet) {
                                                 CircularProgressIndicator(
                                                     modifier = Modifier.size(13.dp),
@@ -753,6 +723,13 @@ fun DashboardScreen(
                                                 )
                                             }
                                         }
+                                    }
+                                    if (index < filteredNodes.lastIndex) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(start = 8.dp),
+                                            thickness = 0.5.dp,
+                                            color = LoonCardBorder.copy(alpha = 0.65f)
+                                        )
                                     }
                                 }
                             }

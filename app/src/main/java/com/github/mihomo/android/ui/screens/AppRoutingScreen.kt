@@ -27,6 +27,7 @@ import com.github.mihomo.android.data.PerAppProxyMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import com.github.mihomo.android.ui.components.rememberHapticAction
 import com.github.mihomo.android.ui.components.rememberHapticValueAction
@@ -52,65 +53,28 @@ fun AppRoutingScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 90.dp)
     ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (onBack != null) {
-                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppStrings.get("back", lang), tint = LoonTextPrimary)
-                }
-                Spacer(modifier = Modifier.width(6.dp))
-            }
-            Text(
-                text = AppStrings.get("app_routing_title", lang),
-                color = LoonTextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        CupertinoNavBar(
+            title = AppStrings.get("app_routing_title", lang),
+            showBackButton = onBack != null,
+            onBack = onBack
+        )
 
-        // Mode Segmented Buttons (Pill Capsule Shape)
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = LoonCard,
-            shape = RoundedCornerShape(24.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder)
-        ) {
-            Row(modifier = Modifier.padding(4.dp)) {
-                val modes = listOf(
-                    PerAppProxyMode.DISABLED to AppStrings.get("per_app_disabled", lang),
-                    PerAppProxyMode.WHITELIST to AppStrings.get("per_app_whitelist", lang),
-                    PerAppProxyMode.BLACKLIST to AppStrings.get("per_app_blacklist", lang)
-                )
-                modes.forEach { (mode, label) ->
-                    val isSelected = currentMode == mode
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(20.dp))
-                            .hapticClickable { onModeChanged(mode) },
-                        color = if (isSelected) LoonBlue else Color.Transparent
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (isSelected) Color.White else LoonTextSecondary,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 13.sp,
-                            modifier = Modifier
-                                .padding(vertical = 9.dp)
-                                .wrapContentWidth(Alignment.CenterHorizontally)
-                        )
-                    }
-                }
-            }
-        }
+        val modes = listOf(
+            PerAppProxyMode.DISABLED to AppStrings.get("per_app_disabled", lang),
+            PerAppProxyMode.WHITELIST to AppStrings.get("per_app_whitelist", lang),
+            PerAppProxyMode.BLACKLIST to AppStrings.get("per_app_blacklist", lang)
+        )
+        CupertinoSegmentedControl(
+            items = modes.map { it.first },
+            selectedItem = currentMode,
+            onItemSelected = onModeChanged,
+            labelProvider = { mode -> modes.first { it.first == mode }.second },
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -156,16 +120,9 @@ fun AppRoutingScreen(
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Switch(
+                    CupertinoSwitch(
                         checked = showSystemApps,
-                        onCheckedChange = rememberHapticValueAction({ showSystemApps = it }),
-                        modifier = Modifier.scale(0.8f),
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = LoonBlue,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFE2E4EB)
-                        )
+                        onCheckedChange = { showSystemApps = it }
                     )
                 }
             }

@@ -32,6 +32,7 @@ import com.github.mihomo.android.data.RequestLogRepository
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
+import com.github.mihomo.android.ui.components.CupertinoNavBar
 import java.text.SimpleDateFormat
 import java.util.Locale
 import com.github.mihomo.android.ui.components.rememberHapticAction
@@ -48,7 +49,7 @@ data class StructuredRequest(
     val rawMessage: String
 )
 
-private fun parseRequestLog(entry: LogEntry): StructuredRequest {
+internal fun parseRequestLog(entry: LogEntry): StructuredRequest {
     val msg = entry.message.trim()
     var protocol = "NET"
     var source = ""
@@ -130,54 +131,30 @@ fun RequestLogsScreen(
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 24.dp)
+            .navigationBarsPadding()
     ) {
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = rememberHapticAction(onBack), modifier = Modifier.padding(end = 6.dp)) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = AppStrings.get("back", lang),
-                        tint = LoonTextPrimary
-                    )
-                }
-                Text(
-                    text = AppStrings.get("requests_screen_title", lang),
-                    color = LoonTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        // Cupertino navigation bar; pause still controls the actual request monitor.
+        CupertinoNavBar(
+            title = AppStrings.get("requests_screen_title", lang),
+            showBackButton = true,
+            onBack = onBack,
+            actions = {
                 IconButton(onClick = rememberHapticAction { RequestLogRepository.setMonitoringEnabled(!monitoringEnabled) }, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = if (monitoringEnabled) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    Icon(if (monitoringEnabled) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (monitoringEnabled) "暂停" else "继续",
-                        tint = if (monitoringEnabled) LoonTextSecondary else LoonGreen
-                    )
+                        tint = if (monitoringEnabled) LoonTextSecondary else LoonGreen)
                 }
                 IconButton(onClick = rememberHapticAction { RequestLogRepository.clear() }, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteSweep,
-                        contentDescription = "清空",
-                        tint = LoonTextSecondary
-                    )
+                    Icon(Icons.Default.DeleteSweep, contentDescription = "清空", tint = LoonTextSecondary)
                 }
             }
-        }
+        )
 
         // Live Traffic Metrics Card
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = LoonCard,
-            border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -312,7 +289,7 @@ fun RequestLogsScreen(
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = LoonCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {

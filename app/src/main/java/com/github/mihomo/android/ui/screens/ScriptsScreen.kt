@@ -33,6 +33,7 @@ import com.github.mihomo.android.data.ScriptItem
 import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -130,36 +131,15 @@ fun ScriptsScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 24.dp)
     ) {
-        // Top Header Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = rememberHapticAction(onBack),
-                    modifier = Modifier.padding(end = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = AppStrings.get("back", lang),
-                        tint = LoonTextPrimary
-                    )
-                }
-                Text(
-                    text = AppStrings.get("scripts_title", lang),
-                    color = LoonTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
+        CupertinoNavBar(
+            title = AppStrings.get("scripts_title", lang),
+            showBackButton = true,
+            onBack = onBack,
+            actions = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (scripts.any { it.url.isNotBlank() }) {
                     val isAnyUpdating = updatingScriptIds.isNotEmpty()
@@ -218,7 +198,9 @@ fun ScriptsScreen(
                     )
                 }
             }
-        }
+            }
+        )
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Action Buttons: Distinct colors
         Row(
@@ -327,7 +309,7 @@ fun ScriptsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp)),
+                            .border(0.5.dp, LoonCardBorder, RoundedCornerShape(16.dp)),
                         color = LoonCard,
                         shape = RoundedCornerShape(16.dp)
                     ) {

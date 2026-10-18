@@ -314,7 +314,7 @@ fun LoonShortcutCard(
                 shape = RoundedCornerShape(18.dp)
             )
             .shadow(2.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
-            .hapticClickable(if (!isEditing) onClick else null),
+            .iosPressable(enabled = !isEditing, onClick = rememberHapticAction(onClick)),
         color = LoonCard
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -864,25 +864,31 @@ fun LoonFloatingBottomBar(
 ) {
     Surface(
         modifier = modifier
+            .widthIn(max = 360.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
             .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
-            .border(1.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
+            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
         shape = RoundedCornerShape(32.dp),
         color = LocalLoonColors.current.bottomBarBg
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 28.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(40.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
             val lang = LocalAppLanguage.current
             BottomNavItem(
+                modifier = Modifier.weight(1f),
                 icon = Icons.Default.Speed,
                 label = AppStrings.get("nav_dashboard", lang),
                 isSelected = selectedTab == 0,
                 onClick = { onTabSelected(0) }
             )
             BottomNavItem(
+                modifier = Modifier.weight(1f),
                 customIcon = { tint ->
                     StandardCubeIcon(tint = tint)
                 },
@@ -891,6 +897,7 @@ fun LoonFloatingBottomBar(
                 onClick = { onTabSelected(1) }
             )
             BottomNavItem(
+                modifier = Modifier.weight(1f),
                 icon = Icons.Outlined.Settings,
                 label = AppStrings.get("nav_settings", lang),
                 isSelected = selectedTab == 2,
@@ -953,6 +960,7 @@ fun StandardCubeIcon(
 
 @Composable
 private fun BottomNavItem(
+    modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     customIcon: (@Composable (Color) -> Unit)? = null,
     label: String,
@@ -960,12 +968,12 @@ private fun BottomNavItem(
     onClick: () -> Unit
 ) {
     val tint by animateColorAsState(
-        targetValue = if (isSelected) LoonBlue else Color(0xFF9AA1B0),
+        targetValue = if (isSelected) IosBlue else Color(0xFF8E8E93),
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.05f else 1.0f,
+        targetValue = if (isSelected) 1.08f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -974,7 +982,7 @@ private fun BottomNavItem(
     )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -1002,7 +1010,9 @@ private fun BottomNavItem(
             text = label,
             color = tint,
             fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

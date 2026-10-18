@@ -32,6 +32,7 @@ import com.github.mihomo.android.ui.components.bounceOverscroll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import com.github.mihomo.android.ui.components.rememberHapticAction
 import com.github.mihomo.android.ui.components.rememberHapticValueAction
@@ -59,40 +60,22 @@ fun ProfileOverrideScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp, bottom = 24.dp)
     ) {
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = rememberHapticAction(onBack),
-                modifier = Modifier.padding(end = 6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = AppStrings.get("back", lang),
-                    tint = LoonTextPrimary
-                )
-            }
-            Text(
-                text = AppStrings.get("profile_override_title", lang),
-                color = LoonTextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        CupertinoNavBar(
+            title = AppStrings.get("profile_override_title", lang),
+            showBackButton = true,
+            onBack = onBack
+        )
 
         // Profile Info Card
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp)),
+                .border(0.5.dp, LoonCardBorder, RoundedCornerShape(16.dp)),
             color = LoonCard,
             shape = RoundedCornerShape(16.dp)
         ) {
@@ -136,7 +119,7 @@ fun ProfileOverrideScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .border(1.dp, LoonCardBorder, RoundedCornerShape(14.dp))
+                .border(0.5.dp, LoonCardBorder, RoundedCornerShape(14.dp))
                 .hapticClickable { onNavigateToScripts() },
             color = LoonCard,
             shape = RoundedCornerShape(14.dp)
@@ -205,7 +188,7 @@ fun ProfileOverrideScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp)),
+                    .border(0.5.dp, LoonCardBorder, RoundedCornerShape(16.dp)),
                 color = LoonCard,
                 shape = RoundedCornerShape(16.dp)
             ) {
