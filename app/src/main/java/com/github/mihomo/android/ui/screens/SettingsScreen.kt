@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.core.ClashCore
@@ -37,6 +39,7 @@ import com.github.mihomo.android.data.ScriptItem
 import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
+import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -55,12 +58,18 @@ fun SettingsScreen(
     allowLan: Boolean,
     fakeIpEnabled: Boolean,
     hapticEnabled: Boolean,
+    ipv6Enabled: Boolean = false,
+    tunMtu: Int = TunTuning.DEFAULT_MTU,
+    mipsCongestionController: String = TunTuning.DEFAULT_CONGESTION_CONTROLLER,
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onTunStackChanged: (String) -> Unit,
     onBootOnStartupChanged: (Boolean) -> Unit,
     onAllowLanChanged: (Boolean) -> Unit,
     onFakeIpEnabledChanged: (Boolean) -> Unit,
     onHapticEnabledChanged: (Boolean) -> Unit,
+    onIpv6EnabledChanged: (Boolean) -> Unit = {},
+    onTunMtuChanged: (Int) -> Unit = {},
+    onMipsCongestionControllerChanged: (String) -> Unit = {},
     onScriptsChanged: () -> Unit = {},
     onNavigateToScripts: () -> Unit,
     onNavigateToProfiles: () -> Unit,
@@ -76,6 +85,9 @@ fun SettingsScreen(
     val appVersion = remember(context) { getInstalledAppVersion(context) }
 
     var showTunDialog by remember { mutableStateOf(false) }
+    var showMtuDialog by remember { mutableStateOf(false) }
+    var showCongestionDialog by remember { mutableStateOf(false) }
+    var mtuDraft by remember(tunMtu) { mutableStateOf(tunMtu.toString()) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var currentLogLevel by remember { mutableStateOf(settingsManager.logLevel) }
@@ -143,6 +155,38 @@ fun SettingsScreen(
                 showChevron = true,
                 onClick = { showTunDialog = true }
             )
+            LoonDivider()
+            LoonSettingsSwitchItem(
+                icon = Icons.Default.Language,
+                iconBg = Color(0xFF06B6D4),
+                title = AppStrings.get("settings_ipv6", lang),
+                subtitle = AppStrings.get("settings_ipv6_desc", lang),
+                checked = ipv6Enabled,
+                onCheckedChange = onIpv6EnabledChanged
+            )
+            LoonDivider()
+            LoonSettingsItem(
+                icon = Icons.Default.Speed,
+                iconBg = Color(0xFFF59E0B),
+                title = AppStrings.get("settings_tun_mtu", lang),
+                value = tunMtu.toString(),
+                showChevron = true,
+                onClick = {
+                    mtuDraft = tunMtu.toString()
+                    showMtuDialog = true
+                }
+            )
+            if (tunStack == com.github.mihomo.android.data.TunStack.MIPS.key) {
+                LoonDivider()
+                LoonSettingsItem(
+                    icon = Icons.Default.Tune,
+                    iconBg = Color(0xFF8B5CF6),
+                    title = AppStrings.get("settings_mips_cc", lang),
+                    value = mipsCongestionController,
+                    showChevron = true,
+                    onClick = { showCongestionDialog = true }
+                )
+            }
             LoonDivider()
             LoonSettingsSwitchItem(
                 icon = Icons.Default.PowerSettingsNew,
@@ -464,6 +508,87 @@ fun SettingsScreen(
             shape = RoundedCornerShape(20.dp)
         )
     }
+
+    // TUN MTU Dialog
+    if (showMtuDialog) {
+        AlertDialog(
+            onDismissRequest = { showMtuDialog = false },
+            title = { Text(AppStrings.get("settings_tun_mtu", lang), fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(AppStrings.get("settings_tun_mtu_desc", lang), fontSize = 13.sp, color = LoonTextSecondary)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = mtuDraft,
+                        onValueChange = { input ->
+                            if (input.length <= 5 && input.all { it.isDigit() }) mtuDraft = input
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = rememberHapticAction({
+                    mtuDraft.toIntOrNull()?.let { onTunMtuChanged(TunTuning.normalizeMtu(it)) }
+                    showMtuDialog = false
+                })) {
+                    Text(AppStrings.get("confirm", lang))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = rememberHapticAction({ showMtuDialog = false })) {
+                    Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
+                }
+            },
+            containerColor = LoonCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // MIPS congestion controller Dialog
+    if (showCongestionDialog) {
+        AlertDialog(
+            onDismissRequest = { showCongestionDialog = false },
+            title = { Text(AppStrings.get("settings_mips_cc", lang), fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(AppStrings.get("settings_mips_cc_desc", lang), fontSize = 13.sp, color = LoonTextSecondary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TunTuning.CONGESTION_CONTROLLERS.forEach { controller ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .hapticClickable {
+                                    onMipsCongestionControllerChanged(controller)
+                                    showCongestionDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = mipsCongestionController == controller,
+                                onClick = rememberHapticAction({
+                                    onMipsCongestionControllerChanged(controller)
+                                    showCongestionDialog = false
+                                })
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(controller, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = rememberHapticAction({ showCongestionDialog = false })) {
+                    Text(AppStrings.get("confirm", lang))
+                }
+            },
+            containerColor = LoonCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -561,7 +686,8 @@ private fun LoonSettingsSwitchItem(
     iconBg: Color,
     title: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null
 ) {
     Row(
         modifier = Modifier
@@ -581,12 +707,22 @@ private fun LoonSettingsSwitchItem(
                 Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = title,
-                color = LoonTextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Column {
+                Text(
+                    text = title,
+                    color = LoonTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        color = LoonTextSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
         }
 
         Switch(

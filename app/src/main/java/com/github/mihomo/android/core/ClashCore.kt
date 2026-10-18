@@ -128,9 +128,11 @@ object ClashCore {
         gateway: String = "172.19.0.1/30,fdfe:dcba:9876::1/126",
         portal: String = "172.19.0.2,fdfe:dcba:9876::2",
         dns: String = "172.19.0.2,fdfe:dcba:9876::2",
+        mtu: Int = com.github.mihomo.android.data.TunTuning.DEFAULT_MTU,
+        congestionController: String = "",
         vpnService: VpnService
     ) {
-        Log.i(TAG, "Starting TUN with fd=$fd, stack=$stack")
+        Log.i(TAG, "Starting TUN with fd=$fd, stack=$stack, mtu=$mtu, cc=$congestionController")
         val cm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             vpnService.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         } else null
@@ -156,11 +158,24 @@ object ClashCore {
                 return 0
             }
         }
-        val started = TunStartup.start(stack, Bridge::nativeTunStackContract) { selected ->
-            Bridge.nativeStartTun(fd, selected, gateway, portal, dns, callback)
+        val options = org.json.JSONObject()
+            .put("mtu", com.github.mihomo.android.data.TunTuning.normalizeMtu(mtu))
+            .put("congestion-controller", congestionController)
+            .toString()
+        val started = TunStartup.start(stack, Bridge::nativeTunStackContract) { selected, contract ->
+            if (contract == TunStartup.CONTRACT_TUN_OPTIONS) {
+                Bridge.nativeStartTunV2(fd, selected.key, gateway, portal, dns, options, callback)
+            } else {
+                Bridge.nativeStartTun(fd, selected.key, gateway, portal, dns, callback)
+            }
         }
         Log.i(TAG, "Native TUN listener started: ${started.displayName}")
     }
+
+    /** True only when the installed native pair understands MTU/congestion-controller options. */
+    fun supportsTunOptions(): Boolean = runCatching {
+        Bridge.nativeTunStackContract() == TunStartup.CONTRACT_TUN_OPTIONS
+    }.getOrDefault(false)
 
     fun stopTun() {
         Log.i(TAG, "Stopping TUN")

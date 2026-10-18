@@ -153,4 +153,22 @@ class SettingsManager(context: Context) {
     var hapticEnabled: Boolean
         get() = prefs.getBoolean("haptic_enabled", true)
         set(value) = prefs.edit().putBoolean("haptic_enabled", value).apply()
+
+    /** Captures IPv6 in the TUN and lets the core carry it; off leaves IPv6 outside the VPN. */
+    var ipv6Enabled: Boolean
+        get() = prefs.getBoolean("ipv6_enabled", false)
+        set(value) = prefs.edit().putBoolean("ipv6_enabled", value).apply()
+
+    var tunMtu: Int
+        get() = TunTuning.normalizeMtu(prefs.getInt("tun_mtu", TunTuning.DEFAULT_MTU))
+        set(value) = prefs.edit().putInt("tun_mtu", TunTuning.normalizeMtu(value)).apply()
+
+    /** Only the MIPS stack reads this; the value is still persisted for other stacks. */
+    var mipsCongestionController: String
+        get() = TunTuning.normalizeCongestionController(
+            prefs.getString("mips_congestion_controller", TunTuning.DEFAULT_CONGESTION_CONTROLLER)
+        )
+        set(value) = prefs.edit()
+            .putString("mips_congestion_controller", TunTuning.normalizeCongestionController(value))
+            .apply()
 }

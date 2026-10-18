@@ -25,9 +25,12 @@ Go adapter 模块路径为 `cfa/native`，保留上游包导入路径。生成�
 ## 本地修改
 
 1. 严格识别 `system / mixed / gvisor / mips`；未知名称返回错误，不回退 System。
-2. JNI 返回 Go 的真实启动状态。Kotlin 先要求 `nativeTunStackContract() == 1`，再检查返回值；失败不能报告 RUNNING。该版本号是这套源码与库的协议，不是对任意第三方核心的能力探测。
+2. JNI 返回 Go 的真实启动状态。Kotlin 先要求 `nativeTunStackContract()` 为已支持的 `1` 或 `2`（拒绝未知版本），再检查返回值；失败不能报告 RUNNING。该版本号是这套源码与库的协议，不是对任意第三方核心的能力探测。
 3. 输入 FD 为借用：Android 保留原 `ParcelFileDescriptor`；在 `sing_tun.tunNew` 即将接管时复制 native 专有 FD。前置校验失败不产生副本；创建后的失败和正常停止均由监听器清理副本。Go JNI 入口不关闭原 FD。
 4. 记录选择的栈与原生监听器启动成功。启动成功不等于网络连通，也不能据此声称性能提升。
+5. 契约版本 2 增加 `nativeStartTunV2`：Kotlin 传入 `{"mtu":9000,"congestion-controller":"cubic"}`，Go 侧校验 MTU 1280–65535 与 `cubic/reno/bbr/bbr3`，写入 `LC.Tun.MTU` 与 `CongestionController`。拥塞控制只对 MIPS 栈生效；旧库仍走版本 1 的入口并忽略这两个选项。
+6. IPv6 由 Kotlin 决定：关闭时不添加 IPv6 地址、`::/0` 与 IPv6 DNS，并且不把 IPv6 网关/portal 传给 native；开启时三处一起生效；Builder 任一 IPv6 操作失败则整个启动失败，不继续报告 IPv4-only。关闭时 Android 显式 `allowFamily(AF_INET6)`，允许 IPv6 在 VPN 外通信（不提供 IPv6 防泄漏）。
+7. 设置变更仅重建活动隧道；服务控制在 Main 串行执行，耗时启动和流量查询仍使用 Default。STOP 后的迟到 RESTART 不会重新启动，只有显式 START 可清除停止意图。
 
 ## 测试
 

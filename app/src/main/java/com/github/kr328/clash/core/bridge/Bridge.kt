@@ -86,6 +86,16 @@ object Bridge {
     external fun nativeTunStackContract(): Int
     /** Borrows fd for this call; the native listener owns a separate duplicate. Zero means started. */
     external fun nativeStartTun(fd: Int, stack: String, gateway: String, portal: String, dns: String, cb: TunInterface): Int
+    /** Contract version 2: adds the JSON TUN options (MTU, congestion controller) to the same call. */
+    external fun nativeStartTunV2(
+        fd: Int,
+        stack: String,
+        gateway: String,
+        portal: String,
+        dns: String,
+        options: String,
+        cb: TunInterface
+    ): Int
     external fun nativeStopTun()
     external fun nativeStartHttp(listenAt: String): String?
     external fun nativeStopHttp()

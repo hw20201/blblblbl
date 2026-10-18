@@ -200,6 +200,9 @@ class MainActivity : ComponentActivity() {
         var allowLan by remember { mutableStateOf(settingsManager.allowLan) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
+        var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
+        var tunMtu by remember { mutableStateOf(settingsManager.tunMtu) }
+        var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
         val settingsScrollState = rememberScrollState()
         val dashboardScrollState = rememberScrollState()
         val proxiesTabsListState = rememberLazyListState()
@@ -262,6 +265,15 @@ class MainActivity : ComponentActivity() {
         }
 
         var parseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+        // Settings that shape the TUN only take effect after the service rebuilds it.
+        fun restartTunnelForSettings() {
+            when (MihomoVpnService.vpnState.value.status) {
+                VpnState.Status.RUNNING, VpnState.Status.STARTING ->
+                    MihomoVpnService.restart(this@MainActivity)
+                else -> Unit
+            }
+        }
 
         // Parse currently active profile offline to immediately show nodes & groups
         fun parseActiveProfile() {
@@ -821,6 +833,9 @@ class MainActivity : ComponentActivity() {
                         allowLan = allowLan,
                         fakeIpEnabled = fakeIpEnabled,
                         hapticEnabled = hapticEnabled,
+                        ipv6Enabled = ipv6Enabled,
+                        tunMtu = tunMtu,
+                        mipsCongestionController = mipsCongestionController,
                         themeMode = currentThemeMode,
                         onTunStackChanged = { stack ->
                             if (settingsManager.setTunStack(stack)) {
@@ -856,6 +871,21 @@ class MainActivity : ComponentActivity() {
                         onHapticEnabledChanged = { enabled ->
                             hapticEnabled = enabled
                             settingsManager.hapticEnabled = enabled
+                        },
+                        onIpv6EnabledChanged = { enabled ->
+                            ipv6Enabled = enabled
+                            settingsManager.ipv6Enabled = enabled
+                            restartTunnelForSettings()
+                        },
+                        onTunMtuChanged = { value ->
+                            tunMtu = TunTuning.normalizeMtu(value)
+                            settingsManager.tunMtu = tunMtu
+                            restartTunnelForSettings()
+                        },
+                        onMipsCongestionControllerChanged = { controller ->
+                            mipsCongestionController = TunTuning.normalizeCongestionController(controller)
+                            settingsManager.mipsCongestionController = mipsCongestionController
+                            restartTunnelForSettings()
                         },
                         onScriptsChanged = {
                             parseActiveProfile()

@@ -433,7 +433,11 @@ object ConfigManager {
         return builder.toString()
     }
 
-    fun prepareConfig(context: Context, sourceFile: File?): File {
+    fun prepareConfig(
+        context: Context,
+        sourceFile: File?,
+        ipv6Enabled: Boolean = SettingsManager(context).ipv6Enabled
+    ): File {
         val targetFile = getConfigFile(context)
         val settings = SettingsManager(context)
 
@@ -441,7 +445,7 @@ object ConfigManager {
             # Mihomo Android Injected Runtime Config
             mode: ${settings.tunnelMode}
             log-level: ${settings.logLevel}
-            ipv6: false
+            ipv6: ${ipv6Enabled}
             mixed-port: 7890
             allow-lan: ${settings.allowLan}
             geodata-mode: false
@@ -453,7 +457,7 @@ object ConfigManager {
             dns:
               enable: true
               listen: 127.0.0.1:1053
-              ipv6: false
+              ipv6: ${ipv6Enabled}
               enhanced-mode: ${if (settings.fakeIpEnabled) "fake-ip" else "redir-host"}
               fake-ip-range: 198.18.0.1/16
               default-nameserver:
