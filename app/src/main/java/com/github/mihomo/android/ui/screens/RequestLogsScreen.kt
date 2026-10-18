@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.LogEntry
 import com.github.mihomo.android.data.LogRepository
+import com.github.mihomo.android.data.RequestLogRepository
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.theme.*
@@ -98,17 +99,13 @@ fun RequestLogsScreen(
     onBack: () -> Unit
 ) {
     val lang = LocalAppLanguage.current
-    val rawLogs by LogRepository.logsFlow.collectAsState()
-    var isPaused by remember { mutableStateOf(false) }
+    val rawLogs by RequestLogRepository.requestsFlow.collectAsState()
+    val monitoringEnabled by RequestLogRepository.monitoringEnabled.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     var selectedProtocol by remember { mutableStateOf("ALL") }
 
-    val capturedLogs = remember(isPaused) {
-        if (!isPaused) rawLogs else null
-    } ?: remember { rawLogs }
-
-    val requests = remember(capturedLogs) {
-        capturedLogs.map { parseRequestLog(it) }.reversed()
+    val requests = remember(rawLogs) {
+        rawLogs.map { parseRequestLog(it) }.reversed()
     }
 
     val filteredRequests = remember(requests, searchQuery, selectedProtocol) {
@@ -159,14 +156,14 @@ fun RequestLogsScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = rememberHapticAction({ isPaused = !isPaused }), modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = rememberHapticAction { RequestLogRepository.setMonitoringEnabled(!monitoringEnabled) }, modifier = Modifier.size(36.dp)) {
                     Icon(
-                        imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                        contentDescription = if (isPaused) "继续" else "暂停",
-                        tint = if (isPaused) LoonGreen else LoonTextSecondary
+                        imageVector = if (monitoringEnabled) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (monitoringEnabled) "暂停" else "继续",
+                        tint = if (monitoringEnabled) LoonTextSecondary else LoonGreen
                     )
                 }
-                IconButton(onClick = rememberHapticAction({ LogRepository.clear() }), modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = rememberHapticAction { RequestLogRepository.clear() }, modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.Default.DeleteSweep,
                         contentDescription = "清空",

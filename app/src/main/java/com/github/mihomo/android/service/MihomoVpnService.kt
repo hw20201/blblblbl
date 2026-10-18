@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.toBitmap
 import com.github.kr328.clash.core.util.*
 import com.github.mihomo.android.R
 import com.github.mihomo.android.core.ClashCore
@@ -25,11 +26,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 data class VpnState(
@@ -83,9 +88,17 @@ class MihomoVpnService : VpnService() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val lifecycleMutex = Mutex()
     private var trafficMonitorJob: Job? = null
     private var startJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
+    // Preserve the existing notification N artwork independently of the launcher icon.
+    private val notificationLargeIcon by lazy {
+        requireNotNull(getDrawable(R.drawable.ic_notification_brand)).toBitmap(
+            width = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width),
+            height = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_height)
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -110,6 +123,7 @@ class MihomoVpnService : VpnService() {
         startForegroundServiceNotification("启动 Nexus 核心")
 
         startJob = serviceScope.launch {
+            lifecycleMutex.withLock {
             try {
                 // 1. Initialize native core
                 ClashCore.init(this@MihomoVpnService)
@@ -200,23 +214,20 @@ class MihomoVpnService : VpnService() {
                 val pfd = builder.establish() ?: error("无法建立 VPN TUN 接口 (Builder.establish() 返回 null)")
                 vpnInterface = pfd
 
-                // 5. Hand over fd to Mihomo core
-                val fd = pfd.detachFd()
-                try {
-                    ClashCore.startTun(
-                        fd = fd,
-                        stack = settings.tunStack,
-                        gateway = "172.19.0.1/30,fdfe:dcba:9876::1/126",
-                        portal = "172.19.0.2,fdfe:dcba:9876::2",
-                        dns = "172.19.0.2,fdfe:dcba:9876::2",
-                        vpnService = this@MihomoVpnService
-                    )
-                } catch (t: Throwable) {
-                    runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
-                    throw t
-                }
+                // 5. Borrow the app-owned FD; the native listener owns a separate duplicate.
+                // Do not adopt/close a descriptor that may already have been reused by native code.
+                val selectedStack = settings.tunStack.key
+                ClashCore.startTun(
+                    fd = pfd.fd,
+                    stack = selectedStack,
+                    gateway = "172.19.0.1/30,fdfe:dcba:9876::1/126",
+                    portal = "172.19.0.2,fdfe:dcba:9876::2",
+                    dns = "172.19.0.2,fdfe:dcba:9876::2",
+                    vpnService = this@MihomoVpnService
+                )
+                currentCoroutineContext().ensureActive()
 
-                // 6. Report running state
+                // 6. Report running only after the native listener has started successfully.
                 _vpnState.value = _vpnState.value.copy(
                     status = VpnState.Status.RUNNING,
                     coreVersion = coreVer,
@@ -225,18 +236,25 @@ class MihomoVpnService : VpnService() {
 
                 startTrafficMonitor()
                 Log.i(TAG, "Nexus VPN successfully started! Core: $coreVer")
-                com.github.mihomo.android.data.LogRepository.addLog("info", "Nexus VPN 已成功建立！核心版本: $coreVer")
+                com.github.mihomo.android.data.LogRepository.addLog("info", "Nexus VPN 已建立；TUN 栈: $selectedStack；核心版本: $coreVer")
 
             } catch (e: kotlinx.coroutines.CancellationException) {
+                ClashCore.stopTun()
+                runCatching { vpnInterface?.close() }
+                vpnInterface = null
                 throw e
             } catch (e: Throwable) {
                 Log.e(TAG, "Failed to start Nexus VPN", e)
                 com.github.mihomo.android.data.LogRepository.addLog("error", "启动失败: ${e.message}")
+                ClashCore.stopTun()
+                runCatching { vpnInterface?.close() }
+                vpnInterface = null
                 _vpnState.value = _vpnState.value.copy(
                     status = VpnState.Status.STOPPED,
                     error = e.message ?: "未知启动错误"
                 )
                 stopSelf()
+            }
             }
         }
     }
@@ -281,7 +299,7 @@ class MihomoVpnService : VpnService() {
         serviceScope.launch { closeTunnel() }
     }
 
-    private fun closeTunnel() {
+    private suspend fun closeTunnel() = lifecycleMutex.withLock {
         try {
             ClashCore.stopTun()
             vpnInterface?.close()
@@ -340,8 +358,11 @@ class MihomoVpnService : VpnService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // Use a dedicated small-icon identity and explicit N artwork for this comparison.
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_vpn_key)
+            .setSmallIcon(R.drawable.ic_zz_notification_nexus_v107)
+            .setLargeIcon(notificationLargeIcon)
+            .setColor(getColor(R.color.nexus_brand_accent))
             .setContentTitle(getString(R.string.app_name))
             .setContentText(content)
             .setContentIntent(launchIntent)
@@ -373,5 +394,3 @@ class MihomoVpnService : VpnService() {
         super.onRevoke()
     }
 }
-
-

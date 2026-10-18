@@ -73,6 +73,7 @@ fun SettingsScreen(
     val settingsManager = remember { SettingsManager(context) }
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
+    val appVersion = remember(context) { getInstalledAppVersion(context) }
 
     var showTunDialog by remember { mutableStateOf(false) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
@@ -133,9 +134,11 @@ fun SettingsScreen(
                 iconBg = Color(0xFF3B82F6),
                 title = AppStrings.get("settings_tun_stack", lang),
                 value = when (tunStack) {
-                    "mixed" -> "Mixed"
-                    "gvisor" -> "gVisor"
-                    else -> "System"
+                    "system" -> com.github.mihomo.android.data.TunStack.SYSTEM.displayName
+                    "mixed" -> com.github.mihomo.android.data.TunStack.MIXED.displayName
+                    "gvisor" -> com.github.mihomo.android.data.TunStack.GVISOR.displayName
+                    "mips" -> com.github.mihomo.android.data.TunStack.MIPS.displayName
+                    else -> tunStack
                 },
                 showChevron = true,
                 onClick = { showTunDialog = true }
@@ -319,7 +322,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Info,
                 iconBg = LoonBlue,
                 title = "应用版本",
-                value = "1.0.1-Beta.3",
+                value = appVersion,
                 showChevron = false
             )
         }
@@ -427,7 +430,11 @@ fun SettingsScreen(
             title = { Text(AppStrings.get("settings_tun_stack", lang), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    listOf("mixed" to "Mixed (混合栈，兼顾兼容与性能)", "gvisor" to "gVisor (用户态栈，高隔离)").forEach { (key, desc) ->
+                    Text(AppStrings.get("settings_tun_stack_fallback", lang), fontSize = 13.sp, color = LoonTextSecondary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    com.github.mihomo.android.data.TunStack.entries.forEach { stack ->
+                        val key = stack.key
+                        val desc = AppStrings.get("tun_stack_${key}_desc", lang)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

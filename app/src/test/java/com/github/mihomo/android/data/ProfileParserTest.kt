@@ -144,6 +144,80 @@ class ProfileParserTest {
     }
 
     @Test
+    fun `loads cached proxy providers and resolves group use and include-all`() {
+        val providerFile = File(tempFile.parentFile, "cached-provider-${System.nanoTime()}.yaml")
+        try {
+            providerFile.writeText("""
+                proxies:
+                  - name: Provider-HK
+                    type: ss
+                  - name: Provider-JP
+                    type: vmess
+            """.trimIndent())
+            tempFile.writeText("""
+                proxies:
+                  - name: Inline
+                    type: ss
+                proxy-providers:
+                  cached:
+                    type: http
+                    url: https://example.invalid/proxies.yaml
+                    path: ${providerFile.absolutePath}
+                    interval: 3600
+                proxy-groups:
+                  - name: Via provider
+                    type: select
+                    use: [cached]
+                    proxies: [Inline, DIRECT, REJECT]
+                  - name: Everyone
+                    type: select
+                    include-all: true
+                rules:
+                  - MATCH,DIRECT
+                  - DOMAIN-SUFFIX,example.com,Via provider,no-resolve
+                """.trimIndent())
+            val parsed = ProfileParser.parse(tempFile)
+            assertEquals(3, parsed.totalNodes)
+            assertEquals(2, parsed.totalRules)
+            assertEquals(setOf("Inline", "Provider-HK", "Provider-JP", "DIRECT", "REJECT"), parsed.groups["Via provider"]!!.proxies.map { it.name }.toSet())
+            assertEquals(setOf("Inline", "Provider-HK", "Provider-JP"), parsed.groups["Everyone"]!!.proxies.map { it.name }.toSet())
+            assertEquals(3, parsed.totalNodes)
+            providerFile.writeText("""
+                proxies:
+                  - name: Provider-SG
+                    type: trojan
+            """.trimIndent())
+            val refreshed = ProfileParser.parse(tempFile)
+            assertEquals(2, refreshed.totalNodes)
+            assertTrue(refreshed.groups["Via provider"]!!.proxies.any { it.name == "Provider-SG" })
+            assertFalse(refreshed.groups["Via provider"]!!.proxies.any { it.name == "Provider-HK" })
+        } finally {
+            providerFile.delete()
+        }
+    }
+
+
+    @Test
+    fun `keeps subgroups and special policies as group members while excluding policies from node count`() {
+        tempFile.writeText("""
+            proxies:
+              - name: Node
+                type: ss
+            proxy-groups:
+              - name: Child
+                type: select
+                proxies: [Node]
+              - name: Parent
+                type: select
+                proxies: [Child, DIRECT, REJECT]
+            rules: []
+        """.trimIndent())
+        val parsed = ProfileParser.parse(tempFile)
+        assertEquals(1, parsed.totalNodes)
+        assertEquals(setOf("Child", "DIRECT", "REJECT"), parsed.groups["Parent"]!!.proxies.map { it.name }.toSet())
+    }
+
+    @Test
     fun `auto-generates fallback group if no proxy-groups specified`() {
         tempFile.writeText(
             """
