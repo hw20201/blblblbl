@@ -360,7 +360,7 @@ class MihomoVpnService : VpnService() {
 
         // Use a dedicated small-icon identity and explicit N artwork for this comparison.
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_nexus_v107)
+            .setSmallIcon(R.drawable.ic_zz_notification_nexus_v107)
             .setLargeIcon(notificationLargeIcon)
             .setColor(getColor(R.color.nexus_brand_accent))
             .setContentTitle(getString(R.string.app_name))
