@@ -47,6 +47,7 @@ import kotlin.math.roundToInt
 import com.github.mihomo.android.ui.components.rememberHapticAction
 import com.github.mihomo.android.ui.components.rememberHapticValueAction
 import com.github.mihomo.android.ui.components.hapticClickable
+import com.github.mihomo.android.data.DashboardData
 
 data class ShortcutDef(
     val id: String,
@@ -68,6 +69,7 @@ fun DashboardScreen(
     activeNodeName: String,
     totalNodes: Int,
     totalRules: Int,
+    requestMonitoringEnabled: Boolean,
     visibleShortcuts: Set<String>,
     shortcutOrder: List<String>,
     onToggleVpn: () -> Unit,
@@ -126,10 +128,10 @@ fun DashboardScreen(
     val allShortcutMap = remember(
         lang, activeProfileName, activeNodeName, totalNodes, totalRules,
         vpnState.upSpeed, vpnState.downSpeed, vpnState.totalUp, vpnState.totalDown,
-        vpnState.coreVersion, isRunning
+        vpnState.coreVersion, isRunning, requestMonitoringEnabled
     ) {
         mapOf(
-            "nodes" to ShortcutDef("nodes", AppStrings.get("shortcut_nodes", lang), if (activeNodeName.isNotBlank()) activeNodeName else "$totalNodes", { NodesIllustration() }) {
+            "nodes" to ShortcutDef("nodes", AppStrings.get("shortcut_nodes", lang), "$totalNodes", { NodesIllustration() }) {
                 showQuickNodeSelector = true
             },
             "profiles" to ShortcutDef("profiles", AppStrings.get("shortcut_profiles", lang), activeProfileName, { ProfilesIllustration() }) {
@@ -138,13 +140,13 @@ fun DashboardScreen(
             "core_logs" to ShortcutDef("core_logs", AppStrings.get("shortcut_logs", lang), if (isRunning) "实时监控" else "点击查看", { RequestLogsIllustration() }) {
                 onNavigateToLogs()
             },
-            "request_logs" to ShortcutDef("request_logs", AppStrings.get("shortcut_requests", lang), if (isRunning) "实时监控" else "未开启", { RequestLogsIllustration() }) {
+            "request_logs" to ShortcutDef("request_logs", AppStrings.get("shortcut_requests", lang), DashboardData.requestStatus(isRunning, requestMonitoringEnabled), { RequestLogsIllustration() }) {
                 onNavigateToRequests()
             },
             "dns" to ShortcutDef("dns", AppStrings.get("shortcut_dns", lang), "Fake-IP", { DnsIllustration() }) {
                 onNavigateToDns()
             },
-            "rules" to ShortcutDef("rules", AppStrings.get("shortcut_rules", lang), if (totalRules > 0) "$totalRules" else "1", { RulesIllustration() }) {
+            "rules" to ShortcutDef("rules", AppStrings.get("shortcut_rules", lang), "$totalRules", { RulesIllustration() }) {
                 onNavigateToRules()
             },
             "routing" to ShortcutDef("routing", AppStrings.get("shortcut_routing", lang), "规则与黑白名单", { AppRoutingIllustration() }) {
@@ -161,7 +163,7 @@ fun DashboardScreen(
         )
     }
 
-    val displayedShortcuts = remember(localOrder, visibleShortcuts, lang) {
+    val displayedShortcuts = remember(localOrder, visibleShortcuts, allShortcutMap) {
         localOrder.mapNotNull { allShortcutMap[it] }.filter { visibleShortcuts.contains(it.id) }
     }
 

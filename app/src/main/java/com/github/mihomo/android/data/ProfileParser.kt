@@ -41,10 +41,11 @@ object ProfileParser {
         val length: Long,
         val savedNodesHash: Int,
         val scriptKey: String,
+        val providerSignature: Int,
         val parsed: ParsedProfile
     ) {
-        fun isValid(lm: Long, len: Long, hash: Int, sKey: String): Boolean =
-            lastModified == lm && length == len && savedNodesHash == hash && scriptKey == sKey
+        fun isValid(lm: Long, len: Long, hash: Int, sKey: String, providers: Int): Boolean =
+            lastModified == lm && length == len && savedNodesHash == hash && scriptKey == sKey && providerSignature == providers
     }
     private val parsedCache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry>()
 
@@ -71,12 +72,13 @@ object ProfileParser {
             activeProfile.scriptIds.sorted().joinToString(",")
         } else ""
 
+        var content = file.readText()
+        val providerSignature = providerCacheSignature(content, file, context)
         val cached = parsedCache[path]
-        if (cached?.isValid(lm, len, savedHash, scriptKey) == true) {
+        if (cached?.isValid(lm, len, savedHash, scriptKey, providerSignature) == true) {
             return cached.parsed
         }
 
-        var content = file.readText()
         if (context != null) {
             val targetIds = if (activeProfile != null && activeProfile.scriptEnabled && activeProfile.scriptIds.isNotEmpty()) {
                 activeProfile.scriptIds
@@ -102,13 +104,18 @@ object ProfileParser {
                 return parseFallback(content, savedNodes)
             }
 
-            // 1. Extract proxies (support 'proxies' and 'Proxy')
-            val proxyMap = extractProxyMap(data)
+            // 1. Extract inline and locally cached provider proxies. Mihomo rewrites
+            // provider paths under filesDir/clash/providers at runtime; user paths
+            // are also checked relative to the profile and Clash home.
+            val proxyMap = extractProxyMap(data).toMutableMap()
+            proxyMap.putAll(extractCachedProviderProxies(data, file, context))
 
             // 2. Extract rules (support 'rules' and 'Rule')
             val rawRules = (data["rules"] ?: data["Rule"]) as? List<*>
             val parsedRules = extractParsedRules(rawRules)
-            val rulesCount = if (parsedRules.isNotEmpty()) parsedRules.size else (rawRules?.size ?: 0)
+            // Match the rules page: count parsed top-level entries only (never
+            // synthesize counts by expanding rule-providers or rule sets).
+            val rulesCount = parsedRules.size
 
             // 3. Extract proxy-groups (support 'proxy-groups' and 'Proxy Group')
             val groupNames = mutableListOf<String>()
@@ -126,7 +133,8 @@ object ProfileParser {
                         if (!gIcon.isNullOrBlank()) {
                             groupIcons[gName] = gIcon.trim()
                         }
-                        val explicitProxies = (item["proxies"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                        val explicitProxies = ((item["proxies"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()) +
+                            resolveUsedProviderNames(item["use"], data, proxyMap.keys, file, context)
                         val filterPattern = item["filter"]?.toString()?.trim()
                         val excludePattern = item["exclude-filter"]?.toString()?.trim()
                         val includeAll = item["include-all"] == true ||
@@ -141,7 +149,6 @@ object ProfileParser {
                             excludePattern = excludePattern,
                             includeAll = includeAll
                         )
-
                         val proxies = memberNames.mapNotNull { mName ->
                             val mType = proxyMap[mName] ?: if (mName in listOf("DIRECT", "REJECT", "GLOBAL")) mName else "Group"
                             val isSubGroup = rawGroupNames.contains(mName)
@@ -180,7 +187,7 @@ object ProfileParser {
                 groupMap["节点选择"] = ProxyGroup(type = "select", proxies = proxies, now = now)
             }
 
-            val totalNodes = proxyMap.size
+            val totalNodes = proxyMap.keys.count { !it.equals("DIRECT", true) && !it.equals("REJECT", true) && !it.equals("GLOBAL", true) }
             val activeNode = groupMap.values.firstOrNull { !it.hidden }?.now ?: groupMap.values.firstOrNull()?.now ?: ""
             Log.i(TAG, "Parsed profile: ${groupNames.size} groups, $totalNodes nodes, $rulesCount rules")
 
@@ -193,12 +200,12 @@ object ProfileParser {
                 activeNode = activeNode,
                 rules = parsedRules
             )
-            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, result)
+            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerSignature, result)
             return result
         } catch (e: Throwable) {
             Log.w(TAG, "SnakeYAML failed, using robust line fallback: ${e.message}")
             val fallback = parseFallback(content, savedNodes)
-            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, fallback)
+            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerSignature, fallback)
             return fallback
         }
     }
@@ -359,7 +366,7 @@ object ProfileParser {
             groupNames = groupNames,
             groups = groupMap,
             groupIcons = groupIcons,
-            totalNodes = proxyMap.size,
+            totalNodes = proxyMap.keys.count { !it.equals("DIRECT", true) && !it.equals("REJECT", true) && !it.equals("GLOBAL", true) },
             totalRules = rulesCount,
             activeNode = groupMap.values.firstOrNull()?.now ?: "",
             rules = fallbackRules
@@ -378,6 +385,68 @@ object ProfileParser {
         }
         return proxyMap
     }
+
+    private fun resolveUsedProviderNames(use: Any?, data: Map<String, Any?>, proxyNames: Set<String>, profile: File, context: Context?): List<String> {
+        val names = when (use) {
+            is List<*> -> use.mapNotNull { it?.toString() }
+            is String -> listOf(use)
+            else -> emptyList()
+        }
+        val providers = data["proxy-providers"] as? Map<*, *> ?: return emptyList()
+        return names.flatMap { providerName ->
+            val provider = providers[providerName] as? Map<*, *> ?: return@flatMap emptyList()
+            providerCacheFiles(provider, profile, context).firstNotNullOfOrNull { candidate ->
+                candidate.takeIf { it.isFile }?.let(::loadProviderProxyNames)?.keys
+            }?.filter { it in proxyNames }.orEmpty()
+        }
+    }
+
+    private fun extractCachedProviderProxies(data: Map<String, Any?>, profile: File, context: Context?): Map<String, String> {
+        val providers = data["proxy-providers"] as? Map<*, *> ?: return emptyMap()
+        val result = linkedMapOf<String, String>()
+        val providersDir = context?.filesDir?.resolve("clash/providers")
+        for ((_, raw) in providers) {
+            val provider = raw as? Map<*, *> ?: continue
+            val candidates = providerCacheFiles(provider, profile, context)
+            candidates.firstNotNullOfOrNull { it.takeIf(File::isFile)?.let(::loadProviderProxyNames) }?.forEach { (name, type) -> result[name] = type }
+        }
+        return result
+    }
+
+    private fun providerCacheFiles(provider: Map<*, *>, profile: File, context: Context?): List<File> {
+        val path = provider["path"]?.toString()?.takeIf { it.isNotBlank() }
+        val url = provider["url"]?.toString()?.takeIf { it.isNotBlank() }
+        val providersDir = context?.filesDir?.resolve("clash/providers")
+        return buildList {
+            if (path != null) {
+                val configured = File(path)
+                add(configured)
+                if (!configured.isAbsolute) add(File(profile.parentFile, path))
+                if (providersDir != null) add(File(providersDir, path.removePrefix("./")))
+            }
+            if (url != null && providersDir != null) {
+                val md5 = java.security.MessageDigest.getInstance("MD5").digest(url.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                add(File(providersDir, "proxies/$md5"))
+            }
+        }.distinctBy { it.absolutePath }
+    }
+
+    private fun providerCacheSignature(content: String, profile: File, context: Context?): Int {
+        val data = runCatching { yaml.load<Map<String, Any?>>(content) }.getOrNull() ?: return 0
+        val providers = data["proxy-providers"] as? Map<*, *> ?: return 0
+        return providers.values.mapNotNull { raw ->
+            val provider = raw as? Map<*, *> ?: return@mapNotNull null
+            providerCacheFiles(provider, profile, context).firstOrNull { it.isFile }?.let { f ->
+                listOf(f.absolutePath, f.lastModified(), f.length(), runCatching { f.readBytes().contentHashCode() }.getOrDefault(0))
+            }
+        }.hashCode()
+    }
+
+    private fun loadProviderProxyNames(file: File): Map<String, String> = runCatching {
+        val payload = yaml.load<Map<String, Any?>>(file.readText()) ?: return@runCatching emptyMap()
+        extractProxyMap(payload)
+    }.getOrDefault(emptyMap())
 
     private fun extractParsedRules(rawRules: List<*>?): List<ParsedRule> {
         val parsedRules = mutableListOf<ParsedRule>()

@@ -45,6 +45,7 @@ object LogRepository {
             message = message
         )
         logList.add(entry)
+        RequestLogRepository.onLog(entry)
         if (logList.size > MAX_LOGS) {
             logList.removeAt(0)
         }

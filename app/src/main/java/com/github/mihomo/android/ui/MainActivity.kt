@@ -145,6 +145,7 @@ class MainActivity : ComponentActivity() {
         var overrideTargetProfile by remember { mutableStateOf<ProfileItem?>(null) }
 
         val vpnState by MihomoVpnService.vpnState.collectAsState()
+        val requestMonitoringEnabled by RequestLogRepository.monitoringEnabled.collectAsState()
 
         var profiles by remember { mutableStateOf(emptyList<ProfileItem>()) }
         var selectedProfileId by remember { mutableStateOf(settingsManager.selectedProfileId) }
@@ -264,7 +265,7 @@ class MainActivity : ComponentActivity() {
 
         // Parse currently active profile offline to immediately show nodes & groups
         fun parseActiveProfile() {
-            val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+            val active = DashboardData.activeProfile(profiles, selectedProfileId)
             parseJob?.cancel()
             parseJob = lifecycleScope.launch(Dispatchers.IO) {
                 val savedMap = settingsManager.getAllSelectedNodes()
@@ -306,10 +307,9 @@ class MainActivity : ComponentActivity() {
         // Reload profiles from storage
         fun reloadProfiles() {
             profiles = ConfigManager.getProfiles(this@MainActivity)
-            if (selectedProfileId == null && profiles.isNotEmpty()) {
-                selectedProfileId = profiles.first().id
-                settingsManager.selectedProfileId = selectedProfileId
-            }
+            selectedProfileId = DashboardData.activeProfile(profiles, selectedProfileId)?.id
+            settingsManager.selectedProfileId = selectedProfileId
+            liveGroupMap = emptyMap()
             parseActiveProfile()
         }
 
@@ -598,6 +598,13 @@ class MainActivity : ComponentActivity() {
         // Re-parse once the profile list finishes loading, otherwise the first run (when the list
         // starts empty) would parse nothing and show no nodes.
         LaunchedEffect(selectedProfileId, profiles) {
+            if (profiles.isNotEmpty()) {
+                val effectiveId = DashboardData.activeProfile(profiles, selectedProfileId)?.id
+                if (selectedProfileId != effectiveId) {
+                    selectedProfileId = effectiveId
+                    settingsManager.selectedProfileId = effectiveId
+                }
+            }
             parseActiveProfile()
         }
 
@@ -608,6 +615,9 @@ class MainActivity : ComponentActivity() {
                     refreshProxiesOnline()
                     delay(3000)
                 }
+            } else if (vpnState.status == VpnState.Status.STOPPED) {
+                liveGroupMap = emptyMap()
+                parseActiveProfile()
             }
         }
 
@@ -699,12 +709,13 @@ class MainActivity : ComponentActivity() {
                             scrollState = dashboardScrollState,
                             vpnState = vpnState,
                             currentMode = tunnelMode,
-                            activeProfileName = profiles.firstOrNull { it.id == selectedProfileId }?.name ?: "默认配置",
+                            activeProfileName = DashboardData.activeProfile(profiles, selectedProfileId)?.name ?: "未选择配置",
                             mainGroupName = mainProxyGroupName,
                             mainGroupProxies = mainGroupProxies,
                             activeNodeName = currentMainActiveNode,
-                            totalNodes = parsedProfile.totalNodes,
+                            totalNodes = DashboardData.nodeCount(parsedProfile.totalNodes, liveGroupMap),
                             totalRules = parsedProfile.totalRules,
+                            requestMonitoringEnabled = requestMonitoringEnabled,
                             visibleShortcuts = visibleShortcuts,
                             shortcutOrder = shortcutOrder,
                             onToggleVpn = { handleToggleVpn() },
@@ -928,6 +939,7 @@ class MainActivity : ComponentActivity() {
                                     onSelectProfile = { profile ->
                                         selectedProfileId = profile.id
                                         settingsManager.selectedProfileId = profile.id
+                                        liveGroupMap = emptyMap()
                                         parseActiveProfile()
                                         Toast.makeText(this@MainActivity, "已生效配置: ${profile.name}", Toast.LENGTH_SHORT).show()
                                     },

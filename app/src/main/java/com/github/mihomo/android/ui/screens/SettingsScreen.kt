@@ -73,6 +73,7 @@ fun SettingsScreen(
     val settingsManager = remember { SettingsManager(context) }
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
+    val appVersion = remember(context) { getInstalledAppVersion(context) }
 
     var showTunDialog by remember { mutableStateOf(false) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
@@ -321,7 +322,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Info,
                 iconBg = LoonBlue,
                 title = "应用版本",
-                value = "1.0.1-Beta.3",
+                value = appVersion,
                 showChevron = false
             )
         }
