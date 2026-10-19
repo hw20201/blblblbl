@@ -145,27 +145,43 @@ fun GlassSurface(
         Box(modifier = modifier.clip(shape)) {
             CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled,
                 softMeshRim = true, isDark = tokens.isDark)
-            Box(Modifier.matchParentSize().background(translucentFill, shape)
+            Box(Modifier.matchParentSize().background(translucentFill, shape).shortcutCardPolish()
                 .then(if (Build.VERSION.SDK_INT < 33) Modifier.restrainedCardRim(shape) else Modifier))
             Box(Modifier.matchParentSize(), content = content)
         }
     }
 }
 
-/** API 31/32: modulate the sampled colour, rather than cover it with a white outline. */
+/** Static cached sheen; soft-light preserves the shared backdrop's hue instead of painting white. */
+private fun Modifier.shortcutCardPolish(): Modifier = drawWithCache {
+    val polish = Brush.linearGradient(listOf(
+        Color(0xFFB4C3D8).copy(alpha = .14f), Color(0xFF65758C).copy(alpha = .08f)
+    ), start = Offset.Zero, end = Offset(size.width, size.height))
+    onDrawWithContent {
+        drawContent()
+        drawRect(polish, blendMode = BlendMode.Softlight)
+    }
+}
+
+/** API 31/32: cached soft-light faces modulate the sampled mesh, never paint an opaque rim. */
 private fun Modifier.restrainedCardRim(shape: Shape): Modifier = drawWithCache {
     val inset = 1.8.dp.toPx()
     val outer = shape.createOutline(size, layoutDirection, this)
     val innerSize = Size((size.width - 2 * inset).coerceAtLeast(0f), (size.height - 2 * inset).coerceAtLeast(0f))
     val inner = shape.createOutline(innerSize, layoutDirection, this)
-    val edge = Brush.verticalGradient(listOf(
-        Color(0xFFF8F8F8), Color(0xFFE8E8E8)
+    val edge = Brush.linearGradient(listOf(
+        Color(0xFFD5E0EF), Color(0xFF8392A8), Color(0xFF35445B)
+    ), start = Offset.Zero, end = Offset(size.width * .35f, size.height))
+    val returnFace = Brush.verticalGradient(listOf(
+        Color(0xFF596A82), Color(0xFFC3D3E7)
     ))
+    val outerStroke = Stroke(1.4.dp.toPx())
+    val innerStroke = Stroke(.85.dp.toPx())
     onDrawWithContent {
         drawContent()
-        drawOutline(outer, edge, style = Stroke(.75.dp.toPx()), blendMode = BlendMode.Modulate)
+        drawOutline(outer, edge, style = outerStroke, blendMode = BlendMode.Softlight)
         translate(inset, inset) {
-            drawOutline(inner, Color(0xFFF5F5F5), style = Stroke(.5.dp.toPx()), blendMode = BlendMode.Modulate)
+            drawOutline(inner, returnFace, style = innerStroke, blendMode = BlendMode.Softlight)
         }
     }
 }

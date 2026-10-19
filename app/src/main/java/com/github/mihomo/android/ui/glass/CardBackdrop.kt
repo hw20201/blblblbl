@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -64,7 +65,14 @@ internal fun BoxScope.CardBackdrop(
         .drawWithContent {
             if (shouldBlurCardBackdrop(Build.VERSION.SDK_INT, drawContext.canvas.nativeCanvas.isHardwareAccelerated)) {
                 val offset = lens.origin - origin
-                translate(offset.x, offset.y) { drawLayer(lens.scene) }
+                if (softMeshRim) {
+                    // The shared display list is screen-sized. Bound its replay before the
+                    // effect, otherwise its input extent displaces the card-local bevel.
+                    // This is a draw clip, not another capture, layer or filtering pass.
+                    clipRect { translate(offset.x, offset.y) { drawLayer(lens.scene) } }
+                } else {
+                    translate(offset.x, offset.y) { drawLayer(lens.scene) }
+                }
             } else {
                 // Software canvases and older Android never replay an unrecorded GPU scene.
                 drawRect(fallback)
