@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale as scaleDrawing
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,6 +54,8 @@ import com.github.mihomo.android.ui.glass.glassTextPrimary
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NavigationLens
+import com.github.mihomo.android.ui.glass.NavigationLensOpticsState
+import com.github.mihomo.android.ui.glass.lensTabMagnification
 import com.github.mihomo.android.ui.glass.NavigationGlassSurface
 import com.github.mihomo.android.ui.glass.glassTextSecondary
 import com.github.mihomo.android.ui.glass.navigationLensDrag
@@ -976,8 +980,9 @@ fun LoonFloatingBottomBar(
     if (GlassDefaults.enabled) {
         var selectionPulse by remember { mutableIntStateOf(0) }
         var dragPosition by remember { mutableStateOf<Float?>(null) }
-        // Capsule, travelling lens, then stationary icons/labels. Only the lens samples the scene, so three tabs
-        // still use one refracting backdrop layer rather than one per tab.
+        val optics = remember { NavigationLensOpticsState(selectedTab.toFloat()) }
+        // One refracting backdrop layer only. Sharp foreground drawing shares its position;
+        // the tab layout, semantic nodes and touch targets never grow or move.
         Box(
             modifier = modifier
                 // The original items determine the width; both material layers match the dock.
@@ -1002,12 +1007,13 @@ fun LoonFloatingBottomBar(
                 lens = lens,
                 modifier = Modifier.matchParentSize(),
                 selectionPulse = selectionPulse,
-                dragPosition = dragPosition
+                dragPosition = dragPosition,
+                optics = optics
             )
             BottomBarItems(selectedTab, { tab ->
                 selectionPulse++
                 onTabSelected(tab)
-            }, glassMode = true)
+            }, glassMode = true, optics = if (lens != null) optics else null)
         }
         return
     }
@@ -1033,7 +1039,8 @@ private val BOTTOM_BAR_WIDTH = 304.dp
 @Composable
 private fun BottomBarItems(
     selectedTab: Int, onTabSelected: (Int) -> Unit,
-    glassMode: Boolean = false, hideSelectedIcon: Boolean = false
+    glassMode: Boolean = false, hideSelectedIcon: Boolean = false,
+    optics: NavigationLensOpticsState? = null
 ) {
         Row(
             modifier = Modifier
@@ -1049,6 +1056,7 @@ private fun BottomBarItems(
                 isSelected = selectedTab == 0,
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 0,
+                opticalScale = optics?.let { { lensTabMagnification(0, it.frame.position, it.frame.expansion) } },
                 onClick = { onTabSelected(0) }
             )
             BottomNavItem(
@@ -1059,6 +1067,7 @@ private fun BottomBarItems(
                 isSelected = selectedTab == 1,
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 1,
+                opticalScale = optics?.let { { lensTabMagnification(1, it.frame.position, it.frame.expansion) } },
                 onClick = { onTabSelected(1) }
             )
             BottomNavItem(
@@ -1067,6 +1076,7 @@ private fun BottomBarItems(
                 isSelected = selectedTab == 2,
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 2,
+                opticalScale = optics?.let { { lensTabMagnification(2, it.frame.position, it.frame.expansion) } },
                 onClick = { onTabSelected(2) }
             )
         }
@@ -1131,6 +1141,7 @@ private fun BottomNavItem(
     isSelected: Boolean,
     modifier: Modifier = Modifier,
     hideIcon: Boolean = false,
+    opticalScale: (() -> Float)? = null,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
@@ -1139,27 +1150,31 @@ private fun BottomNavItem(
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.08f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = 0.7f,
-            stiffness = 400f
-        ),
-        label = "nav_scale"
-    )
+    val scale = if (opticalScale == null) {
+        val legacyScale by animateFloatAsState(
+            targetValue = if (isSelected) 1.08f else 1.0f,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+            label = "nav_scale"
+        )
+        legacyScale
+    } else 1f
 
     Column(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
                 haptic.selection()
                 onClick()
+            }
+            // Draw-time vector/text magnification only: no bitmap readback, shader per icon,
+            // blur or extra animation clock. The existing AGSL shell supplies the glass sheen.
+            .drawWithContent {
+                val magnification = opticalScale?.invoke() ?: scale
+                scaleDrawing(magnification, magnification) {
+                    this@drawWithContent.drawContent()
+                }
             }
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally

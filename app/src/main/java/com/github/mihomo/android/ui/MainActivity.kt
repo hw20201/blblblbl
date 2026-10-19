@@ -708,6 +708,10 @@ class MainActivity : ComponentActivity() {
         ProvideSoftMeshMotion {
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
+        val subScreenTransitionState = remember {
+            androidx.compose.animation.core.MutableTransitionState(currentSubScreen != null)
+        }
+        subScreenTransitionState.targetState = currentSubScreen != null
         Box(Modifier.fillMaxSize()) {
         NexusGlassBackground(
             modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
@@ -930,9 +934,10 @@ class MainActivity : ComponentActivity() {
                 isEdgeDragging = false
             }
 
+            // Share the actual overlay transition state so the dock returns only after its last exit frame.
             // 2. Sub-screens overlay (smooth slide in / out over the main tabs with iOS edge swipe back)
             AnimatedVisibility(
-                visible = currentSubScreen != null,
+                visibleState = subScreenTransitionState,
                 enter = slideInHorizontally(
                     initialOffsetX = { it },
                     animationSpec = tween(300, easing = FastOutSlowInEasing)
@@ -1252,8 +1257,11 @@ class MainActivity : ComponentActivity() {
         } // scene content
         } // recorded scene; the dock below must never enter its own input
 
-            // 3. Floating Bottom Bar (stays stable underneath sliding sub-screens)
-            Box(
+            // The recorded scene is rendered after its children; keep nested pages' dock
+            // completely absent (including semantics/input) until the return transition ends.
+            NestedPageDockVisibility(
+                nestedPageTransition = subScreenTransitionState,
+                nestedPageVisible = currentSubScreen != null,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .wrapContentSize(Alignment.BottomCenter)

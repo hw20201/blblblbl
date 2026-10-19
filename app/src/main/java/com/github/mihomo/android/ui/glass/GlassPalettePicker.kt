@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,13 +38,17 @@ fun GlassPalettePicker(
         .semantics { contentDescription = labelProvider(selected) }) {
         // Eager rows avoid a nested lazy viewport cropping swatches on small or large screens.
         ThemeColorGrid.chunked(12).forEach { row ->
-            Row(Modifier.fillMaxWidth()) {
+            // A single row height avoids 1px gaps where weighted widths round differently.
+            // Every border uses its own cell's exact measured bounds, not a dp estimate.
+            Row(Modifier.fillMaxWidth().aspectRatio(12f)) {
                 row.forEach { color ->
                     val key = GlassPalettes.keyForColor(color)
                     val isSelected = key == selectedKey
                     val contrast = if (color.luminance() < .45f) Color.White else Color.Black
                     Box(
-                        Modifier.weight(1f).heightIn(min = 28.dp).aspectRatio(1f)
+                        // Let the row's integer-pixel width determine both dimensions. A min-height
+                        // before aspectRatio can force short/narrow cells out of square alignment.
+                        Modifier.weight(1f).fillMaxHeight()
                             .background(color)
                             .border(if (isSelected) 2.dp else .35.dp,
                                 if (isSelected) contrast else contrast.copy(alpha = .10f))

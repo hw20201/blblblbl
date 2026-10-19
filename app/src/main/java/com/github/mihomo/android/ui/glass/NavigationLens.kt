@@ -102,7 +102,7 @@ enum class LensStrength(
  *
  * A rounded-rectangle distance field confines all bending to the curved bevel, so the centre of the
  * surface stays optically flat — text passing under the middle of the dock is neither blurred nor
- * smeared. This adaptation removes Gaussian blur entirely. Three optical cues remain:
+ * smeared. This adaptation removes Gaussian blur entirely. The optical cues are:
  *
  *  1. **Dispersion** — the red and blue channels are sampled at slightly different offsets along
  *     the edge normal. Real glass has a different refractive index per wavelength; without this the
@@ -111,8 +111,10 @@ enum class LensStrength(
  *     bevelled edge does to light coming from behind.
  *  3. **Confinement** — `edge*edge` keeps displacement out of the flat centre; a linear falloff
  *     makes the whole surface look bulged.
+ *  4. **Content response** — local colour and contrast modulate rim lighting as contours pass
+ *     beneath it, instead of hiding them behind a fixed white stroke.
  */
-// Copied verbatim from the supplied patch 0003, not the scale/blur replacement in 0005.
+// Keep the supplied bevel-only refraction; add scene-responsive edge light, never global blur/scale.
 internal const val NAVIGATION_LENS_SHADER = """
     uniform shader scene;
     uniform float2 viewport;
@@ -150,12 +152,22 @@ internal const val NAVIGATION_LENS_SHADER = """
         half4 cb = scene.eval(clamp(base - normal * ca, lo, hi));
         half4 c = half4(cr.r, cg.g, cb.b, cg.a);
 
-        // Slight desaturation of the blurred backdrop keeps white type legible.
+        // Restrained saturation of the sampled backdrop; no Gaussian filtering.
         half gray = dot(c.rgb, half3(0.2126, 0.7152, 0.0722));
         c.rgb = clamp(mix(half3(gray), c.rgb, saturation), 0.0, c.a);
 
-        // Light gathering along the bevelled rim.
-        c.rgb = clamp(c.rgb + half3(edge * edge * rimGain), 0.0, c.a);
+        // Content-aware rim, not a fixed white outline. One extra nearby sample is
+        // needed only in the bevel; the flat centre does not pay for edge lighting.
+        if (edge > 0.001) {
+            half4 inner = scene.eval(clamp(base - normal * 2.0 * density, lo, hi));
+            half localLight = dot(cg.rgb, half3(0.2126, 0.7152, 0.0722));
+            // A passing card/text contour can darken one side and brighten the other.
+            // Bound this relief so text behind the edge does not turn into a halo.
+            half3 contour = clamp((cg.rgb - inner.rgb) * 0.22, -0.055, 0.055);
+            half3 bounce = mix(half3(1.0), cg.rgb, 0.65);
+            half3 gathered = bounce * rimGain * (0.35 + 0.65 * localLight);
+            c.rgb = clamp(c.rgb + (gathered + contour) * edge * edge, 0.0, c.a);
+        }
         return c;
     }
 """
@@ -191,7 +203,9 @@ fun NavigationGlassSurface(
     // no Gaussian blur or global scene scaling is substituted for unsupported AGSL.
     // A faint palette tint over the sampled backdrop; the material is carried by the rim, not by an
     // opaque fill, so this stays low enough that the scene still shows through.
-    val fill = Color.White.copy(alpha = if (palette.isDark) 0.10f else 0.18f)
+    val responsiveEdge = lens != null && Build.VERSION.SDK_INT >= 33
+    val fill = Color.White.copy(alpha = if (responsiveEdge) 0.08f
+        else if (palette.isDark) 0.10f else 0.18f)
 
     Box(
         modifier.graphicsLayer {
@@ -239,15 +253,18 @@ fun NavigationGlassSurface(
             val rim = Path().apply {
                 addRoundRect(RoundRect(inset, inset, size.width - inset, size.height - inset, radius, radius))
             }
-            // Two-tone rim: bright where light lands on the top edge, cool bounce along the bottom.
+            // On AGSL hardware the scene supplies the edge light. Keep only a faint
+            // shell cue here, otherwise an opaque white stroke hides all contour response.
+            val rimAttenuation = if (responsiveEdge) 0.18f else 1f
             val rimTop = Brush.verticalGradient(
-                0f to Color.White.copy(alpha = if (palette.isDark) 0.55f else 0.92f),
-                0.45f to Color.White.copy(alpha = 0.10f),
-                1f to palette.rimBottom.copy(alpha = if (palette.isDark) 0.18f else 0.30f)
+                0f to Color.White.copy(alpha = (if (palette.isDark) 0.55f else 0.92f) * rimAttenuation),
+                0.45f to Color.White.copy(alpha = 0.10f * rimAttenuation),
+                1f to palette.rimBottom.copy(alpha = (if (palette.isDark) 0.18f else 0.30f) * rimAttenuation)
             )
             // Interior sheen: a soft top-down falloff, the "thickness" of the slab.
             val sheen = Brush.verticalGradient(
-                0f to Color.White.copy(alpha = if (palette.isDark) 0.10f else 0.26f),
+                0f to Color.White.copy(alpha = if (responsiveEdge) 0.055f
+                    else if (palette.isDark) 0.10f else 0.26f),
                 0.35f to Color.Transparent,
                 0.85f to Color.Transparent,
                 1f to Color.White.copy(alpha = if (palette.isDark) 0.03f else 0.08f)

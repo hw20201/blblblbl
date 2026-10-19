@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -36,6 +37,7 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -360,7 +362,7 @@ fun ProxiesScreen(
                         val isSelected = groupName == selectedGroupName
                         val groupIconUrl = groupIcons[groupName]
 
-                        Surface(
+                        ProxyGlassCard(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .border(
@@ -370,7 +372,8 @@ fun ProxiesScreen(
                                 )
                                 .iosPressable { onSelectGroup(groupName) },
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) IosBlue else LoonCard
+                            color = if (isSelected) IosBlue else LoonCard,
+                            accent = if (isSelected) IosBlue else null
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
@@ -387,7 +390,8 @@ fun ProxiesScreen(
                                 }
                                 Text(
                                     text = groupName,
-                                    color = if (isSelected) Color.White else LoonTextPrimary,
+                                    color = if (isSelected && !GlassDefaults.enabled) Color.White
+                                        else if (isSelected) IosBlue else LoonTextPrimary,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )
@@ -624,7 +628,7 @@ private fun LoonGroupHeaderCard(
     onHealthCheck: () -> Unit,
     onToggleExpand: () -> Unit
 ) {
-    Surface(
+    ProxyGlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 56.dp)
@@ -632,7 +636,7 @@ private fun LoonGroupHeaderCard(
             .border(1.dp, LoonCardBorder, RoundedCornerShape(20.dp))
             .clickable { onToggleExpand() },
         color = LoonCard,
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(20.dp),
     ) {
         Row(
             modifier = Modifier
@@ -776,7 +780,7 @@ private fun LoonProxyItemCard(
         // 1 Column: Standard Horizontal Card (Fixed Height 54dp)
         // ---------------------------------------------------------------------
         1 -> {
-            Surface(
+            ProxyGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp)
@@ -787,7 +791,9 @@ private fun LoonProxyItemCard(
                         shape = RoundedCornerShape(14.dp)
                     )
                     .iosPressable { onClick() },
-                color = cardBg
+                color = cardBg,
+                shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
+                accent = if (isSelected) IosBlue else null
             ) {
                 Row(
                     modifier = Modifier
@@ -867,7 +873,7 @@ private fun LoonProxyItemCard(
         // 2 Columns: Balanced Grid Card (Fixed Height 62dp)
         // ---------------------------------------------------------------------
         2 -> {
-            Surface(
+            ProxyGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(62.dp)
@@ -878,7 +884,9 @@ private fun LoonProxyItemCard(
                         shape = RoundedCornerShape(14.dp)
                     )
                     .iosPressable { onClick() },
-                color = cardBg
+                color = cardBg,
+                shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
+                accent = if (isSelected) IosBlue else null
             ) {
                 Column(
                     modifier = Modifier
@@ -953,7 +961,7 @@ private fun LoonProxyItemCard(
         // 3 Columns: High-Density Mini Grid Card (Fixed Height 56dp)
         // ---------------------------------------------------------------------
         else -> {
-            Surface(
+            ProxyGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
@@ -964,7 +972,9 @@ private fun LoonProxyItemCard(
                         shape = RoundedCornerShape(12.dp)
                     )
                     .iosPressable { onClick() },
-                color = cardBg
+                color = cardBg,
+                shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
+                accent = if (isSelected) IosBlue else null
             ) {
                 Column(
                     modifier = Modifier
@@ -1034,5 +1044,41 @@ private fun LoonProxyItemCard(
                 }
             }
         }
+    }
+}
+
+
+/** Static, translucent card material: no per-card scene capture, blur, shader, or animation. */
+@Composable
+private fun ProxyGlassCard(
+    modifier: Modifier,
+    color: Color,
+    shape: RoundedCornerShape,
+    accent: Color? = null,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
+) {
+    if (GlassDefaults.enabled) {
+        val tokens = LocalGlassTokens.current
+        val tint = if (accent == null) tokens.tint else androidx.compose.ui.graphics.lerp(tokens.tintAccent, accent, 0.12f)
+        val fill = Brush.linearGradient(
+            listOf(tint.copy(alpha = tint.alpha * 0.42f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.42f))
+        )
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .background(fill)
+                .border(0.55.dp, tokens.edge.copy(alpha = tokens.edge.alpha * 0.72f), shape)
+                .drawWithCache {
+                    val sheen = Brush.verticalGradient(listOf(
+                        Color.White.copy(alpha = if (tokens.isDark) .025f else .045f),
+                        Color.Transparent
+                    ))
+                    // Cached paint only, behind content: glyphs are never filtered or washed out.
+                    onDrawBehind { drawRect(sheen) }
+                },
+            content = content
+        )
+    } else {
+        Surface(modifier = modifier, color = color, shape = shape) { Box(content = content) }
     }
 }

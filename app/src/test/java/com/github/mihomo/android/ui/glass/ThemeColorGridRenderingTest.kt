@@ -8,10 +8,14 @@ import android.view.PixelCopy
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -103,6 +107,44 @@ class ThemeColorGridRenderingTest {
                 "Clicked and persisted $blue then $coral; fresh SettingsManager and byKey reload match.\n" +
                 "Dark mode preserves custom RGB and selection.\n"
         )
+    }
+
+    @Test fun renderedSwatchesAreSquareAndShareExactRowAndColumnEdges() {
+        val density = mutableFloatStateOf(1f)
+        val width = mutableFloatStateOf(333f)
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(density.floatValue)) {
+                GlassPalettePicker(selected = GlassPalettes.byKey(GlassPalettes.keyForColor(ThemeColorGrid[38])),
+                    onSelect = {}, modifier = Modifier.width(width.floatValue.dp))
+            }
+        }
+        for ((d, w) in listOf(1f to 333f, 1f to 363f, 2f to 173f, 2.75f to 137f)) {
+        compose.runOnIdle { density.floatValue = d; width.floatValue = w }
+        compose.waitForIdle()
+        // Use the actual laid-out Compose semantics bounds, not calculated dp estimates.
+        val bounds = ThemeColorGrid.map { color ->
+            val key = GlassPalettes.keyForColor(color)
+            compose.onNodeWithContentDescription("#${key.substringAfter(':')}")
+                .fetchSemanticsNode().boundsInRoot
+        }
+        val first = bounds.first()
+        assertTrue("swatches must be square: ${first.width} x ${first.height}",
+            kotlin.math.abs(first.width - first.height) <= 1f)
+        for (index in bounds.indices) {
+            val cell = bounds[index]
+            val rowFirst = bounds[index / 12 * 12]
+            assertTrue("row cells share a top", kotlin.math.abs(cell.top - rowFirst.top) < 0.01f)
+            assertTrue("row cells share a bottom", kotlin.math.abs(cell.bottom - rowFirst.bottom) < 0.01f)
+            assertTrue("square within pixel rounding", kotlin.math.abs(cell.width - cell.height) <= 1f)
+            if (index % 12 > 0) assertTrue("adjacent swatch edges touch",
+                kotlin.math.abs(cell.left - bounds[index - 1].right) < 0.01f)
+            if (index >= bounds.size - 12) continue
+            val nextRow = bounds[index + 12]
+            assertTrue("rows share identical columns", kotlin.math.abs(cell.left - nextRow.left) < 0.01f)
+            assertTrue("successive rows touch", kotlin.math.abs(nextRow.top - cell.bottom) < 0.01f)
+        }
+        save(screenshot(), "theme-grid-geometry-${d}-${w}.png")
+        }
     }
 
     private fun screenshot(): Bitmap {

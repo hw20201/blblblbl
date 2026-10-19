@@ -161,9 +161,22 @@ internal fun lensReadyToContract(expansion: LensSpring, travel: LensSpring): Boo
     return expansion.target == 1f && expansionSettled && travelArrived
 }
 
-private data class LensFrame(val position: Float, val stretch: Float, val expansion: Float = 0f)
+internal data class LensFrame(val position: Float, val stretch: Float, val expansion: Float = 0f)
 
-/** Only the small lens animates; the original Nexus icons and labels stay put. */
+/** Shared by the shell and foreground drawing; never changes tab layout or hit targets. */
+@androidx.compose.runtime.Stable
+class NavigationLensOpticsState(initialPosition: Float) {
+    internal var frame by mutableStateOf(LensFrame(initialPosition, 0f))
+}
+
+/** Smooth spatial falloff follows the actual lens, including fractional drag positions. */
+internal fun lensTabMagnification(slot: Int, position: Float, expansion: Float): Float {
+    val proximity = (1f - abs(slot - position) / .95f).coerceIn(0f, 1f)
+    val coverage = proximity * proximity * (3f - 2f * proximity)
+    return 1f + coverage * (.04f + .07f * expansion.coerceIn(0f, 1f))
+}
+
+/** The shell and its sharp foreground share one motion clock. */
 @Composable
 fun NavigationLens(
     selectedSlot: Int,
@@ -171,14 +184,16 @@ fun NavigationLens(
     lens: NavigationLensState?,
     modifier: Modifier = Modifier,
     selectionPulse: Int = 0,
-    dragPosition: Float? = null
+    dragPosition: Float? = null,
+    optics: NavigationLensOpticsState? = null
 ) {
     if (lens == null || slotCount <= 0) return
     val destination = selectedSlot.coerceIn(0, slotCount - 1).toFloat()
     val travel = remember { LensSpring(destination, LensMotion.travelStiffness, LensMotion.travelDamping) }
     val jelly = remember { LensSpring(0f, LensMotion.jellyStiffness, LensMotion.jellyDamping) }
     val expansion = remember { LensSpring(0f, LensMotion.expansionStiffness, 1f) }
-    var frame by remember { mutableStateOf(LensFrame(destination, 0f)) }
+    val motion = optics ?: remember { NavigationLensOpticsState(destination) }
+    var frame by motion::frame
     LaunchedEffect(destination, selectionPulse, dragPosition) {
         withFrameNanos { now ->
             expansion.tick(now)
@@ -235,8 +250,8 @@ fun NavigationLens(
         val child = measurables.single().measure(Constraints.fixed(
             rect.width.roundToInt().coerceAtLeast(1), rect.height.roundToInt().coerceAtLeast(1)
         ))
-        // The parent and vertical centre stay fixed. Only the glass grows; never the
-        // hit targets, labels or icons. Do not clip its symmetric overhang.
+        // The parent and vertical centre stay fixed. Foreground drawing responds
+        // separately, without moving hit targets. Do not clip the shell's overhang.
         layout(barWidth, barHeight) {
             // Integer child dimensions must not nudge its centre by +/- half a pixel each frame.
             // Fractional layer placement preserves a fixed vertical centre and subpixel travel;
