@@ -26,8 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.core.ClashCore
-import com.github.mihomo.android.data.ScriptItem
-import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
@@ -59,9 +57,7 @@ fun SettingsScreen(
     onTunStackChanged: (TunStack) -> Unit,
     onBootOnStartupChanged: (Boolean) -> Unit,
     onAllowLanChanged: (Boolean) -> Unit,
-    onNavigateToScripts: () -> Unit = {},
-    onNavigateToProfiles: () -> Unit,
-    onNavigateToAppRouting: () -> Unit,
+    onNavigateToConfigurationCenter: () -> Unit,
     onNavigateToLogs: () -> Unit,
     onNavigateToAppearance: () -> Unit = {},
     onNavigateToDns: () -> Unit = {}
@@ -79,13 +75,11 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var currentLogLevel by remember { mutableStateOf(settingsManager.logLevel) }
 
-    var scripts by remember { mutableStateOf(emptyList<ScriptItem>()) }
     var coreVersion by remember { mutableStateOf("") }
 
     val installedVersion = remember(context) { getInstalledAppVersion(context) }
 
     LaunchedEffect(Unit) {
-        scripts = withContext(Dispatchers.IO) { ScriptManager.getScripts(context) }
         coreVersion = withContext(Dispatchers.IO) { ClashCore.getCoreVersion() }
     }
 
@@ -202,11 +196,12 @@ fun SettingsScreen(
                 header = "分流与服务"
             ) {
                 CupertinoCell(
-                    title = "应用分流",
-                    icon = Icons.Default.Apps,
-                    iconBg = Color(0xFFFF9500),
+                    title = "配置中心",
+                    subtitle = "配置文件、订阅、脚本与路由资源",
+                    icon = Icons.Default.FolderZip,
+                    iconBg = Color(0xFFAF52DE),
                     showChevron = true,
-                    onClick = onNavigateToAppRouting
+                    onClick = onNavigateToConfigurationCenter
                 )
                 CupertinoDivider()
                 CupertinoCell(
@@ -217,23 +212,7 @@ fun SettingsScreen(
                     showChevron = true,
                     onClick = onNavigateToDns
                 )
-                CupertinoDivider()
-                CupertinoCell(
-                    title = "脚本中心",
-                    value = "${scripts.size} 个脚本",
-                    icon = Icons.Default.Code,
-                    iconBg = Color(0xFF5856D6),
-                    showChevron = true,
-                    onClick = onNavigateToScripts
-                )
-                CupertinoDivider()
-                CupertinoCell(
-                    title = "配置与订阅",
-                    icon = Icons.Default.FolderZip,
-                    iconBg = Color(0xFFAF52DE),
-                    showChevron = true,
-                    onClick = onNavigateToProfiles
-                )
+
             }
 
             Spacer(modifier = Modifier.height(20.dp))

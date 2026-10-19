@@ -50,6 +50,8 @@ import com.github.mihomo.android.ui.glass.GlassPalettes
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NexusGlassBackground
 import com.github.mihomo.android.ui.glass.ProvideGlassTheme
+import com.github.mihomo.android.ui.glass.rememberNavigationLens
+import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
@@ -68,6 +70,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 enum class SubScreen {
+    CONFIGURATION_CENTER,
     PROFILES,
     APP_ROUTING,
     LOGS,
@@ -155,6 +158,7 @@ class MainActivity : ComponentActivity() {
         var currentSubScreen by rememberSaveable(stateSaver = subScreenSaver) {
             mutableStateOf<SubScreen?>(null)
         }
+        var fromConfigurationCenter by rememberSaveable { mutableStateOf(false) }
         var overrideTargetProfileId by rememberSaveable { mutableStateOf<String?>(null) }
         var overrideTargetProfile by remember { mutableStateOf<ProfileItem?>(null) }
 
@@ -683,20 +687,9 @@ class MainActivity : ComponentActivity() {
         }
 
         val handleSubScreenBack: () -> Unit = {
-            when (currentSubScreen) {
-                SubScreen.SCRIPTS -> {
-                    if (overrideTargetProfile != null) {
-                        currentSubScreen = SubScreen.PROFILE_OVERRIDE
-                    } else {
-                        currentSubScreen = null
-                    }
-                }
-                SubScreen.PROFILE_OVERRIDE -> {
-                    currentSubScreen = SubScreen.PROFILES
-                }
-                else -> {
-                    currentSubScreen = null
-                }
+            currentSubScreen = configurationParent(currentSubScreen, fromConfigurationCenter, overrideTargetProfileId != null)
+            if (currentSubScreen == null || currentSubScreen == SubScreen.CONFIGURATION_CENTER) {
+                fromConfigurationCenter = false
             }
         }
 
@@ -711,7 +704,12 @@ class MainActivity : ComponentActivity() {
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
         ) {
         ProvideGlassTheme {
-        NexusGlassBackground(palette = glassPalette) {
+        val navigationLens = rememberNavigationLens()
+        Box(Modifier.fillMaxSize()) {
+        NexusGlassBackground(
+            modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
+            palette = glassPalette
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -896,13 +894,12 @@ class MainActivity : ComponentActivity() {
                             settingsManager.mipsCongestionController = mipsCongestionController
                             restartTunnelForSettings()
                         },
-                        onNavigateToScripts = {
+                        onNavigateToConfigurationCenter = {
                             overrideTargetProfile = null
                             overrideTargetProfileId = null
-                            currentSubScreen = SubScreen.SCRIPTS
+                            fromConfigurationCenter = false
+                            currentSubScreen = SubScreen.CONFIGURATION_CENTER
                         },
-                        onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
-                        onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
                         onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
                         onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                         onNavigateToDns = { currentSubScreen = SubScreen.DNS }
@@ -996,14 +993,9 @@ class MainActivity : ComponentActivity() {
                 AnimatedContent(
                     targetState = displayedSubScreen,
                     transitionSpec = {
-                        fun getDepth(s: SubScreen?): Int = when (s) {
-                            null -> 0
-                            SubScreen.PROFILES, SubScreen.APP_ROUTING, SubScreen.LOGS,
-                            SubScreen.RULES, SubScreen.DNS, SubScreen.REQUESTS, SubScreen.NETWORK_SHARE,
-                            SubScreen.APPEARANCE -> 1
-                            SubScreen.PROFILE_OVERRIDE -> 2
-                            SubScreen.SCRIPTS -> 3
-                        }
+                        fun getDepth(s: SubScreen?): Int = configurationDepth(
+                            s, fromConfigurationCenter, overrideTargetProfileId != null
+                        )
                         val initialDepth = getDepth(initialState)
                         val targetDepth = getDepth(targetState)
 
@@ -1029,11 +1021,32 @@ class MainActivity : ComponentActivity() {
                     if (subScreen != null) {
                     NexusGlassBackground(palette = glassPalette) {
                         when (subScreen) {
+                            SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
+                                onNavigateToProfiles = {
+                                    fromConfigurationCenter = true
+                                    currentSubScreen = SubScreen.PROFILES
+                                },
+                                onNavigateToScripts = {
+                                    overrideTargetProfile = null
+                                    overrideTargetProfileId = null
+                                    fromConfigurationCenter = true
+                                    currentSubScreen = SubScreen.SCRIPTS
+                                },
+                                onNavigateToRules = {
+                                    fromConfigurationCenter = true
+                                    currentSubScreen = SubScreen.RULES
+                                },
+                                onNavigateToAppRouting = {
+                                    fromConfigurationCenter = true
+                                    currentSubScreen = SubScreen.APP_ROUTING
+                                },
+                                onBack = handleSubScreenBack
+                            )
                             SubScreen.PROFILES -> {
                                 ProfilesScreen(
                                     profiles = profiles,
                                     selectedProfileId = selectedProfileId,
-                                    onBack = { currentSubScreen = null },
+                                    onBack = handleSubScreenBack,
                                     onSelectProfile = { profile ->
                                         selectedProfileId = profile.id
                                         settingsManager.selectedProfileId = profile.id
@@ -1108,13 +1121,7 @@ class MainActivity : ComponentActivity() {
                             }
                             SubScreen.SCRIPTS -> {
                                 ScriptsScreen(
-                                    onBack = {
-                                        if (overrideTargetProfile != null) {
-                                            currentSubScreen = SubScreen.PROFILE_OVERRIDE
-                                        } else {
-                                            currentSubScreen = null
-                                        }
-                                    },
+                                    onBack = handleSubScreenBack,
                                     onScriptsChanged = {
                                         parseActiveProfile()
                                     }
@@ -1126,7 +1133,7 @@ class MainActivity : ComponentActivity() {
                                     selectedPackages = selectedPackages,
                                     apps = installedApps,
                                     isLoading = isAppsLoading,
-                                    onBack = { currentSubScreen = null },
+                                    onBack = handleSubScreenBack,
                                     onModeChanged = { mode ->
                                         perAppMode = mode
                                         settingsManager.perAppProxyMode = mode
@@ -1152,7 +1159,7 @@ class MainActivity : ComponentActivity() {
                                     rules = parsedProfile.rules,
                                     totalRules = parsedProfile.totalRules,
                                     tunnelMode = tunnelMode,
-                                    onBack = { currentSubScreen = null }
+                                    onBack = handleSubScreenBack
                                 )
                             }
                             SubScreen.DNS -> {
@@ -1246,6 +1253,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        } // scene content
+        } // recorded scene; the dock below must never enter its own input
+
             // 3. Floating Bottom Bar (stays stable underneath sliding sub-screens)
             Box(
                 modifier = Modifier
@@ -1271,12 +1281,12 @@ class MainActivity : ComponentActivity() {
                                 parseActiveProfile()
                             }
                         }
-                    }
+                    },
+                    lens = navigationLens
                 )
             }
-        }
-        }
-        } // end NexusGlassBackground / ProvideGlassTheme
+        } // scene + dock overlay
+        } // end ProvideGlassTheme
         } // end CompositionLocalProvider
     }
 }

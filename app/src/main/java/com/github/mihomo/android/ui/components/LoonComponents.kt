@@ -47,9 +47,10 @@ import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.glassTextPrimary
+import com.github.mihomo.android.ui.glass.NavigationLensState
+import com.github.mihomo.android.ui.glass.NavigationGlassSurface
 import com.github.mihomo.android.ui.glass.glassTextSecondary
 import com.github.mihomo.android.ui.theme.*
-
 @Composable
 fun LoonTrafficCard(
     modifier: Modifier = Modifier,
@@ -957,13 +958,11 @@ fun AppRoutingIllustration() {
 fun LoonFloatingBottomBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lens: NavigationLensState? = null
 ) {
     if (GlassDefaults.enabled) {
-        GlassSurface(
-            modifier = modifier.shadow(16.dp, RoundedCornerShape(GlassRadius.bar), spotColor = Color(0x33000000)),
-            shape = RoundedCornerShape(GlassRadius.bar)
-        ) {
+        NavigationGlassSurface(modifier = modifier, lens = lens) {
             BottomBarItems(selectedTab, onTabSelected)
         }
         return
