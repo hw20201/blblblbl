@@ -131,9 +131,21 @@ fun GlassSurface(
         )
     }
 
-    if (lens == null || Build.VERSION.SDK_INT < 31) {
+    val hybrid = lens != null && LocalShortcutGlassDesign.current == ShortcutGlassDesign.Hybrid
+    val quality = if (hybrid) rememberShortcutGlassQuality() else null
+    if (lens == null || Build.VERSION.SDK_INT < 31 || quality == ShortcutGlassQuality.Flat) {
         // Preserve the established painted material for every non-card surface.
-        Box(modifier = modifier.clip(shape).background(fill).glassSurface(tokens), content = content)
+        // Low-RAM hybrid shortcuts also skip card replay, shader and card effect layer.
+        // The existing screen/dock source recorders are deliberately not changed here.
+        if (hybrid) {
+            Box(modifier = modifier.clip(shape)) {
+                // Never paint the fallback sheen over shortcut labels or illustrations.
+                Box(Modifier.matchParentSize().background(fill).glassSurface(tokens))
+                Box(Modifier.matchParentSize(), content = content)
+            }
+        } else {
+            Box(modifier = modifier.clip(shape).background(fill).glassSurface(tokens), content = content)
+        }
     } else {
         val translucentFill = Brush.linearGradient(
             listOf(tokens.tint.copy(alpha = tokens.tint.alpha * 0.20f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.20f)),
@@ -144,9 +156,11 @@ fun GlassSurface(
         // paint a fixed white outline over the live sampled bevel.
         Box(modifier = modifier.clip(shape)) {
             CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled,
-                softMeshRim = true, isDark = tokens.isDark)
+                softMeshRim = true, isDark = tokens.isDark,
+                hybrid = hybrid, shaderEnabled = quality != ShortcutGlassQuality.Shared)
             Box(Modifier.matchParentSize().background(translucentFill, shape).shortcutCardPolish()
-                .then(if (Build.VERSION.SDK_INT < 33) Modifier.restrainedCardRim(shape) else Modifier))
+                .then(if (Build.VERSION.SDK_INT < 33 || quality == ShortcutGlassQuality.Shared)
+                    Modifier.restrainedCardRim(shape) else Modifier))
             Box(Modifier.matchParentSize(), content = content)
         }
     }

@@ -39,12 +39,14 @@ internal fun BoxScope.CardBackdrop(
     fallback: Brush,
     blurEnabled: Boolean = true,
     softMeshRim: Boolean = false,
-    isDark: Boolean = false
+    isDark: Boolean = false,
+    hybrid: Boolean = false,
+    shaderEnabled: Boolean = true
 ) {
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val rim = remember(softMeshRim) {
-        if (softMeshRim && Build.VERSION.SDK_INT >= 33) ShortcutMeshOptics() else null
+    val rim = remember(softMeshRim, shaderEnabled) {
+        if (softMeshRim && shaderEnabled && Build.VERSION.SDK_INT >= 33) ShortcutMeshOptics() else null
     }
     val blur = remember(density, softMeshRim, blurEnabled) {
         if (!softMeshRim && blurEnabled && Build.VERSION.SDK_INT >= 31) {
@@ -56,7 +58,7 @@ internal fun BoxScope.CardBackdrop(
         .onGloballyPositioned { origin = it.positionInRoot() }
         .graphicsLayer {
             if (Build.VERSION.SDK_INT >= 33 && rim != null) {
-                rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark)
+                rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark, hybrid)
                 renderEffect = rim.effect
             } else {
                 renderEffect = blur
