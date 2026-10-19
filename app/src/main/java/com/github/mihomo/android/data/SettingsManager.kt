@@ -20,9 +20,6 @@ enum class ThemeMode {
 class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
 
-    var uiStyle: UiStyle
-        get() = UiStyle.fromKey(prefs.getString("ui_style", null))
-        set(value) = prefs.edit().putString("ui_style", value.name).apply()
     var selectedProfileId: String?
         get() = prefs.getString("selected_profile_id", null)
         set(value) = prefs.edit().putString("selected_profile_id", value).apply()
@@ -166,15 +163,6 @@ class SettingsManager(context: Context) {
             return runCatching { ThemeMode.valueOf(raw!!) }.getOrDefault(ThemeMode.SYSTEM)
         }
         set(value) = prefs.edit().putString("theme_mode", value.name).apply()
-
-    /** Master switch for glass styling, independent of UI style and saved intensity. */
-    var glassEnabled: Boolean
-        get() = prefs.getBoolean("glass_enabled", true)
-        set(value) = prefs.edit().putBoolean("glass_enabled", value).apply()
-
-    var glassIntensity: Float
-        get() = GlassEffect.normalize(prefs.getFloat("glass_intensity", GlassEffect.DEFAULT_INTENSITY))
-        set(value) = prefs.edit().putFloat("glass_intensity", GlassEffect.normalize(value)).apply()
 
     var appLanguage: String
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"

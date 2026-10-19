@@ -6,7 +6,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.mihomo.android.core.model.TunnelMode
-import com.github.mihomo.android.data.UiStyle
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import org.junit.Assert.assertEquals

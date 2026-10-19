@@ -5,16 +5,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.clickable
-import com.github.mihomo.android.ui.components.hapticClickable
-import com.github.mihomo.android.ui.components.rememberHapticAction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,33 +51,246 @@ fun LoonTrafficCard(
     speed: String,
     isUpload: Boolean
 ) {
-    val accent = if (isUpload) IosBlue else Color(0xFF6269E8)
-    Box(modifier = modifier.height(88.dp).glassCardFinish(LoonCard, 20.dp).padding(14.dp)) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(26.dp).clip(CircleShape).background(accent.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
-                    Icon(if (isUpload) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward, null, tint = accent, modifier = Modifier.size(19.dp))
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(title, color = LoonTextSecondary, fontSize = 12.sp)
+    val gradient = if (isUpload) {
+        Brush.horizontalGradient(listOf(Color(0xFF00C853), Color(0xFF00E676)))
+    } else {
+        Brush.horizontalGradient(listOf(Color(0xFF4A69FF), Color(0xFF6C5CE7)))
+    }
+
+    Surface(
+        modifier = modifier
+            .height(82.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(18.dp),
+                spotColor = if (isUpload) Color(0x3300C853) else Color(0x334A69FF)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.Transparent
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(18.dp))
+                .background(gradient)
+        ) {
+            // Primary Information (Title & Real-time speed)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 14.dp, end = 56.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = if (speed.isBlank()) "--" else speed,
+                    color = Color.White,
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
             }
-            Spacer(Modifier.height(6.dp))
-            val display = speed.ifBlank { "--" }.split(' ', limit = 2)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(display.first(), color = LoonTextPrimary, fontSize = 23.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.alignByBaseline())
-                if (display.size > 1) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(display[1], color = LoonTextSecondary, fontSize = 11.sp, maxLines = 1, modifier = Modifier.alignByBaseline())
-                }
+
+            // iOS-Style Rounded Traffic Arrow (SF Symbols Morphology, Rounded Curves, Frosted Translucency)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                IosTrafficArrow(
+                    isUpload = isUpload,
+                    modifier = Modifier.size(width = 32.dp, height = 38.dp)
+                )
             }
         }
     }
 }
 
+/**
+ * Modern iOS SF Symbols rounded traffic arrow.
+ * Features organic rounded apex, rounded wingtips, smooth concave fillets, and rounded base.
+ * Employs frosted translucent gradients and subtle high-clarity contour for authentic iOS vibrancy.
+ */
 @Composable
-private fun ShortcutSurface(modifier: Modifier, color: Color, content: @Composable () -> Unit) {
-    val glass = modifier.glassCardFinish(color, 16.dp)
-    Surface(modifier = glass, color = Color.Transparent, content = content)
+private fun IosTrafficArrow(
+    isUpload: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+
+        // iOS rounded proportions
+        val rApex = 2.4.dp.toPx()
+        val rWing = 2.4.dp.toPx()
+        val rInner = 2.8.dp.toPx()
+        val rBase = 2.6.dp.toPx()
+
+        val wingW = w * 0.92f
+        val wingLeft = cx - wingW * 0.5f
+        val wingRight = cx + wingW * 0.5f
+
+        val stemW = w * 0.36f
+        val stemLeft = cx - stemW * 0.5f
+        val stemRight = cx + stemW * 0.5f
+
+        val path = Path()
+
+        if (isUpload) {
+            // ==================== UPLOAD (Points UP) ====================
+            val topY = 1.5.dp.toPx()
+            val wingY = h * 0.52f
+            val bottomY = h - 1.5.dp.toPx()
+
+            path.apply {
+                // 1. Rounded Apex
+                moveTo(cx - rApex * 0.8f, topY + rApex * 0.8f)
+                quadraticTo(cx, topY, cx + rApex * 0.8f, topY + rApex * 0.8f)
+
+                // 2. Right downward wing slope
+                lineTo(wingRight - rWing * 0.7f, wingY - rWing * 0.7f)
+
+                // 3. Right wingtip curve
+                quadraticTo(wingRight, wingY, wingRight - rWing, wingY)
+
+                // 4. Horizontal notch in towards stem
+                lineTo(stemRight + rInner, wingY)
+
+                // 5. Right inner fillet curve (smooth concave corner)
+                quadraticTo(stemRight, wingY, stemRight, wingY + rInner)
+
+                // 6. Right stem vertical edge
+                lineTo(stemRight, bottomY - rBase)
+
+                // 7. Bottom-right base curve
+                quadraticTo(stemRight, bottomY, stemRight - rBase, bottomY)
+
+                // 8. Base horizontal edge
+                lineTo(stemLeft + rBase, bottomY)
+
+                // 9. Bottom-left base curve
+                quadraticTo(stemLeft, bottomY, stemLeft, bottomY - rBase)
+
+                // 10. Left stem vertical edge
+                lineTo(stemLeft, wingY + rInner)
+
+                // 11. Left inner fillet curve (smooth concave corner)
+                quadraticTo(stemLeft, wingY, stemLeft - rInner, wingY)
+
+                // 12. Horizontal notch out towards wing
+                lineTo(wingLeft + rWing, wingY)
+
+                // 13. Left wingtip curve
+                quadraticTo(wingLeft, wingY, wingLeft + rWing * 0.7f, wingY - rWing * 0.7f)
+
+                // 14. Left upward wing slope back to apex
+                lineTo(cx - rApex * 0.8f, topY + rApex * 0.8f)
+                close()
+            }
+        } else {
+            // ==================== DOWNLOAD (Points DOWN) ====================
+            val topY = 1.5.dp.toPx()
+            val wingY = h * 0.48f
+            val bottomY = h - 1.5.dp.toPx()
+
+            path.apply {
+                // 1. Top-left stem base curve
+                moveTo(stemLeft, topY + rBase)
+                quadraticTo(stemLeft, topY, stemLeft + rBase, topY)
+
+                // 2. Top base horizontal edge
+                lineTo(stemRight - rBase, topY)
+
+                // 3. Top-right stem base curve
+                quadraticTo(stemRight, topY, stemRight, topY + rBase)
+
+                // 4. Right stem vertical edge down to fillet
+                lineTo(stemRight, wingY - rInner)
+
+                // 5. Right inner fillet curve (smooth concave corner)
+                quadraticTo(stemRight, wingY, stemRight + rInner, wingY)
+
+                // 6. Horizontal notch out towards wing
+                lineTo(wingRight - rWing, wingY)
+
+                // 7. Right wingtip curve
+                quadraticTo(wingRight, wingY, wingRight - rWing * 0.7f, wingY + rWing * 0.7f)
+
+                // 8. Right downward slope to apex
+                lineTo(cx + rApex * 0.8f, bottomY - rApex * 0.8f)
+
+                // 9. Bottom apex curve
+                quadraticTo(cx, bottomY, cx - rApex * 0.8f, bottomY - rApex * 0.8f)
+
+                // 10. Left upward slope to wing
+                lineTo(wingLeft + rWing * 0.7f, wingY + rWing * 0.7f)
+
+                // 11. Left wingtip curve
+                quadraticTo(wingLeft, wingY, wingLeft + rWing, wingY)
+
+                // 12. Horizontal notch in towards stem
+                lineTo(stemLeft - rInner, wingY)
+
+                // 13. Left inner fillet curve (smooth concave corner)
+                quadraticTo(stemLeft, wingY, stemLeft, wingY - rInner)
+
+                // 14. Left stem vertical edge back to top
+                lineTo(stemLeft, topY + rBase)
+                close()
+            }
+        }
+
+        // Frosted translucent body fill (reveals vibrant card gradient underneath)
+        val fillBrush = Brush.verticalGradient(
+            colors = if (isUpload) {
+                listOf(
+                    Color.White.copy(alpha = 0.78f),
+                    Color.White.copy(alpha = 0.45f)
+                )
+            } else {
+                listOf(
+                    Color.White.copy(alpha = 0.45f),
+                    Color.White.copy(alpha = 0.78f)
+                )
+            },
+            startY = 0f,
+            endY = h
+        )
+        drawPath(path = path, brush = fillBrush)
+
+        // Crisp semi-translucent contour (clean iOS Vibrancy outline)
+        val strokeBrush = Brush.verticalGradient(
+            colors = if (isUpload) {
+                listOf(
+                    Color.White.copy(alpha = 0.95f),
+                    Color.White.copy(alpha = 0.65f)
+                )
+            } else {
+                listOf(
+                    Color.White.copy(alpha = 0.65f),
+                    Color.White.copy(alpha = 0.95f)
+                )
+            },
+            startY = 0f,
+            endY = h
+        )
+        drawPath(
+            path = path,
+            brush = strokeBrush,
+            style = Stroke(
+                width = 1.4.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+    }
 }
 
 @Composable
@@ -98,34 +303,109 @@ fun LoonShortcutCard(
     onDelete: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    ShortcutSurface(
-        modifier = modifier.height(64.dp)
-            .iosPressable(enabled = !isEditing, onClick = rememberHapticAction(onClick)),
+    val haptic = rememberIosHaptic()
+    Surface(
+        modifier = modifier
+            .height(118.dp)
+            .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
+            .clip(RoundedCornerShape(18.dp))
+            .border(
+                width = 0.5.dp,
+                color = LoonCardBorder,
+                shape = RoundedCornerShape(18.dp)
+            )
+            .iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+                haptic.lightTick()
+                onClick()
+            },
         color = LoonCard
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(IosBlue.copy(alpha = 0.07f)), contentAlignment = Alignment.Center) {
-                    Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { icon() }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Text info on top-left
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 14.dp, top = 14.dp, end = 56.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = LoonTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                if (subtitle.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = subtitle,
+                        color = LoonTextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1
+                    )
                 }
-                Spacer(Modifier.width(9.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, color = LoonTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (subtitle.isNotBlank()) {
-                        Spacer(Modifier.height(3.dp))
-                        Text(subtitle, color = LoonTextSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                Icon(if (isEditing) Icons.Default.DragHandle else Icons.Default.ChevronRight, null, tint = LoonTextSecondary.copy(alpha = 0.50f), modifier = Modifier.size(17.dp))
             }
+
+            // Bottom-left: clean chevron '>' button or drag handle (no background color block)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 14.dp, bottom = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isEditing) {
+                    Canvas(modifier = Modifier.size(18.dp)) {
+                        val stroke = 2.dp.toPx()
+                        val w = size.width
+                        val h = size.height
+                        val color = Color(0xFF9AA0AE)
+                        drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
+                        drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color(0xFF9AA0AE),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Bottom-right large floating illustration
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 10.dp, bottom = 10.dp)
+                    .size(54.dp),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                icon()
+            }
+
+            // Red minus/remove button badge at top-right in edit mode
             if (isEditing && onDelete != null) {
-                Box(Modifier.align(Alignment.TopEnd).padding(2.dp).size(20.dp).clip(CircleShape).background(Color(0xFFFF3B30)).hapticClickable(onDelete), contentAlignment = Alignment.Center) {
-                    Text("−", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF3B30))
+                        .clickable { onDelete() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\u2212",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
             }
         }
     }
 }
+
 // -------------------------------------------------------------
 // iOS/Loon Style High-Fidelity Canvas Illustrations
 // -------------------------------------------------------------
@@ -585,50 +865,41 @@ fun LoonFloatingBottomBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val radius = 34.dp
-    GlassNavigationSurface(
+    Surface(
         modifier = modifier
-            .widthIn(max = 480.dp)
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp),
-        radius = radius
+            .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
+            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
+        shape = RoundedCornerShape(32.dp),
+        color = LocalLoonColors.current.bottomBarBg
     ) {
-        LoonBottomNavigationTabs(selectedTab, onTabSelected)
-    }
-}
-
-/** The preview and real navigation use exactly the same geometry and semantics. */
-@Composable
-internal fun LoonBottomNavigationTabs(
-    selectedTab: Int,
-    onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth()
-            .padding(horizontal = 5.dp, vertical = 5.dp)
-            .selectableGroup(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val lang = LocalAppLanguage.current
-        BottomNavItem(
-            modifier = Modifier.weight(1f), index = 0,
-            icon = Icons.Default.Speed,
-            label = AppStrings.get("nav_dashboard", lang),
-            isSelected = selectedTab == 0, onClick = { onTabSelected(0) }
-        )
-        BottomNavItem(
-            modifier = Modifier.weight(1f), index = 1,
-            customIcon = { tint -> StandardCubeIcon(tint = tint) },
-            label = AppStrings.get("nav_proxies", lang),
-            isSelected = selectedTab == 1, onClick = { onTabSelected(1) }
-        )
-        BottomNavItem(
-            modifier = Modifier.weight(1f), index = 2,
-            icon = Icons.Outlined.Settings,
-            label = AppStrings.get("nav_settings", lang),
-            isSelected = selectedTab == 2, onClick = { onTabSelected(2) }
-        )
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 28.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(40.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val lang = LocalAppLanguage.current
+            BottomNavItem(
+                icon = Icons.Default.Speed,
+                label = AppStrings.get("nav_dashboard", lang),
+                isSelected = selectedTab == 0,
+                onClick = { onTabSelected(0) }
+            )
+            BottomNavItem(
+                customIcon = { tint ->
+                    StandardCubeIcon(tint = tint)
+                },
+                label = AppStrings.get("nav_proxies", lang),
+                isSelected = selectedTab == 1,
+                onClick = { onTabSelected(1) }
+            )
+            BottomNavItem(
+                icon = Icons.Outlined.Settings,
+                label = AppStrings.get("nav_settings", lang),
+                isSelected = selectedTab == 2,
+                onClick = { onTabSelected(2) }
+            )
+        }
     }
 }
 
@@ -685,64 +956,59 @@ fun StandardCubeIcon(
 
 @Composable
 private fun BottomNavItem(
-    modifier: Modifier = Modifier,
-    index: Int,
     icon: ImageVector? = null,
     customIcon: (@Composable (Color) -> Unit)? = null,
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val haptic = rememberIosHaptic()
     val tint by animateColorAsState(
-        targetValue = if (isSelected) IosBlue else LoonTextSecondary,
+        targetValue = if (isSelected) IosBlue else Color(0xFF8E8E93),
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
-    val lens by animateColorAsState(
-        targetValue = if (isSelected) IosBlue.copy(alpha = if (LocalLoonColors.current.isDark) 0.20f else 0.09f)
-            else Color.Transparent,
-        animationSpec = tween(durationMillis = 180),
-        label = "nav_glass_lens"
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.08f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = 0.7f,
+            stiffness = 400f
+        ),
+        label = "nav_scale"
     )
-    // Never scale the selected cell: it must share the same icon centre and
-    // text baseline as its neighbours, including with enlarged system fonts.
+
     Column(
-        modifier = modifier
-            .testTag("bottom-tab-$index")
-            .clip(RoundedCornerShape(28.dp))
-            .background(lens)
-            .selectable(
-                selected = isSelected,
-                role = Role.Tab,
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
-                onClick = rememberHapticAction(onClick)
-            )
-            .heightIn(min = 54.dp)
-            .padding(horizontal = 4.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                haptic.selection()
+                onClick()
+            }
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(22.dp).testTag("bottom-icon-$index"), contentAlignment = Alignment.Center) {
-            if (customIcon != null) customIcon(tint)
-            else if (icon != null) Icon(
-                imageVector = icon, contentDescription = null,
-                tint = tint, modifier = Modifier.size(22.dp)
+        if (customIcon != null) {
+            customIcon(tint)
+        } else if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(1.dp))
         Text(
             text = label,
-            modifier = Modifier.fillMaxWidth().testTag("bottom-label-$index"),
             color = tint,
-            style = SettingsTypography.NavigationLabel.copy(
-                platformStyle = PlatformTextStyle(includeFontPadding = false)
-            ),
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis
+            fontSize = 10.5.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
@@ -807,7 +1073,7 @@ fun rememberBounceOverscrollConnection(
                     overscrollOffset.animateTo(
                         targetValue = 0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            dampingRatio = 0.82f,
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
@@ -821,7 +1087,7 @@ fun rememberBounceOverscrollConnection(
                     overscrollOffset.animateTo(
                         targetValue = 0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            dampingRatio = 0.82f,
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
@@ -833,6 +1099,7 @@ fun rememberBounceOverscrollConnection(
     return Pair(connection, overscrollOffset.asState())
 }
 
+// iOS-style Rubber-Band Bounce Overscroll
 fun Modifier.bounceOverscroll(
     allowTop: Boolean = true,
     allowBottom: Boolean = true

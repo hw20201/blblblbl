@@ -14,7 +14,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.mihomo.android.core.model.TunnelMode
-import com.github.mihomo.android.data.UiStyle
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import com.github.mihomo.android.ui.theme.LocalAppLanguage

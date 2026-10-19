@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -20,8 +21,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.github.mihomo.android.ui.theme.LocalAppLanguage
@@ -41,10 +45,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
-import com.github.mihomo.android.ui.components.LocalGlassBackdrop
-import com.github.mihomo.android.ui.components.rememberGlassBackdrop
-import com.github.mihomo.android.ui.components.glassBackdropSource
-import com.github.mihomo.android.ui.components.LocalMainBottomBarInset
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
 import com.github.mihomo.android.ui.theme.LoonBg
@@ -63,7 +63,6 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 enum class SubScreen {
-    CONFIGURATION_CENTER,
     PROFILES,
     APP_ROUTING,
     LOGS,
@@ -112,20 +111,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themeMode by remember { mutableStateOf(settingsManager.themeMode) }
-            var glassIntensity by remember { mutableFloatStateOf(settingsManager.glassIntensity) }
-            var glassEnabled by remember { mutableStateOf(settingsManager.glassEnabled) }
-            MihomoTheme(themeMode = themeMode, glassIntensity = glassIntensity, glassEnabled = glassEnabled) {
+            MihomoTheme(themeMode = themeMode) {
                 MainAppScreen(
-                    glassIntensity = glassIntensity,
-                    glassEnabled = glassEnabled,
-                    onGlassEnabledChanged = { enabled ->
-                        settingsManager.glassEnabled = enabled
-                        glassEnabled = enabled
-                    },
-                    onGlassIntensityChanged = { value ->
-                        settingsManager.glassIntensity = value
-                        glassIntensity = settingsManager.glassIntensity
-                    },
                     currentThemeMode = themeMode,
                     onThemeModeChanged = { newMode ->
                         settingsManager.themeMode = newMode
@@ -154,21 +141,12 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun MainAppScreen(
         currentThemeMode: ThemeMode,
-        onThemeModeChanged: (ThemeMode) -> Unit,
-        glassIntensity: Float,
-        glassEnabled: Boolean,
-        onGlassEnabledChanged: (Boolean) -> Unit,
-        onGlassIntensityChanged: (Float) -> Unit
+        onThemeModeChanged: (ThemeMode) -> Unit
     ) {
         // Primary Tabs: 0: 仪表, 1: 策略, 2: 配置
         var currentTab by rememberSaveable { mutableStateOf(0) }
         var currentSubScreen by rememberSaveable(stateSaver = subScreenSaver) {
             mutableStateOf<SubScreen?>(null)
-        }
-        var childReturnsToConfigCenter by rememberSaveable { mutableStateOf(false) }
-        fun backToOrigin() {
-            currentSubScreen = if (childReturnsToConfigCenter) SubScreen.CONFIGURATION_CENTER else null
-            childReturnsToConfigCenter = false
         }
         var overrideTargetProfileId by rememberSaveable { mutableStateOf<String?>(null) }
         var overrideTargetProfile by remember { mutableStateOf<ProfileItem?>(null) }
@@ -231,7 +209,7 @@ class MainActivity : ComponentActivity() {
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
-        var tunMtu by remember { mutableStateOf(settingsManager.tunMtu) }
+        var tunMtu by remember { mutableIntStateOf(settingsManager.tunMtu) }
         var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
         val settingsScrollState = rememberScrollState()
         val dashboardScrollState = rememberScrollState()
@@ -296,11 +274,10 @@ class MainActivity : ComponentActivity() {
 
         var parseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-        // Settings that shape the TUN only take effect after the service rebuilds it.
+        // Settings affecting the active TUN take effect by rebuilding its service.
         fun restartTunnelForSettings() {
             when (MihomoVpnService.vpnState.value.status) {
-                VpnState.Status.RUNNING, VpnState.Status.STARTING ->
-                    MihomoVpnService.restart(this@MainActivity)
+                VpnState.Status.RUNNING, VpnState.Status.STARTING -> MihomoVpnService.restart(this@MainActivity)
                 else -> Unit
             }
         }
@@ -698,30 +675,32 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Handle Android system back button
-        BackHandler(enabled = currentSubScreen != null) {
+        val handleSubScreenBack: () -> Unit = {
             when (currentSubScreen) {
                 SubScreen.SCRIPTS -> {
                     if (overrideTargetProfile != null) {
                         currentSubScreen = SubScreen.PROFILE_OVERRIDE
                     } else {
-                        backToOrigin()
+                        currentSubScreen = null
                     }
                 }
                 SubScreen.PROFILE_OVERRIDE -> {
                     currentSubScreen = SubScreen.PROFILES
                 }
-                else -> backToOrigin()
+                else -> {
+                    currentSubScreen = null
+                }
             }
         }
 
-        var mainBottomBarHeightPx by remember { mutableIntStateOf(0) }
-        val mainBottomBarInset = with(LocalDensity.current) { mainBottomBarHeightPx.toDp() }
-        val navigationBackdrop = rememberGlassBackdrop()
+        // Handle Android system back button
+        BackHandler(enabled = currentSubScreen != null) {
+            handleSubScreenBack()
+        }
+
         CompositionLocalProvider(
-            LocalGlassBackdrop provides navigationBackdrop,
             LocalAppLanguage provides appLanguage,
-            // Read synchronously after each action, including the preference switch itself.
+            // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
         ) {
         Box(
@@ -730,15 +709,12 @@ class MainActivity : ComponentActivity() {
                 .background(LoonBg)
         ) {
             // 1. Primary main tabs: HorizontalPager keeps all 3 tabs persistently composed!
-            CompositionLocalProvider(LocalMainBottomBarInset provides mainBottomBarInset) {
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = false,
                 beyondViewportPageCount = 2,
-                modifier = Modifier.fillMaxSize().glassBackdropSource(navigationBackdrop, glassEnabled && currentSubScreen == null)
+                modifier = Modifier.fillMaxSize()
             ) { page ->
-                // Pager retains neighbouring pages; each pane must own its wallpaper source.
-                CompositionLocalProvider(com.github.mihomo.android.ui.components.LocalGlassMaterialBackdrop provides rememberGlassBackdrop()) {
                 when (page) {
                     0 -> {
                         val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
@@ -755,14 +731,14 @@ class MainActivity : ComponentActivity() {
                         DashboardScreen(
                             scrollState = dashboardScrollState,
                             vpnState = vpnState,
+                            requestMonitoringEnabled = requestMonitoringEnabled,
                             currentMode = tunnelMode,
                             activeProfileName = DashboardData.activeProfile(profiles, selectedProfileId)?.name ?: "未选择配置",
                             mainGroupName = mainProxyGroupName,
                             mainGroupProxies = mainGroupProxies,
                             activeNodeName = currentMainActiveNode,
-                            totalNodes = DashboardData.nodeCount(parsedProfile.totalNodes, liveGroupMap),
+                            totalNodes = parsedProfile.totalNodes,
                             totalRules = parsedProfile.totalRules,
-                            requestMonitoringEnabled = requestMonitoringEnabled,
                             visibleShortcuts = visibleShortcuts,
                             shortcutOrder = shortcutOrder,
                             onToggleVpn = { handleToggleVpn() },
@@ -863,7 +839,7 @@ class MainActivity : ComponentActivity() {
                     }
                     2 -> SettingsScreen(
                         scrollState = settingsScrollState,
-                        tunStack = tunStack.key,
+                        tunStack = tunStack,
                         bootOnStartup = bootOnStartup,
                         allowLan = allowLan,
                         fakeIpEnabled = fakeIpEnabled,
@@ -873,9 +849,9 @@ class MainActivity : ComponentActivity() {
                         mipsCongestionController = mipsCongestionController,
                         themeMode = currentThemeMode,
                         onTunStackChanged = { stack ->
-                            if (settingsManager.setTunStack(stack)) {
-                                tunStack = settingsManager.tunStack
-                            }
+                            tunStack = stack
+                            settingsManager.tunStack = stack
+                            restartTunnelForSettings()
                         },
                         onBootOnStartupChanged = { enabled ->
                             bootOnStartup = enabled
@@ -884,17 +860,6 @@ class MainActivity : ComponentActivity() {
                         onAllowLanChanged = { enabled ->
                             allowLan = enabled
                             settingsManager.allowLan = enabled
-                            if (vpnState.status == VpnState.Status.RUNNING) {
-                                lifecycleScope.launch(Dispatchers.IO) {
-                                    val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
-                                    val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                    ClashCore.load(conf)
-                                }
-                            }
-                        },
-                        onFakeIpEnabledChanged = { enabled ->
-                            fakeIpEnabled = enabled
-                            settingsManager.fakeIpEnabled = enabled
                             if (vpnState.status == VpnState.Status.RUNNING) {
                                 lifecycleScope.launch(Dispatchers.IO) {
                                     val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
@@ -917,21 +882,25 @@ class MainActivity : ComponentActivity() {
                             settingsManager.tunMtu = tunMtu
                             restartTunnelForSettings()
                         },
-                        onMipsCongestionControllerChanged = { controller ->
-                            mipsCongestionController = TunTuning.normalizeCongestionController(controller)
+                        onMipsCongestionControllerChanged = { value ->
+                            mipsCongestionController = TunTuning.normalizeCongestionController(value)
                             settingsManager.mipsCongestionController = mipsCongestionController
                             restartTunnelForSettings()
                         },
-                        onNavigateToConfigurationCenter = { currentSubScreen = SubScreen.CONFIGURATION_CENTER },
+                        onNavigateToScripts = {
+                            overrideTargetProfile = null
+                            overrideTargetProfileId = null
+                            currentSubScreen = SubScreen.SCRIPTS
+                        },
+                        onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
+                        onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
                         onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
                         onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                         onNavigateToDns = { currentSubScreen = SubScreen.DNS }
                     )
                 }
             }
-            }
 
-            }
             var lastActiveSubScreen by remember { mutableStateOf<SubScreen?>(null) }
             LaunchedEffect(currentSubScreen) {
                 if (currentSubScreen != null) {
@@ -940,7 +909,17 @@ class MainActivity : ComponentActivity() {
             }
             val displayedSubScreen = currentSubScreen ?: lastActiveSubScreen
 
-            // 2. Sub-screens overlay (smooth slide in / out over the main tabs)
+            val edgeSwipeOffsetX = remember { androidx.compose.animation.core.Animatable(0f) }
+            var isEdgeDragging by remember { mutableStateOf(false) }
+            val density = LocalDensity.current
+            val edgeZonePx = with(density) { 32.dp.toPx() }
+
+            LaunchedEffect(currentSubScreen) {
+                edgeSwipeOffsetX.snapTo(0f)
+                isEdgeDragging = false
+            }
+
+            // 2. Sub-screens overlay (smooth slide in / out over the main tabs with iOS edge swipe back)
             AnimatedVisibility(
                 visible = currentSubScreen != null,
                 enter = slideInHorizontally(
@@ -951,14 +930,65 @@ class MainActivity : ComponentActivity() {
                     targetOffsetX = { it },
                     animationSpec = tween(260, easing = FastOutSlowInEasing)
                 ) + fadeOut(animationSpec = tween(200)),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(20f)
+                    .pointerInput(currentSubScreen) {
+                        if (currentSubScreen == null) return@pointerInput
+                        detectHorizontalDragGestures(
+                            onDragStart = { startOffset ->
+                                isEdgeDragging = startOffset.x <= edgeZonePx
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                if (isEdgeDragging && (dragAmount > 0f || edgeSwipeOffsetX.value > 0f)) {
+                                    change.consume()
+                                    val next = (edgeSwipeOffsetX.value + dragAmount).coerceAtLeast(0f)
+                                    coroutineScope.launch { edgeSwipeOffsetX.snapTo(next) }
+                                }
+                            },
+                            onDragEnd = {
+                                if (isEdgeDragging) {
+                                    isEdgeDragging = false
+                                    val screenWidth = size.width.toFloat()
+                                    if (edgeSwipeOffsetX.value > screenWidth * 0.30f) {
+                                        coroutineScope.launch {
+                                            edgeSwipeOffsetX.animateTo(
+                                                targetValue = screenWidth,
+                                                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                            )
+                                            handleSubScreenBack()
+                                            edgeSwipeOffsetX.snapTo(0f)
+                                        }
+                                    } else {
+                                        coroutineScope.launch {
+                                            edgeSwipeOffsetX.animateTo(
+                                                targetValue = 0f,
+                                                animationSpec = androidx.compose.animation.core.spring(
+                                                    dampingRatio = 0.82f,
+                                                    stiffness = 500f
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                if (isEdgeDragging) {
+                                    isEdgeDragging = false
+                                    coroutineScope.launch { edgeSwipeOffsetX.animateTo(0f) }
+                                }
+                            }
+                        )
+                    }
+                    .graphicsLayer {
+                        translationX = edgeSwipeOffsetX.value
+                    }
             ) {
                 AnimatedContent(
                     targetState = displayedSubScreen,
                     transitionSpec = {
                         fun getDepth(s: SubScreen?): Int = when (s) {
                             null -> 0
-                            SubScreen.CONFIGURATION_CENTER -> 1
                             SubScreen.PROFILES, SubScreen.APP_ROUTING, SubScreen.LOGS,
                             SubScreen.RULES, SubScreen.DNS, SubScreen.REQUESTS, SubScreen.NETWORK_SHARE,
                             SubScreen.APPEARANCE -> 1
@@ -990,22 +1020,14 @@ class MainActivity : ComponentActivity() {
                     if (subScreen != null) {
                     Box(modifier = Modifier.fillMaxSize().background(LoonBg)) {
                         when (subScreen) {
-                            SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
-                                onNavigateToProfiles = { childReturnsToConfigCenter = true; currentSubScreen = SubScreen.PROFILES },
-                                onNavigateToScripts = { overrideTargetProfile = null; overrideTargetProfileId = null; childReturnsToConfigCenter = true; currentSubScreen = SubScreen.SCRIPTS },
-                                onNavigateToRules = { childReturnsToConfigCenter = true; currentSubScreen = SubScreen.RULES },
-                                onNavigateToAppRouting = { childReturnsToConfigCenter = true; currentSubScreen = SubScreen.APP_ROUTING },
-                                onBack = { backToOrigin() }
-                            )
                             SubScreen.PROFILES -> {
                                 ProfilesScreen(
                                     profiles = profiles,
                                     selectedProfileId = selectedProfileId,
-                                    onBack = { backToOrigin() },
+                                    onBack = { currentSubScreen = null },
                                     onSelectProfile = { profile ->
                                         selectedProfileId = profile.id
                                         settingsManager.selectedProfileId = profile.id
-                                        liveGroupMap = emptyMap()
                                         parseActiveProfile()
                                         Toast.makeText(this@MainActivity, "已生效配置: ${profile.name}", Toast.LENGTH_SHORT).show()
                                     },
@@ -1081,7 +1103,7 @@ class MainActivity : ComponentActivity() {
                                         if (overrideTargetProfile != null) {
                                             currentSubScreen = SubScreen.PROFILE_OVERRIDE
                                         } else {
-                                            backToOrigin()
+                                            currentSubScreen = null
                                         }
                                     },
                                     onScriptsChanged = {
@@ -1095,7 +1117,7 @@ class MainActivity : ComponentActivity() {
                                     selectedPackages = selectedPackages,
                                     apps = installedApps,
                                     isLoading = isAppsLoading,
-                                    onBack = { backToOrigin() },
+                                    onBack = { currentSubScreen = null },
                                     onModeChanged = { mode ->
                                         perAppMode = mode
                                         settingsManager.perAppProxyMode = mode
@@ -1113,7 +1135,7 @@ class MainActivity : ComponentActivity() {
                             }
                             SubScreen.LOGS -> {
                                 LogsScreen(
-                                    onBack = { backToOrigin() }
+                                    onBack = { currentSubScreen = null }
                                 )
                             }
                             SubScreen.RULES -> {
@@ -1121,7 +1143,7 @@ class MainActivity : ComponentActivity() {
                                     rules = parsedProfile.rules,
                                     totalRules = parsedProfile.totalRules,
                                     tunnelMode = tunnelMode,
-                                    onBack = { backToOrigin() }
+                                    onBack = { currentSubScreen = null }
                                 )
                             }
                             SubScreen.DNS -> {
@@ -1138,48 +1160,46 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
-                                    onBack = { backToOrigin() }
+                                    onBack = { currentSubScreen = null }
                                 )
                             }
                             SubScreen.REQUESTS -> {
                                 RequestLogsScreen(
                                     vpnState = vpnState,
-                                    onBack = { backToOrigin() }
+                                    onBack = { currentSubScreen = null }
                                 )
                             }
                             SubScreen.NETWORK_SHARE -> {
-                                val reloadCoreConfig = {
-                                    if (vpnState.status == VpnState.Status.RUNNING) {
-                                        lifecycleScope.launch(Dispatchers.IO) {
-                                            val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
-                                            val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                            ClashCore.load(conf)
-                                        }
-                                    }
-                                    Unit
-                                }
                                 NetworkShareScreen(
                                     allowLan = allowLan,
                                     credentials = lanCredentials,
                                     onAllowLanChanged = { enabled ->
                                         allowLan = enabled
                                         settingsManager.allowLan = enabled
-                                        reloadCoreConfig()
+                                        if (vpnState.status == VpnState.Status.RUNNING) {
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                                ClashCore.load(conf)
+                                            }
+                                        }
                                     },
                                     onRegenerateCredentials = {
                                         lanCredentials = settingsManager.regenerateLanCredentials()
-                                        reloadCoreConfig()
+                                        if (vpnState.status == VpnState.Status.RUNNING) {
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                                ClashCore.load(conf)
+                                            }
+                                        }
                                     },
                                     vpnState = vpnState,
-                                    onBack = { backToOrigin() }
+                                    onBack = { currentSubScreen = null }
                                 )
                             }
                             SubScreen.APPEARANCE -> {
                                 AppearanceScreen(
-                                    glassIntensity = glassIntensity,
-                                    glassEnabled = glassEnabled,
-                                    onGlassEnabledChanged = onGlassEnabledChanged,
-                                    onGlassIntensityChanged = onGlassIntensityChanged,
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
                                     onLanguageChanged = { code -> appLanguage = code },
@@ -1193,7 +1213,7 @@ class MainActivity : ComponentActivity() {
                                         showGroupIcons = show
                                         settingsManager.showGroupIcons = show
                                     },
-                                    onBack = { backToOrigin() }
+                                    onBack = { currentSubScreen = null }
                                 )
                             }
                         }
@@ -1202,48 +1222,33 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-            // 3. Floating Bottom Bar (animated in/out when navigating to sub-screens)
-            AnimatedVisibility(
-                visible = currentSubScreen == null,
-                enter = fadeIn(animationSpec = tween(240)) + slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(240, easing = FastOutSlowInEasing)
-                ),
-                exit = fadeOut(animationSpec = tween(200)) + slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(200, easing = FastOutSlowInEasing)
-                ),
+            // 3. Floating Bottom Bar (stays stable underneath sliding sub-screens)
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .wrapContentSize(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .wrapContentSize(Alignment.BottomCenter)
-                        .onSizeChanged { mainBottomBarHeightPx = it.height }
-                        .navigationBarsPadding()
-                        .padding(bottom = 16.dp)
-                ) {
-                    LoonFloatingBottomBar(
-                        selectedTab = pagerState.targetPage,
-                        onTabSelected = { tabIndex ->
-                            currentTab = tabIndex
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(
-                                    page = tabIndex,
-                                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                                )
-                            }
-                            if (tabIndex == 1) {
-                                if (vpnState.status == VpnState.Status.RUNNING) {
-                                    refreshProxiesOnline()
-                                } else if (parsedProfile.groups.isEmpty()) {
-                                    parseActiveProfile()
-                                }
+                LoonFloatingBottomBar(
+                    selectedTab = pagerState.targetPage,
+                    onTabSelected = { tabIndex ->
+                        currentTab = tabIndex
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(
+                                page = tabIndex,
+                                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                            )
+                        }
+                        if (tabIndex == 1) {
+                            if (vpnState.status == VpnState.Status.RUNNING) {
+                                refreshProxiesOnline()
+                            } else if (parsedProfile.groups.isEmpty()) {
+                                parseActiveProfile()
                             }
                         }
-                    )
-                }
+                    }
+                )
             }
         }
         } // end CompositionLocalProvider

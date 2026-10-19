@@ -2,14 +2,11 @@ package com.github.mihomo.android.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -40,8 +37,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
@@ -56,7 +51,6 @@ import kotlin.math.abs
 // iOS Haptic Feedback Utilities
 // =============================================================================
 
-/** Cupertino visuals share the fork's live, opt-in haptic policy. */
 @Composable
 fun rememberIosHaptic(): IosHapticHelper {
     val tick = rememberHapticAction {}
@@ -118,28 +112,26 @@ fun CupertinoGroupedSection(
     header: String? = null,
     title: String? = null,
     footer: String? = null,
-    horizontalPadding: Dp = 16.dp,
-    glass: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val displayHeader = header ?: title
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding)
+            .padding(horizontal = 16.dp)
     ) {
         if (!displayHeader.isNullOrBlank()) {
             Text(
                 text = displayHeader.uppercase(),
                 color = LoonTextSecondary,
-                style = SettingsTypography.SectionHeader,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.3.sp,
                 modifier = Modifier.padding(start = 14.dp, bottom = 6.dp)
             )
         }
 
-        if (glass) {
-            Column(Modifier.fillMaxWidth().glassCardFinish(LoonCard, 16.dp), content = content)
-        } else Surface(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
@@ -161,7 +153,8 @@ fun CupertinoGroupedSection(
             Text(
                 text = footer,
                 color = LoonTextSecondary,
-                style = SettingsTypography.Description,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp, end = 14.dp)
             )
         }
@@ -183,85 +176,101 @@ fun CupertinoCell(
     onClick: (() -> Unit)? = null
 ) {
     val haptic = rememberIosHaptic()
-    val textMeasurer = rememberTextMeasurer()
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp)
             .then(
                 if (onClick != null && enabled) {
-                    Modifier.iosPressable {
+                    Modifier.iosPressable(enabled = true) {
                         haptic.selection()
                         onClick()
                     }
                 } else Modifier
             )
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        if (customIcon != null || icon != null) {
-            Box(
-                modifier = Modifier.size(30.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(if (customIcon != null) Color.Transparent else if (LocalGlassEnabled.current) iconBg.copy(alpha = 0.10f) else iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                if (customIcon != null) customIcon()
-                else if (icon != null) Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (LocalGlassEnabled.current) iconBg else Color.White,
-                    modifier = Modifier.size(if (LocalGlassEnabled.current) 22.dp else 17.dp)
-                )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            // Optional Squircle Icon Badge
+            if (customIcon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(7.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    customIcon()
+                }
+                Spacer(modifier = Modifier.width(13.dp))
+            } else if (icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(iconBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(13.dp))
             }
-            Spacer(Modifier.width(13.dp))
+
+            // Title & optional Subtitle
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = if (enabled) LoonTextPrimary else LoonTextMuted,
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.Normal,
+                    letterSpacing = (-0.2).sp
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        color = LoonTextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
         }
 
-        // Allocate only the natural trailing width. If title and value cannot both fit,
-        // put the value on its own line rather than squeezing the title into a narrow column.
-        BoxWithConstraints(Modifier.weight(1f)) {
-            val density = LocalDensity.current
-            val availableWidth = with(density) { maxWidth.toPx() }
-            val titleWidth = textMeasurer.measure(title, SettingsTypography.RowTitle, softWrap = false).size.width
-            val valueWidth = if (value.isNullOrBlank()) 0 else
-                textMeasurer.measure(value, SettingsTypography.Value, softWrap = false).size.width
-            val accessoryWidth = with(density) { (if (showChevron) 22.dp else 0.dp).toPx() }
-            val gap = with(density) { 12.dp.toPx() }
-            val stackedValue = trailing == null && !value.isNullOrBlank() &&
-                titleWidth + valueWidth + accessoryWidth + gap > availableWidth
-
-            Column(Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = title,
-                            color = if (enabled) LoonTextPrimary else LoonTextMuted,
-                            style = SettingsTypography.RowTitle
-                        )
-                        if (stackedValue) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(text = value.orEmpty(), color = LoonTextSecondary, style = SettingsTypography.Value)
-                        }
-                    }
-                    if (trailing != null) {
-                        Spacer(Modifier.width(12.dp))
-                        trailing()
-                    } else {
-                        if (!stackedValue && !value.isNullOrBlank()) {
-                            Spacer(Modifier.width(12.dp))
-                            Text(text = value, color = LoonTextSecondary, style = SettingsTypography.Value)
-                        }
-                        if (showChevron) {
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.ChevronRight, null, tint = LoonChevronTint, modifier = Modifier.size(16.dp))
-                        }
-                    }
+        // Trailing Content (Value / Chevron / Switch / Custom)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End
+        ) {
+            if (trailing != null) {
+                trailing()
+            } else {
+                if (!value.isNullOrBlank()) {
+                    Text(
+                        text = value,
+                    modifier = Modifier.widthIn(max = 160.dp),
+                        color = LoonTextSecondary,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Normal
+                    )
                 }
-                // Descriptions get the whole text column, not the space left beside a switch.
-                if (!subtitle.isNullOrBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(text = subtitle, color = LoonTextSecondary, style = SettingsTypography.Description)
+                if (showChevron) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = LoonChevronTint,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
@@ -309,7 +318,7 @@ fun CupertinoSwitch(
     enabled: Boolean = true
 ) {
     val haptic = rememberIosHaptic()
-    val checkedTrackColor = IosBlue
+    val checkedTrackColor = IosGreen
     val uncheckedTrackColor = LoonSwitchUncheckedTrack
 
     val trackColor by animateColorAsState(
@@ -332,17 +341,19 @@ fun CupertinoSwitch(
 
     Box(
         modifier = modifier
-            .alpha(if (enabled) 1f else 0.5f)
             .size(width = 51.dp, height = 31.dp)
             .clip(RoundedCornerShape(15.5.dp))
-            .then(if (LocalGlassEnabled.current) Modifier.glassCardFinish(trackColor, 15.5.dp).background(trackColor.copy(alpha = 0.48f)) else Modifier.background(trackColor))
+            .background(trackColor)
             .toggleable(
                 value = checked,
-                enabled = enabled,
                 role = Role.Switch,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onValueChange = rememberHapticValueAction(onCheckedChange)
+                enabled = enabled,
+                onValueChange = { value ->
+                    onCheckedChange(value)
+                    haptic.lightTick()
+                }
             ),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -372,7 +383,7 @@ fun CupertinoNavBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     showBackButton: Boolean = false,
-    backLabel: String? = null,
+    backLabel: String? = "返回",
     onBack: (() -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null
 ) {
@@ -387,8 +398,8 @@ fun CupertinoNavBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .height(48.dp)
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -419,7 +430,7 @@ fun CupertinoNavBar(
                                 Text(
                                     text = backLabel,
                                     color = IosBlue,
-                                    style = SettingsTypography.RowTitle,
+                                    fontSize = 15.5.sp,
                                     fontWeight = FontWeight.Normal
                                 )
                             }
@@ -435,13 +446,17 @@ fun CupertinoNavBar(
                     Text(
                         text = title,
                         color = LoonTextPrimary,
-                        style = SettingsTypography.NavigationTitle
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.3).sp,
+                        maxLines = 1
                     )
                     if (!subtitle.isNullOrBlank()) {
                         Text(
                             text = subtitle,
                             color = LoonTextSecondary,
-                            style = SettingsTypography.Description
+                            fontSize = 11.sp,
+                            maxLines = 1
                         )
                     }
                 }
@@ -492,8 +507,6 @@ fun <T> CupertinoSelectDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 480.dp)
-                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 12.dp)
             ) {
                 // Header
@@ -594,12 +607,16 @@ fun <T> CupertinoSegmentedControl(
                                     .background(LoonCard)
                             } else Modifier
                         )
-                        .selectable(selected = isSelected, role = Role.Tab) {
-                            if (!isSelected) {
-                                haptic.selection()
-                                onItemSelected(item)
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.Tab,
+                            onClick = {
+                                if (!isSelected) {
+                                    onItemSelected(item)
+                                    haptic.selection()
+                                }
                             }
-                        },
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

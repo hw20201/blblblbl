@@ -100,9 +100,6 @@ fun NetworkShareScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp)
-            .padding(top = 16.dp, bottom = 24.dp)
     ) {
         CupertinoNavBar(
             title = AppStrings.get("network_share_screen_title", lang),
@@ -113,7 +110,9 @@ fun NetworkShareScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .bounceOverscroll(allowTop = false, allowBottom = true),
+                .bounceOverscroll()
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Card 1: Switch & Status
@@ -132,9 +131,9 @@ fun NetworkShareScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "允许局域网连接 (Allow LAN)",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "允许局域网连接",
+                                    fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = LoonTextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))

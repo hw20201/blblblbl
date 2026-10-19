@@ -28,11 +28,7 @@ fun AppearanceScreen(
     onShowGroupIconsChanged: (Boolean) -> Unit,
     nodeColumns: Int,
     onNodeColumnsChanged: (Int) -> Unit,
-    onBack: () -> Unit,
-    glassIntensity: Float = 0.5f,
-    onGlassIntensityChanged: (Float) -> Unit = {},
-    glassEnabled: Boolean = true,
-    onGlassEnabledChanged: (Boolean) -> Unit = {}
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -44,7 +40,6 @@ fun AppearanceScreen(
             .fillMaxSize()
             .background(LoonBg)
             .statusBarsPadding()
-            .navigationBarsPadding()
     ) {
         // Cupertino Navigation Bar
         CupertinoNavBar(
@@ -63,7 +58,6 @@ fun AppearanceScreen(
                 .padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            GlassThemeSection(value = glassIntensity, onValueChange = onGlassIntensityChanged, enabled = glassEnabled, onEnabledChange = onGlassEnabledChanged)
             // Section 1: 主题模式
             val themes = listOf(
                 ThemeMode.SYSTEM to AppStrings.get("theme_system", lang),
@@ -130,8 +124,6 @@ fun AppearanceScreen(
                                 "${AppStrings.get("language_updated", code)}: $label",
                                 Toast.LENGTH_SHORT
                             ).show()
-                            // AppStrings reads LocalAppLanguage; do not overwrite the
-                            // process/system locale, or selecting SYSTEM cannot restore it.
                         }
                     )
                     if (index < langs.size - 1) {

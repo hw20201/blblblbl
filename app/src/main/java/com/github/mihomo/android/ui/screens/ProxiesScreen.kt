@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -25,7 +26,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,15 +34,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
-import com.github.mihomo.android.ui.components.RemoteIcon
-import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
-import com.github.mihomo.android.ui.components.rememberHapticAction
-import com.github.mihomo.android.ui.components.rememberHapticValueAction
-import com.github.mihomo.android.ui.components.hapticClickable
-import com.github.mihomo.android.ui.components.glassCardFinish
-import com.github.mihomo.android.ui.components.glassScreenBackground
-import com.github.mihomo.android.ui.components.StandardCubeIcon
 
 @Composable
 fun AnimatedSpeedTestIcon(
@@ -109,12 +102,12 @@ fun ProxiesScreen(
     nodeColumns: Int = 1,
     onViewModeChanged: (String) -> Unit,
     onShowGroupIconsChanged: (Boolean) -> Unit,
-    onNodeColumnsChanged: (Int) -> Unit,
+    onNodeColumnsChanged: (Int) -> Unit = {},
     onSelectGroup: (String) -> Unit,
     onSelectProxy: (group: String, proxy: Proxy) -> Unit,
     onHealthCheck: (group: String) -> Unit,
     testingNodes: Set<String> = emptySet(),
-    onTestSingleNode: (group: String, node: String) -> Unit,
+    onTestSingleNode: (group: String, node: String) -> Unit = { _, _ -> },
     tabsListState: LazyListState = rememberLazyListState(),
     listModeState: LazyListState = rememberLazyListState(),
     groupRowState: LazyListState = rememberLazyListState(),
@@ -141,7 +134,7 @@ fun ProxiesScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .glassScreenBackground()
+            .background(LoonBg)
     ) {
         Column(
             modifier = Modifier
@@ -154,7 +147,7 @@ fun ProxiesScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -162,24 +155,22 @@ fun ProxiesScreen(
                 Text(
                     text = AppStrings.get("proxies_title", lang),
                     color = LoonTextPrimary,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.5).sp
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Health check button (Pure Lightning Bolt with Animation, no text, no circle background)
                 IconButton(
-                    onClick = rememberHapticAction({
+                    onClick = {
                         if (selectedGroupName.isNotBlank()) {
                             onHealthCheck(selectedGroupName)
                         } else if (visibleGroups.isNotEmpty()) {
                             onHealthCheck(visibleGroups.first())
                         }
-                    }),
-                    enabled = selectedGroupName.isNotBlank() || visibleGroups.isNotEmpty(),
-                    modifier = Modifier.size(40.dp).glassCardFinish(LoonCard, 20.dp)
+                    },
+                    modifier = Modifier.size(36.dp)
                 ) {
                     AnimatedSpeedTestIcon(
                         isTesting = isAnyTesting,
@@ -192,8 +183,8 @@ fun ProxiesScreen(
 
                 // 3-Dots Settings Dialog Trigger (•••)
                 IconButton(
-                    onClick = rememberHapticAction({ showOptionsMenu = true }),
-                    modifier = Modifier.size(40.dp).glassCardFinish(LoonCard, 20.dp)
+                    onClick = { showOptionsMenu = true },
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
@@ -263,7 +254,7 @@ fun ProxiesScreen(
                                             if (isSel) LoonBlue else LoonCardBorder,
                                             RoundedCornerShape(12.dp)
                                         )
-                                        .hapticClickable { onViewModeChanged(mode) },
+                                        .clickable { onViewModeChanged(mode) },
                                     color = if (isSel) LoonEditBlueBg else LoonCard,
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
@@ -307,7 +298,7 @@ fun ProxiesScreen(
                                             if (isSel) LoonBlue else LoonCardBorder,
                                             RoundedCornerShape(12.dp)
                                         )
-                                        .hapticClickable { onNodeColumnsChanged(colCount) },
+                                        .clickable { onNodeColumnsChanged(colCount) },
                                     color = if (isSel) LoonEditBlueBg else LoonCard,
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
@@ -341,9 +332,9 @@ fun ProxiesScreen(
                             fontWeight = FontWeight.Medium,
                             color = LoonTextPrimary
                         )
-                        Switch(
+                        CupertinoSwitch(
                             checked = showGroupIcons,
-                            onCheckedChange = rememberHapticValueAction({ onShowGroupIconsChanged(it) })
+                            onCheckedChange = { onShowGroupIconsChanged(it) }
                         )
                     }
                 }
@@ -360,10 +351,8 @@ fun ProxiesScreen(
                     state = groupRowState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .clip(RoundedCornerShape(50))
-                        .glassCardFinish(LoonCard, 22.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(visibleGroups.size, key = { visibleGroups[it] }) { index ->
                         val groupName = visibleGroups[index]
@@ -372,29 +361,33 @@ fun ProxiesScreen(
 
                         Surface(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .then(if (isSelected) Modifier.glassCardFinish(proxyGlassTint(), 8.dp) else Modifier)
-                                .hapticClickable { onSelectGroup(groupName) },
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.Transparent
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(
+                                    width = 0.5.dp,
+                                    color = if (isSelected) IosBlue else LoonCardBorder,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .iosPressable { onSelectGroup(groupName) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) IosBlue else LoonCard
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (showGroupIcons && !groupIconUrl.isNullOrBlank()) {
                                     RemoteIcon(
                                         url = groupIconUrl,
                                         modifier = Modifier
-                                            .size(24.dp)
+                                            .size(20.dp)
                                             .padding(end = 6.dp),
                                         contentDescription = groupName
                                     )
                                 }
                                 Text(
                                     text = groupName,
-                                    color = if (isSelected) LoonBlue else LoonTextSecondary,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.White else LoonTextPrimary,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )
                             }
@@ -404,36 +397,6 @@ fun ProxiesScreen(
             }
 
             val proxies = currentGroup?.proxies ?: emptyList()
-
-            if (currentGroup != null) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp)
-                        .glassCardFinish(proxyGlassTint(), 16.dp),
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        StandardCubeIcon(tint = LoonBlue, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(selectedGroupName, color = LoonTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            Text(currentGroup.now.ifBlank { "未选择节点" }, color = LoonTextSecondary, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        }
-                        IconButton(
-                            onClick = rememberHapticAction({ onHealthCheck(selectedGroupName) }),
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            AnimatedSpeedTestIcon(isTesting = isAnyTesting, tint = LoonBlue, modifier = Modifier.size(19.dp))
-                        }
-                    }
-                }
-            }
 
             if (proxies.isEmpty()) {
                 Box(
@@ -465,9 +428,9 @@ fun ProxiesScreen(
                         state = activeTabState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .bounceOverscroll(allowTop = false, allowBottom = true),
+                            .bounceOverscroll(),
                         contentPadding = PaddingValues(bottom = 110.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(
                             items = chunkedRows,
@@ -585,8 +548,8 @@ fun ProxiesScreen(
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(top = 8.dp, start = 10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                .padding(top = 6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             for (rowProxies in chunkedRows) {
                                                 Row(
@@ -663,17 +626,17 @@ private fun LoonGroupHeaderCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 64.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp))
-            .hapticClickable { onToggleExpand() },
+            .defaultMinSize(minHeight = 56.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, LoonCardBorder, RoundedCornerShape(20.dp))
+            .clickable { onToggleExpand() },
         color = LoonCard,
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(20.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -682,13 +645,13 @@ private fun LoonGroupHeaderCard(
                     Box(
                         modifier = Modifier
                             .padding(end = 10.dp)
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp)),
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(9.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         RemoteIcon(
                             url = iconUrl,
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(30.dp),
                             contentDescription = groupName
                         )
                     }
@@ -697,23 +660,20 @@ private fun LoonGroupHeaderCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(vertical = 2.dp)
+                        .padding(vertical = 1.dp)
                 ) {
                     Text(
                         text = groupName,
                         color = LoonTextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth()
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = if (activeNode.isNotBlank()) activeNode else "未选择节点",
                         color = if (activeNode.isNotBlank()) LoonTextSecondary else LoonTextMuted.copy(alpha = 0.6f),
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
                         fontWeight = if (activeNode.isNotBlank()) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -728,7 +688,7 @@ private fun LoonGroupHeaderCard(
                 Text(
                     text = groupType.uppercase(),
                     color = LoonTextMuted,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(end = 6.dp)
                 )
@@ -740,14 +700,14 @@ private fun LoonGroupHeaderCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
-                            onClick = rememberHapticAction({ if (!isTesting) onHealthCheck() }),
+                            onClick = { if (!isTesting) onHealthCheck() },
                             enabled = !isTesting,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(30.dp)
                         ) {
                             AnimatedSpeedTestIcon(
                                 isTesting = isTesting,
                                 tint = LoonTextPrimary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(2.dp))
@@ -764,7 +724,7 @@ private fun LoonGroupHeaderCard(
                     contentDescription = if (isExpanded) "收起" else "展开",
                     tint = LoonTextSecondary,
                     modifier = Modifier
-                        .size(20.dp)
+                        .size(19.dp)
                         .graphicsLayer { rotationZ = arrowRotation }
                 )
             }
@@ -782,7 +742,7 @@ private fun LoonProxyItemCard(
     columns: Int = 1,
     isTesting: Boolean = false,
     onClick: () -> Unit,
-    onTestSingleNode: () -> Unit
+    onTestSingleNode: () -> Unit = {}
 ) {
     val nodeEmoji = extractLeadingEmoji(proxy.name)
     val displayName = if (nodeEmoji != null && proxy.name.startsWith(nodeEmoji)) {
@@ -794,10 +754,10 @@ private fun LoonProxyItemCard(
     val isTimeout = proxy.delay == -2 || proxy.delay >= 65535
     val isValidDelay = proxy.delay in 1..65534
     val delayColor = when {
-        isTimeout -> RedDanger
-        isValidDelay && proxy.delay <= 250 -> LoonGreen
-        isValidDelay && proxy.delay <= 600 -> Color(0xFFF59E0B)
-        isValidDelay && proxy.delay > 600 -> RedDanger
+        isTimeout -> IosRed
+        isValidDelay && proxy.delay <= 250 -> IosGreen
+        isValidDelay && proxy.delay <= 600 -> IosOrange
+        isValidDelay && proxy.delay > 600 -> IosRed
         else -> LoonTextMuted
     }
     val delayText = when {
@@ -806,29 +766,32 @@ private fun LoonProxyItemCard(
         else -> "--"
     }
 
+    val cardBg = if (isSelected) {
+        if (LocalLoonColors.current.isDark) Color(0xFF132238) else Color(0xFFEDF4FF)
+    } else LoonCard
+
     when (columns) {
         // ---------------------------------------------------------------------
-        // 1 Column: Standard Horizontal Card (Fixed Height 58dp to prevent any jitter)
+        // 1 Column: Standard Horizontal Card (Fixed Height 54dp)
         // ---------------------------------------------------------------------
         1 -> {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (isSelected) Modifier.glassCardFinish(proxyGlassTint(), 16.dp) else Modifier)
-                    .heightIn(min = 58.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .border(
-                        width = if (isSelected) 1.5.dp else 1.dp,
-                        color = if (isSelected) Color.White.copy(alpha = if (LocalLoonColors.current.isDark) 0.16f else 0.75f) else LoonCardBorder,
-                        shape = RoundedCornerShape(18.dp)
+                        width = if (isSelected) 1.5.dp else 0.5.dp,
+                        color = if (isSelected) IosBlue else LoonCardBorder,
+                        shape = RoundedCornerShape(14.dp)
                     )
-                    .hapticClickable { onClick() },
-                color = if (isSelected) Color.Transparent else LoonCard.copy(alpha = 0.97f)
+                    .iosPressable { onClick() },
+                color = cardBg
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -837,51 +800,61 @@ private fun LoonProxyItemCard(
                             Text(
                                 text = nodeEmoji,
                                 fontSize = 16.sp,
-                                modifier = Modifier.padding(end = 8.dp)
+                                modifier = Modifier.padding(end = 9.dp)
                             )
                         }
 
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column {
                             Text(
                                 text = displayName,
-                                color = if (isSelected) LoonBlue else LoonTextPrimary,
+                                color = if (isSelected) IosBlue else LoonTextPrimary,
                                 fontSize = 14.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 1
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = proxy.type.uppercase(),
                                 color = LoonTextMuted,
-                                fontSize = 10.sp
+                                fontSize = 9.5.sp
                             )
                         }
                     }
 
-                    // Pure Speed Test Text / Spinner (No background capsule, centered, no ripple artifact)
-                    Box(
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 54.dp, minHeight = 24.dp)
-                            .clickable(
-                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null,
-                                onClick = rememberHapticAction { onTestSingleNode() }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isTesting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(13.dp),
-                                strokeWidth = 1.6.dp,
-                                color = LoonBlue
-                            )
-                        } else {
-                            Text(
-                                text = delayText,
-                                color = delayColor,
-                                fontSize = 12.sp,
-                                fontWeight = if (isValidDelay || isTimeout) FontWeight.Bold else FontWeight.Medium
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 50.dp, minHeight = 24.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onTestSingleNode() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isTesting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = IosBlue
+                                )
+                            } else {
+                                Text(
+                                    text = delayText,
+                                    color = delayColor,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isValidDelay || isTimeout) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        if (isSelected) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = IosBlue,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -890,97 +863,112 @@ private fun LoonProxyItemCard(
         }
 
         // ---------------------------------------------------------------------
-        // 2 Columns: Balanced Grid Card (Fixed Height 68dp to prevent any jitter)
+        // 2 Columns: Balanced Grid Card (Fixed Height 62dp)
         // ---------------------------------------------------------------------
         2 -> {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (isSelected) Modifier.glassCardFinish(proxyGlassTint(), 16.dp) else Modifier.clip(RoundedCornerShape(16.dp)).background(LoonCard))
-                    .height(68.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .then(if (isSelected) Modifier.testTag("glass-active-node") else Modifier)
-                    .hapticClickable { onClick() },
-                color = Color.Transparent,
-                shape = RoundedCornerShape(16.dp)
+                    .height(62.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(
+                        width = if (isSelected) 1.5.dp else 0.5.dp,
+                        color = if (isSelected) IosBlue else LoonCardBorder,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .iosPressable { onClick() },
+                color = cardBg
             ) {
-                Row(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (nodeEmoji != null) {
-                        Box(Modifier.size(36.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
-                            Text(nodeEmoji, fontSize = 25.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (nodeEmoji != null) {
+                            Text(
+                                text = nodeEmoji,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
                         }
-                    } else {
-                        Box(Modifier.size(36.dp).clip(CircleShape).background(LoonBlue.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Public, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(21.dp))
-                        }
-                    }
-                    Spacer(Modifier.width(9.dp))
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                         Text(
                             text = displayName,
-                            color = LoonTextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
+                            color = if (isSelected) IosBlue else LoonTextPrimary,
+                            fontSize = 12.5.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(Modifier.height(3.dp))
-                        Row(
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = proxy.type.uppercase(),
+                            color = LoonTextMuted,
+                            fontSize = 8.5.sp,
+                            maxLines = 1
+                        )
+                        Box(
                             modifier = Modifier
+                                .defaultMinSize(minWidth = 44.dp, minHeight = 20.dp)
+                                .clip(RoundedCornerShape(5.dp))
                                 .clickable(
-                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = rememberHapticAction { onTestSingleNode() }
-                                )
-                                .padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onTestSingleNode() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(Modifier.size(5.dp).clip(CircleShape).background(if (isValidDelay) delayColor else LoonTextMuted))
-                            Spacer(Modifier.width(5.dp))
                             if (isTesting) {
-                                CircularProgressIndicator(Modifier.size(11.dp), strokeWidth = 1.4.dp, color = LoonBlue)
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(10.dp),
+                                    strokeWidth = 1.3.dp,
+                                    color = IosBlue
+                                )
                             } else {
-                                Text(delayText, color = delayColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = delayText,
+                                    color = delayColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isValidDelay || isTimeout) FontWeight.Bold else FontWeight.Medium
+                                )
                             }
                         }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    if (isSelected) {
-                        Box(Modifier.size(21.dp).clip(CircleShape).background(LoonBlue), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Check, contentDescription = "已选择", tint = Color.White, modifier = Modifier.size(14.dp))
-                        }
-                    } else {
-                        Box(Modifier.size(21.dp).border(1.5.dp, LoonTextMuted.copy(alpha = 0.65f), CircleShape))
                     }
                 }
             }
         }
 
         // ---------------------------------------------------------------------
-        // 3 Columns: High-Density Mini Grid Card (Fixed Height 56dp to prevent any jitter)
+        // 3 Columns: High-Density Mini Grid Card (Fixed Height 56dp)
         // ---------------------------------------------------------------------
         else -> {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (isSelected) Modifier.glassCardFinish(proxyGlassTint(), 16.dp) else Modifier)
-                    .heightIn(min = 56.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .border(
-                        width = if (isSelected) 1.5.dp else 1.dp,
-                        color = if (isSelected) Color.White.copy(alpha = if (LocalLoonColors.current.isDark) 0.16f else 0.75f) else LoonCardBorder,
-                        shape = RoundedCornerShape(14.dp)
+                        width = if (isSelected) 1.5.dp else 0.5.dp,
+                        color = if (isSelected) IosBlue else LoonCardBorder,
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    .hapticClickable { onClick() },
-                color = if (isSelected) Color.Transparent else LoonCard.copy(alpha = 0.97f)
+                    .iosPressable { onClick() },
+                color = cardBg
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                        .padding(horizontal = 7.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
@@ -996,11 +984,12 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) LoonBlue else LoonTextPrimary,
+                            color = if (isSelected) IosBlue else LoonTextPrimary,
                             fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
 
@@ -1017,19 +1006,19 @@ private fun LoonProxyItemCard(
                         )
                         Box(
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 38.dp, minHeight = 18.dp)
+                                .defaultMinSize(minWidth = 36.dp, minHeight = 18.dp)
+                                .clip(RoundedCornerShape(4.dp))
                                 .clickable(
-                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = rememberHapticAction { onTestSingleNode() }
-                                ),
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onTestSingleNode() },
                             contentAlignment = Alignment.Center
                         ) {
                             if (isTesting) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(9.dp),
                                     strokeWidth = 1.2.dp,
-                                    color = LoonBlue
+                                    color = IosBlue
                                 )
                             } else {
                                 Text(
@@ -1046,7 +1035,3 @@ private fun LoonProxyItemCard(
         }
     }
 }
-
-/** Keep the selected lens cool without turning the dark theme into a white panel. */
-@Composable
-private fun proxyGlassTint(): Color = if (LocalLoonColors.current.isDark) Color(0xFF243C51) else Color(0xFFB9DFFF)

@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.github.mihomo.android.data.ThemeMode
-import com.github.mihomo.android.data.UiStyle
 
 
 data class LoonThemeColors(
@@ -41,7 +40,7 @@ val LightLoonThemeColors = LoonThemeColors(
     card = Color(0xFFFFFFFF), // Apple Secondary System Grouped Background
     cardBorder = Color(0x1A000000), // Clean iOS hairline border
     textPrimary = Color(0xFF000000), // iOS Primary Text
-    textSecondary = Color(0xFF646871), // Accessible secondary label
+    textSecondary = Color(0xFF8E8E93), // iOS Secondary Label
     textMuted = Color(0xFFC7C7CC), // iOS Tertiary Label
     bottomBarBg = Color.White.copy(alpha = 0.88f),
     bottomBarBorder = Color(0x1F000000),
@@ -58,7 +57,7 @@ val DarkLoonThemeColors = LoonThemeColors(
     card = Color(0xFF1C1C1E), // Apple Secondary System Grouped Background
     cardBorder = Color(0x2EFFFFFF), // Clean iOS dark hairline border
     textPrimary = Color(0xFFFFFFFF), // iOS White Text
-    textSecondary = Color(0xFFA5A7AE), // Accessible secondary label
+    textSecondary = Color(0xFF8E8E93), // iOS Secondary Label
     textMuted = Color(0xFF636366), // iOS Tertiary Label
     bottomBarBg = Color(0xFF1C1C1E).copy(alpha = 0.90f),
     bottomBarBorder = Color(0x26FFFFFF),
@@ -71,14 +70,10 @@ val DarkLoonThemeColors = LoonThemeColors(
 )
 
 val LocalLoonColors = staticCompositionLocalOf { LightLoonThemeColors }
-val LocalGlassIntensity = staticCompositionLocalOf { 0.5f }
-val LocalGlassEnabled = staticCompositionLocalOf { true }
 
 @Composable
 fun MihomoTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    glassIntensity: Float = 0.5f,
-    glassEnabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -89,19 +84,19 @@ fun MihomoTheme(
     }
 
     val loonColors = if (isDark) DarkLoonThemeColors else LightLoonThemeColors
-    val uiColors = loonColors
+
     val colorScheme = if (isDark) {
         darkColorScheme(
             primary = LoonOrange,
             onPrimary = Color.White,
             primaryContainer = Color(0xFF3B2414),
             onPrimaryContainer = LoonOrangeLight,
-            background = uiColors.bg,
-            surface = uiColors.card,
-            surfaceVariant = uiColors.bg,
-            onBackground = uiColors.textPrimary,
-            onSurface = uiColors.textPrimary,
-            onSurfaceVariant = uiColors.textSecondary
+            background = loonColors.bg,
+            surface = loonColors.card,
+            surfaceVariant = loonColors.bg,
+            onBackground = loonColors.textPrimary,
+            onSurface = loonColors.textPrimary,
+            onSurfaceVariant = loonColors.textSecondary
         )
     } else {
         lightColorScheme(
@@ -109,19 +104,19 @@ fun MihomoTheme(
             onPrimary = Color.White,
             primaryContainer = LoonOrangeBg,
             onPrimaryContainer = LoonOrange,
-            background = uiColors.bg,
-            surface = uiColors.card,
-            surfaceVariant = uiColors.bg,
-            onBackground = uiColors.textPrimary,
-            onSurface = uiColors.textPrimary,
-            onSurfaceVariant = uiColors.textSecondary
+            background = loonColors.bg,
+            surface = loonColors.card,
+            surfaceVariant = loonColors.bg,
+            onBackground = loonColors.textPrimary,
+            onSurface = loonColors.textPrimary,
+            onSurfaceVariant = loonColors.textSecondary
         )
     }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val statusBarColor = uiColors.bg.toArgb()
-        val navBarColor = uiColors.bg.toArgb()
+        val statusBarColor = loonColors.bg.toArgb()
+        val navBarColor = loonColors.bg.toArgb()
         SideEffect {
             val window = view.context.findActivity()?.window ?: return@SideEffect
             window.statusBarColor = statusBarColor
@@ -133,17 +128,13 @@ fun MihomoTheme(
 
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     CompositionLocalProvider(
-        com.github.mihomo.android.ui.components.LocalGlassMaterialBackdrop provides com.github.mihomo.android.ui.components.rememberGlassBackdrop(),
-        LocalLoonColors provides uiColors,
-        LocalGlassIntensity provides com.github.mihomo.android.data.GlassEffect.normalize(glassIntensity),
-        LocalGlassEnabled provides glassEnabled,
+        LocalLoonColors provides loonColors,
         androidx.compose.foundation.LocalOverscrollConfiguration provides null
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-        ) {
-            content()
-        }
+            content = content
+        )
     }
 }
 
