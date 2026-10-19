@@ -29,6 +29,9 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
     !releaseKeyPassword.isNullOrBlank() &&
     !releaseStorePassword.isNullOrBlank()
 
+// R8 remains experimental and off for signed draft packages.
+val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: false
+
 val nativeChecksums = rootProject.file("native/SHA256SUMS")
 val nativeLibraries = listOf("libclash.so", "libbridge.so").associate { name ->
     val path = "app/src/main/jniLibs/arm64-v8a/$name"
@@ -56,13 +59,14 @@ tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 android {
     namespace = "com.github.mihomo.android"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.0.16"
+        versionCode = 21
+        versionName = "1.0.17"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -84,10 +88,9 @@ android {
 
     buildTypes {
         release {
-            // R8 shrinking/obfuscation stays off: it crashes on startup with the native core
-            // (verified on device). Keep rules are kept in proguard-rules.pro for reference.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Enable only for separately device-tested builds with -Pnexus.r8=true.
+            isMinifyEnabled = r8Enabled
+            isShrinkResources = r8Enabled
             isDebuggable = false
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
@@ -111,6 +114,12 @@ android {
         compose = true
     }
 
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
@@ -144,8 +153,6 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.5")
     
-    // Experimental upstream API: pinned to the Kotlin 2.1 / Compose 1.7 line.
-    implementation("top.yukonga.miuix.kmp:miuix:0.3.3")
     // Coroutines & Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

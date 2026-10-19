@@ -53,7 +53,7 @@ class GlassThemeSectionTest {
         val value = mutableFloatStateOf(0.5f)
         val style = mutableStateOf(UiStyle.CUPERTINO)
         compose.setContent {
-            MihomoTheme(uiStyle = style.value, glassIntensity = value.floatValue) {
+            MihomoTheme( glassIntensity = value.floatValue) {
                 GlassThemeSection(value = value.floatValue, onValueChange = {
                     settings.glassIntensity = it
                     value.floatValue = settings.glassIntensity
@@ -63,7 +63,7 @@ class GlassThemeSectionTest {
         compose.onNodeWithText("50%").assertExists()
         compose.onNodeWithText("清淡").assertExists()
         compose.onNodeWithText("浓郁").assertExists()
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             compose.runOnIdle { style.value = targetStyle }
             compose.onNodeWithContentDescription("玻璃强度").performSemanticsAction(SemanticsActions.SetProgress) { it(0.8f) }
             compose.onNodeWithText("80%").assertExists()

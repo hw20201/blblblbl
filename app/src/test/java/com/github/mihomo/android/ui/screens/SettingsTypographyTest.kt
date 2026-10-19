@@ -51,7 +51,7 @@ class SettingsTypographyTest {
         val scroll = mutableStateOf(ScrollState(0))
         val ipv6 = mutableStateOf(false)
         compose.setContent {
-            MihomoTheme(uiStyle = style.value, themeMode = ThemeMode.LIGHT) {
+            MihomoTheme( themeMode = ThemeMode.LIGHT) {
                 CompositionLocalProvider(
                     LocalDensity provides Density(1f, scale.floatValue),
                     LocalAppLanguage provides "zh",
@@ -75,7 +75,7 @@ class SettingsTypographyTest {
                 }
             }
         }
-        for (targetStyle in UiStyle.entries) for (targetWidth in listOf(360f, 320f)) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) for (targetWidth in listOf(360f, 320f)) {
             for (targetScale in listOf(1f, 1.3f, 2f)) {
                 val context = "$targetStyle width=$targetWidth scale=$targetScale"
                 compose.runOnIdle {
@@ -137,7 +137,7 @@ class SettingsTypographyTest {
         val scale = mutableFloatStateOf(1f)
         val scroll = mutableStateOf(ScrollState(0))
         compose.setContent {
-            MihomoTheme(uiStyle = style.value, themeMode = ThemeMode.LIGHT) {
+            MihomoTheme( themeMode = ThemeMode.LIGHT) {
                 CompositionLocalProvider(
                     LocalDensity provides Density(1f, scale.floatValue),
                     LocalAppLanguage provides "zh",
@@ -156,7 +156,7 @@ class SettingsTypographyTest {
                 }
             }
         }
-        for (targetStyle in UiStyle.entries) for (targetScale in listOf(1f, 1.3f, 2f)) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) for (targetScale in listOf(1f, 1.3f, 2f)) {
             compose.runOnIdle { style.value = targetStyle; scale.floatValue = targetScale; scroll.value = ScrollState(0) }
             compose.waitForIdle()
             val viewport = compose.onNodeWithTag("viewport").fetchSemanticsNode().boundsInRoot

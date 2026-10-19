@@ -43,7 +43,7 @@ class SquaredGlassRenderTest {
     @Test
     fun dashboardStylesAndGlassSettingsRenderAsNativeWindowScreenshots() {
         val mode = mutableStateOf(ThemeMode.LIGHT)
-        val style = mutableStateOf(UiStyle.MIUIX)
+        val style = mutableStateOf(UiStyle.CUPERTINO)
         val glassIntensity = mutableStateOf(0f)
         val showGlassSettings = mutableStateOf(false)
         val shortcuts = listOf("vpn", "ip_test", "ui_style", "nodes", "profiles", "core_logs")
@@ -51,7 +51,6 @@ class SquaredGlassRenderTest {
         compose.setContent {
             MihomoTheme(
                 themeMode = mode.value,
-                uiStyle = style.value,
                 glassIntensity = glassIntensity.value
             ) {
                 val backdrop = rememberGlassBackdrop()
@@ -96,8 +95,6 @@ class SquaredGlassRenderTest {
                                     onNavigateToNetworkShare = {},
                                     onUpdateVisibleShortcuts = {},
                                     onUpdateShortcutOrder = {},
-                                    uiStyle = style.value,
-                                    onToggleUiStyle = {}
                                 )
                             }
                             androidx.compose.foundation.layout.Box(
@@ -127,7 +124,7 @@ class SquaredGlassRenderTest {
             bitmap.recycle()
         }
 
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 compose.runOnIdle {
                     showGlassSettings.value = false
@@ -139,7 +136,7 @@ class SquaredGlassRenderTest {
             }
         }
 
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 for (intensity in listOf(0f, 1f)) {
                     compose.runOnIdle {

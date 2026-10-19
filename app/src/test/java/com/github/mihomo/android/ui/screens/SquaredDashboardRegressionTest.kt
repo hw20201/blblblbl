@@ -31,16 +31,14 @@ class SquaredDashboardRegressionTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
-    fun approvedShortcutsStayVisibleAndActionsWorkInBothStylesAtCompactWidth() {
-        val style = mutableStateOf(UiStyle.CUPERTINO)
+    fun approvedShortcutsStayVisibleAndActionsWorkInCupertinoAtCompactWidth() {
         val vpn = mutableStateOf(VpnState.Status.STOPPED)
         val viewportWidthPx = mutableStateOf(0f)
         var vpnToggles = 0
-        var styleToggles = 0
-        val shortcuts = listOf("vpn", "ip_test", "ui_style", "nodes", "profiles", "core_logs")
+        val shortcuts = listOf("vpn", "ip_test", "nodes", "profiles", "core_logs")
 
         compose.setContent {
-            MihomoTheme(uiStyle = style.value) {
+            MihomoTheme() {
                 // Explicit 360dp content width guards the narrow-phone dashboard layout.
                 viewportWidthPx.value = with(LocalDensity.current) { 360.dp.toPx() }
                 CompositionLocalProvider(LocalAppLanguage provides "zh") {
@@ -74,11 +72,6 @@ class SquaredDashboardRegressionTest {
                         onNavigateToNetworkShare = {},
                         onUpdateVisibleShortcuts = {},
                         onUpdateShortcutOrder = {},
-                        uiStyle = style.value,
-                        onToggleUiStyle = {
-                            styleToggles++
-                            style.value = style.value.toggled()
-                        }
                     )
                 }
                 }
@@ -88,7 +81,7 @@ class SquaredDashboardRegressionTest {
         // All six configured entries remain rendered, with the first two occupying separate columns.
         compose.onNodeWithText("启动 VPN").assertExists()
         compose.onNodeWithText("IP 测试").assertExists()
-        compose.onNodeWithText("切换 UI").assertExists()
+
         compose.onNodeWithText("节点").assertExists()
         compose.onNodeWithText("配置文件").assertExists()
         compose.onNodeWithText("核心日志").assertExists()
@@ -101,16 +94,11 @@ class SquaredDashboardRegressionTest {
 
         compose.onNodeWithText("启动 VPN").performClick()
         compose.onNodeWithText("停止 VPN").assertExists()
-        compose.onNodeWithText("切换 UI").performClick()
-        compose.onNodeWithText("Miuix → Cupertino").assertExists()
         compose.runOnIdle {
             assertEquals(1, vpnToggles)
-            assertEquals(1, styleToggles)
         }
 
-        // Validate the other style without replacing the dashboard, then exercise the IP sheet entry point.
-        compose.onNodeWithText("切换 UI").performClick()
-        compose.onNodeWithText("Cupertino → Miuix").assertExists()
+        // Exercise the IP sheet entry point after the VPN action.
         compose.onNodeWithText("IP 测试").performClick()
         compose.onNodeWithText("IP 地址").assertExists()
     }

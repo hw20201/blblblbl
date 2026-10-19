@@ -20,14 +20,13 @@ import org.robolectric.annotation.Config
 class DashboardActionsTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun vpnShortcutCallsLiveActionAndUiSwitchKeepsDashboardState() {
+    @Test fun vpnShortcutCallsLiveActionAndCupertinoDashboardKeepsState() {
         val status = mutableStateOf(VpnState.Status.STOPPED)
-        val style = mutableStateOf(UiStyle.CUPERTINO)
         var starts = 0
         var stops = 0
-        val actions = listOf("vpn", "ui_style")
+        val actions = listOf("vpn")
         compose.setContent {
-            MihomoTheme(uiStyle = style.value) {
+            MihomoTheme() {
                 DashboardScreen(
                     scrollState = ScrollState(0), vpnState = VpnState(status = status.value),
                     currentMode = TunnelMode.RULE, activeProfileName = "测试配置", mainGroupName = "",
@@ -41,18 +40,13 @@ class DashboardActionsTest {
                     onNavigateToProfiles = {}, onNavigateToAppRouting = {}, onNavigateToLogs = {},
                     onNavigateToRules = {}, onNavigateToDns = {}, onNavigateToRequests = {},
                     onNavigateToNetworkShare = {}, onUpdateVisibleShortcuts = {}, onUpdateShortcutOrder = {},
-                    uiStyle = style.value, onToggleUiStyle = { style.value = style.value.toggled() }
                 )
             }
         }
         compose.onNodeWithText("启动 VPN").performClick()
         compose.onNodeWithText("停止 VPN").assertExists()
-        compose.onNodeWithText("切换 UI").performClick()
-        compose.onNodeWithText("Miuix → Cupertino").assertExists()
         compose.onNodeWithText("停止 VPN").performClick()
         compose.onNodeWithText("启动 VPN").assertExists()
-        compose.onNodeWithText("切换 UI").performClick()
-        compose.onNodeWithText("Cupertino → Miuix").assertExists()
         compose.runOnIdle { status.value = VpnState.Status.STOPPING }
         compose.onNodeWithText("正在停止").performClick()
         compose.runOnIdle { assertEquals(1, starts); assertEquals(1, stops) }

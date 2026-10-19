@@ -47,6 +47,7 @@ object ScriptManager {
 
     // Direct client (no proxy) - for subscriptions that go through VPN already
     private val httpClient = OkHttpClient.Builder()
+        .addNetworkInterceptor(secureRemoteUrlInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
@@ -54,6 +55,7 @@ object ScriptManager {
     // Client that routes through local mixed-port proxy (127.0.0.1:7890)
     // Used when app traffic bypasses VPN (app is in disallowedApplications)
     private val localProxyClient = OkHttpClient.Builder()
+        .addNetworkInterceptor(secureRemoteUrlInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress("127.0.0.1", 7890)))

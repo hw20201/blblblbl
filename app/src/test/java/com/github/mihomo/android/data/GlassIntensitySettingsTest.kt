@@ -33,14 +33,14 @@ class GlassIntensitySettingsTest {
     @Test
     fun enabledPreferencePersistsIndependentlyOfIntensityAndUiStyle() {
         val settings = SettingsManager(context)
-        settings.uiStyle = UiStyle.MIUIX
+        settings.uiStyle = UiStyle.CUPERTINO
         settings.glassIntensity = 0.82f
         settings.glassEnabled = false
 
         val reopened = SettingsManager(context)
         assertEquals(false, reopened.glassEnabled)
         assertEquals(0.82f, reopened.glassIntensity, 0f)
-        assertEquals(UiStyle.MIUIX, reopened.uiStyle)
+        assertEquals(UiStyle.CUPERTINO, reopened.uiStyle)
         reopened.glassEnabled = true
         assertEquals(0.82f, SettingsManager(context).glassIntensity, 0f)
     }
@@ -63,12 +63,12 @@ class GlassIntensitySettingsTest {
     @Test
     fun glassIntensityDoesNotChangeUiStyleOrThemeMode() {
         val settings = SettingsManager(context)
-        settings.uiStyle = UiStyle.MIUIX
+        settings.uiStyle = UiStyle.CUPERTINO
         settings.themeMode = ThemeMode.DARK
         settings.glassIntensity = 0.82f
 
         val reopened = SettingsManager(context)
-        assertEquals(UiStyle.MIUIX, reopened.uiStyle)
+        assertEquals(UiStyle.CUPERTINO, reopened.uiStyle)
         assertEquals(ThemeMode.DARK, reopened.themeMode)
         assertEquals(0.82f, reopened.glassIntensity, 0f)
     }

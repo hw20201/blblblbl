@@ -85,8 +85,6 @@ fun DashboardScreen(
     onNavigateToNetworkShare: () -> Unit,
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit,
-    uiStyle: com.github.mihomo.android.data.UiStyle = com.github.mihomo.android.data.UiStyle.CUPERTINO,
-    onToggleUiStyle: () -> Unit = {}
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
@@ -126,14 +124,13 @@ fun DashboardScreen(
 
     var showOutboundIp by remember { mutableStateOf(false) }
     val latestToggleVpn by rememberUpdatedState(onToggleVpn)
-    val latestToggleUiStyle by rememberUpdatedState(onToggleUiStyle)
     val lang = LocalAppLanguage.current
 
     // All shortcut item definitions available across entire DashboardScreen (cached to eliminate recomposition lag)
     val allShortcutMap = remember(
         lang, activeProfileName, activeNodeName, totalNodes, totalRules,
         vpnState.upSpeed, vpnState.downSpeed, vpnState.totalUp, vpnState.totalDown,
-        vpnState.coreVersion, isRunning, isStarting, vpnState.status, requestMonitoringEnabled, uiStyle
+        vpnState.coreVersion, isRunning, isStarting, vpnState.status, requestMonitoringEnabled
     ) {
         mapOf(
             "vpn" to ShortcutDef("vpn", if (vpnState.status == VpnState.Status.STOPPING) "正在停止" else if (isRunning || isStarting) "停止 VPN" else "启动 VPN",
@@ -148,9 +145,6 @@ fun DashboardScreen(
             "ip_test" to ShortcutDef("ip_test", "IP 测试", "出站 IP · 点击检测", {
                 Icon(Icons.Default.Public, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(38.dp))
             }) { showOutboundIp = true },
-            "ui_style" to ShortcutDef("ui_style", "切换 UI", if (uiStyle == com.github.mihomo.android.data.UiStyle.CUPERTINO) "Cupertino → Miuix" else "Miuix → Cupertino", {
-                Icon(Icons.Default.Palette, contentDescription = null, tint = LoonOrange, modifier = Modifier.size(38.dp))
-            }) { latestToggleUiStyle() },
             "nodes" to ShortcutDef("nodes", AppStrings.get("shortcut_nodes", lang), "$totalNodes", { NodesIllustration() }) {
                 showQuickNodeSelector = true
             },

@@ -21,11 +21,13 @@ class UiStyleSettingsTest {
         settings.tunStack = TunStack.MIPS
         assertEquals(UiStyle.CUPERTINO, settings.uiStyle)
         settings.uiStyle = settings.uiStyle.toggled()
-        assertEquals(UiStyle.MIUIX, SettingsManager(context).uiStyle)
+        assertEquals(UiStyle.CUPERTINO, SettingsManager(context).uiStyle)
         assertEquals(ThemeMode.DARK, settings.themeMode)
         assertEquals(TunStack.MIPS, settings.tunStack)
         settings.uiStyle = settings.uiStyle.toggled()
         assertEquals(UiStyle.CUPERTINO, SettingsManager(context).uiStyle)
+        prefs.edit().putString("ui_style", "miuix").commit()
+        assertEquals(UiStyle.CUPERTINO, settings.uiStyle)
         prefs.edit().putString("ui_style", "future").commit()
         assertEquals(UiStyle.CUPERTINO, settings.uiStyle)
     }
@@ -33,7 +35,7 @@ class UiStyleSettingsTest {
     @Test fun freshInstallShowsAllNewActions() {
         val settings = SettingsManager(context)
         assertTrue(settings.visibleShortcuts.containsAll(DashboardShortcuts.added))
-        assertEquals(DashboardShortcuts.added, settings.shortcutOrder.take(3))
+        assertEquals(DashboardShortcuts.added, settings.shortcutOrder.take(DashboardShortcuts.added.size))
     }
 
     @Test fun upgradePreservesUserOrderingAndExistingHiddenShortcuts() {

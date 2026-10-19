@@ -41,7 +41,7 @@ class CompactTypographyTest {
         val fontScale = mutableFloatStateOf(1f)
 
         compose.setContent {
-            MihomoTheme(uiStyle = style.value, themeMode = ThemeMode.LIGHT) {
+            MihomoTheme( themeMode = ThemeMode.LIGHT) {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale.floatValue)) {
                     Box(Modifier.width(width.floatValue.dp)) {
@@ -52,7 +52,7 @@ class CompactTypographyTest {
             }
         }
 
-        for (uiStyle in UiStyle.entries) {
+        for (uiStyle in listOf(UiStyle.CUPERTINO)) {
             for (screenWidth in listOf(320f, 360f)) {
                 for (scale in listOf(1f, 1.6f, 2f)) {
                     compose.runOnIdle {

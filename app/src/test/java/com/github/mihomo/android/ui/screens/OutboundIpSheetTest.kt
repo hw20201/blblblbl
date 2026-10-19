@@ -17,7 +17,7 @@ class OutboundIpSheetTest {
         val calls = AtomicInteger()
         val style = androidx.compose.runtime.mutableStateOf(com.github.mihomo.android.data.UiStyle.CUPERTINO)
         compose.setContent {
-            com.github.mihomo.android.ui.theme.MihomoTheme(uiStyle = style.value) {
+            com.github.mihomo.android.ui.theme.MihomoTheme() {
                 OutboundIpSheet(onRefresh = {
                     calls.incrementAndGet()
                     OutboundIpInfo("203.0.113.9", source = "fixture")
@@ -30,7 +30,7 @@ class OutboundIpSheetTest {
         compose.onNodeWithText("等级").assertExists()
         compose.onAllNodesWithText("未知").assertCountEquals(5)
         compose.runOnIdle { org.junit.Assert.assertEquals(1, calls.get()) }
-        compose.runOnIdle { style.value = com.github.mihomo.android.data.UiStyle.MIUIX }
+        compose.runOnIdle { style.value = com.github.mihomo.android.data.UiStyle.CUPERTINO }
         compose.waitForIdle()
         compose.runOnIdle { org.junit.Assert.assertEquals(1, calls.get()) }
         compose.onNodeWithText("隐藏 IP").assertExists()

@@ -100,7 +100,6 @@ class PreviewAcceptanceRenderTest {
         compose.setContent {
             MihomoTheme(
                 themeMode = mode.value,
-                uiStyle = style.value,
                 glassEnabled = glassEnabled.value,
                 glassIntensity = intensity.value
             ) {
@@ -132,8 +131,7 @@ class PreviewAcceptanceRenderTest {
                                     onNavigateToLogs = {}, onNavigateToRules = {}, onNavigateToDns = {},
                                     onNavigateToRequests = {}, onNavigateToNetworkShare = {},
                                     onUpdateVisibleShortcuts = {}, onUpdateShortcutOrder = {},
-                                    uiStyle = style.value
-                                )
+                                    )
                                 "proxies" -> ProxiesScreen(
                                     groups = listOf("节点选择", "自动选择", "故障转移"),
                                     groupMap = mapOf(
@@ -167,7 +165,7 @@ class PreviewAcceptanceRenderTest {
             }
         }
 
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             style.value = targetStyle
             mode.value = ThemeMode.LIGHT
             for (screen in listOf("dashboard", "proxies", "settings")) {

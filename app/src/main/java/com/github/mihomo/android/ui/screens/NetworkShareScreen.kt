@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.mihomo.android.data.LanCredentials
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.components.*
@@ -39,7 +41,9 @@ import com.github.mihomo.android.ui.components.hapticClickable
 @Composable
 fun NetworkShareScreen(
     allowLan: Boolean,
+    credentials: LanCredentials,
     onAllowLanChanged: (Boolean) -> Unit,
+    onRegenerateCredentials: () -> Unit,
     vpnState: VpnState,
     onBack: () -> Unit
 ) {
@@ -82,6 +86,7 @@ fun NetworkShareScreen(
 
     val primaryIp = localIps.firstOrNull() ?: "127.0.0.1"
     val port = "7890"
+    val proxyUrl = buildLanProxyUrl(credentials, primaryIp, port)
 
     var selectedPlatform by remember { mutableStateOf("WINDOWS") }
 
@@ -183,6 +188,38 @@ fun NetworkShareScreen(
                 }
             }
 
+            // Credentials are shown only while LAN exposure is enabled.
+            if (allowLan) {
+                item(key = "lan_auth") {
+                    Surface(shape = RoundedCornerShape(16.dp), color = LoonCard,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text("局域网访问凭据", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary)
+                                TextButton(onClick = rememberHapticAction({ onRegenerateCredentials() })) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp)); Text("重新生成", fontSize = 11.5.sp, color = LoonBlue)
+                                }
+                            }
+                            Text("其他设备连接时必须填写用户名与密码；本机回环地址无需认证。", fontSize = 11.5.sp, color = LoonTextMuted)
+                            Spacer(Modifier.height(8.dp))
+                            listOf("用户名" to credentials.username, "密码" to credentials.password).forEach { (label, value) ->
+                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, fontSize = 11.sp, color = LoonTextMuted)
+                                    Text(value, fontSize = 12.sp, color = LoonTextPrimary, fontFamily = FontFamily.Monospace)
+                                    IconButton(onClick = rememberHapticAction({ copyToClipboard(label, value) }), modifier = Modifier.size(28.dp)) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "复制$label", tint = LoonBlue, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Card 2: Detected LAN IP Addresses
             item(key = "lan_ips") {
                 Surface(
@@ -274,17 +311,17 @@ fun NetworkShareScreen(
                         val commands = listOf(
                             Triple(
                                 "Windows PowerShell",
-                                "\$env:http_proxy=\"http://$primaryIp:$port\"; \$env:https_proxy=\"http://$primaryIp:$port\"",
+                                "\$env:http_proxy=\"$proxyUrl\"; \$env:https_proxy=\"$proxyUrl\"",
                                 "PowerShell 命令"
                             ),
                             Triple(
                                 "macOS / Linux Shell",
-                                "export http_proxy=http://$primaryIp:$port https_proxy=http://$primaryIp:$port",
+                                "export http_proxy=$proxyUrl https_proxy=$proxyUrl",
                                 "Shell 命令"
                             ),
                             Triple(
                                 "Windows CMD",
-                                "set http_proxy=http://$primaryIp:$port & set https_proxy=http://$primaryIp:$port",
+                                "set http_proxy=$proxyUrl & set https_proxy=$proxyUrl",
                                 "CMD 命令"
                             )
                         )
@@ -419,4 +456,10 @@ fun NetworkShareScreen(
             }
         }
     }
+}
+
+/** Builds a credential-bearing HTTP proxy URL, percent-encoding each user-info component. */
+internal fun buildLanProxyUrl(credentials: LanCredentials, host: String, port: String): String {
+    fun encode(value: String) = java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
+    return "http://${encode(credentials.username)}:${encode(credentials.password)}@$host:$port"
 }

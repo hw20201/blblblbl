@@ -58,7 +58,7 @@ class GlassCardMaterialTest {
         var width = 0
         var height = 0
         compose.setContent {
-            MihomoTheme(themeMode = theme.value, uiStyle = style.value,
+            MihomoTheme(themeMode = theme.value,
                 glassEnabled = enabled.value, glassIntensity = intensity.value) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1f)) {
                     Box(Modifier.fillMaxSize().background(Color.Magenta).padding(24.dp)) {
@@ -73,7 +73,7 @@ class GlassCardMaterialTest {
                 }
             }
         }
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             for (targetTheme in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 compose.runOnIdle {
                     style.value = targetStyle

@@ -112,10 +112,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themeMode by remember { mutableStateOf(settingsManager.themeMode) }
-            var uiStyle by remember { mutableStateOf(settingsManager.uiStyle) }
             var glassIntensity by remember { mutableFloatStateOf(settingsManager.glassIntensity) }
             var glassEnabled by remember { mutableStateOf(settingsManager.glassEnabled) }
-            MihomoTheme(themeMode = themeMode, uiStyle = uiStyle, glassIntensity = glassIntensity, glassEnabled = glassEnabled) {
+            MihomoTheme(themeMode = themeMode, glassIntensity = glassIntensity, glassEnabled = glassEnabled) {
                 MainAppScreen(
                     glassIntensity = glassIntensity,
                     glassEnabled = glassEnabled,
@@ -126,11 +125,6 @@ class MainActivity : ComponentActivity() {
                     onGlassIntensityChanged = { value ->
                         settingsManager.glassIntensity = value
                         glassIntensity = settingsManager.glassIntensity
-                    },
-                    currentUiStyle = uiStyle,
-                    onUiStyleChanged = { style ->
-                        settingsManager.uiStyle = style
-                        uiStyle = style
                     },
                     currentThemeMode = themeMode,
                     onThemeModeChanged = { newMode ->
@@ -159,8 +153,6 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun MainAppScreen(
-        currentUiStyle: UiStyle,
-        onUiStyleChanged: (UiStyle) -> Unit,
         currentThemeMode: ThemeMode,
         onThemeModeChanged: (ThemeMode) -> Unit,
         glassIntensity: Float,
@@ -235,6 +227,7 @@ class MainActivity : ComponentActivity() {
         var tunStack by remember { mutableStateOf(settingsManager.tunStack) }
         var bootOnStartup by remember { mutableStateOf(settingsManager.bootOnStartup) }
         var allowLan by remember { mutableStateOf(settingsManager.allowLan) }
+        var lanCredentials by remember { mutableStateOf(settingsManager.lanCredentials()) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
@@ -773,8 +766,6 @@ class MainActivity : ComponentActivity() {
                             visibleShortcuts = visibleShortcuts,
                             shortcutOrder = shortcutOrder,
                             onToggleVpn = { handleToggleVpn() },
-                            uiStyle = currentUiStyle,
-                            onToggleUiStyle = { onUiStyleChanged(currentUiStyle.toggled()) },
                             onModeSelected = { newMode ->
                                 tunnelMode = newMode
                                 settingsManager.tunnelMode = newMode.value
@@ -1157,18 +1148,27 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             SubScreen.NETWORK_SHARE -> {
+                                val reloadCoreConfig = {
+                                    if (vpnState.status == VpnState.Status.RUNNING) {
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                            val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                            ClashCore.load(conf)
+                                        }
+                                    }
+                                    Unit
+                                }
                                 NetworkShareScreen(
                                     allowLan = allowLan,
+                                    credentials = lanCredentials,
                                     onAllowLanChanged = { enabled ->
                                         allowLan = enabled
                                         settingsManager.allowLan = enabled
-                                        if (vpnState.status == VpnState.Status.RUNNING) {
-                                            lifecycleScope.launch(Dispatchers.IO) {
-                                                val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
-                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                                ClashCore.load(conf)
-                                            }
-                                        }
+                                        reloadCoreConfig()
+                                    },
+                                    onRegenerateCredentials = {
+                                        lanCredentials = settingsManager.regenerateLanCredentials()
+                                        reloadCoreConfig()
                                     },
                                     vpnState = vpnState,
                                     onBack = { backToOrigin() }
@@ -1176,8 +1176,6 @@ class MainActivity : ComponentActivity() {
                             }
                             SubScreen.APPEARANCE -> {
                                 AppearanceScreen(
-                                    uiStyle = currentUiStyle,
-                                    onUiStyleChanged = onUiStyleChanged,
                                     glassIntensity = glassIntensity,
                                     glassEnabled = glassEnabled,
                                     onGlassEnabledChanged = onGlassEnabledChanged,

@@ -84,15 +84,8 @@ fun LoonTrafficCard(
 
 @Composable
 private fun ShortcutSurface(modifier: Modifier, color: Color, content: @Composable () -> Unit) {
-    val miuix = LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX
-    val glass = modifier.glassCardFinish(color, if (miuix) 17.dp else 16.dp)
-    if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
-        top.yukonga.miuix.kmp.basic.Card(modifier = glass, cornerRadius = 17.dp, color = Color.Transparent) {
-            content()
-        }
-    } else {
-        Surface(modifier = glass, color = Color.Transparent, content = content)
-    }
+    val glass = modifier.glassCardFinish(color, 16.dp)
+    Surface(modifier = glass, color = Color.Transparent, content = content)
 }
 
 @Composable

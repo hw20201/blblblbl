@@ -38,10 +38,10 @@ class GlassNavigationRenderTest {
 
     @Test fun glassNavigationAndSettingsRenderInBothStylesAndThemes() {
         val mode = mutableStateOf(ThemeMode.LIGHT)
-        val style = mutableStateOf(UiStyle.MIUIX)
+        val style = mutableStateOf(UiStyle.CUPERTINO)
         var tab = -1
         compose.setContent {
-            MihomoTheme(themeMode = mode.value, uiStyle = style.value) {
+            MihomoTheme(themeMode = mode.value, ) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1f), LocalAppLanguage provides "zh") {
                     Column(Modifier.width(360.dp).background(LoonBg).padding(vertical = 20.dp)) {
                         CupertinoNavBar(title = "设置")
@@ -63,7 +63,7 @@ class GlassNavigationRenderTest {
                 }
             }
         }
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 compose.runOnIdle { mode.value = targetMode; style.value = targetStyle }
                 compose.waitForIdle()

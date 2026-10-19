@@ -89,7 +89,7 @@ class GlassBackdropRenderTest {
         var surfaceCenter = Offset.Zero
 
         compose.setContent {
-            MihomoTheme(themeMode = ThemeMode.LIGHT, uiStyle = UiStyle.CUPERTINO, glassIntensity = intensity.value, glassEnabled = true) {
+            MihomoTheme(themeMode = ThemeMode.LIGHT, glassIntensity = intensity.value, glassEnabled = true) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1f), LocalGlassIntensity provides intensity.value) {
                     val layer = rememberGlassBackdrop()
                     CompositionLocalProvider(LocalGlassBackdrop provides layer) {
@@ -170,7 +170,7 @@ class GlassBackdropRenderTest {
     fun disabledGlassIsOpaqueAndThemeStyleCombinationsRemainRenderable() {
         val enabled = mutableStateOf(false)
         compose.setContent {
-            MihomoTheme(themeMode = ThemeMode.DARK, uiStyle = UiStyle.MIUIX, glassEnabled = enabled.value) {
+            MihomoTheme(themeMode = ThemeMode.DARK, glassEnabled = enabled.value) {
                 CompositionLocalProvider(LocalGlassEnabled provides enabled.value) {
                     Box(Modifier.fillMaxSize().background(Color.Magenta), contentAlignment = Alignment.Center) {
                         GlassNavigationSurface(Modifier.width(300.dp).height(100.dp)) { }

@@ -96,7 +96,6 @@ class GlassCardBackdropRenderTest {
         compose.setContent {
             MihomoTheme(
                 themeMode = ThemeMode.LIGHT,
-                uiStyle = UiStyle.CUPERTINO,
                 glassIntensity = intensity.value,
                 glassEnabled = enabled.value
             ) {

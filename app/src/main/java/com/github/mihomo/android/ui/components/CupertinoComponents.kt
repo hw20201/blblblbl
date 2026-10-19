@@ -49,8 +49,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.mihomo.android.ui.theme.*
-import top.yukonga.miuix.kmp.basic.Card as MiuixCard
-import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -125,7 +123,6 @@ fun CupertinoGroupedSection(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val displayHeader = header ?: title
-    val miuix = LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -142,10 +139,6 @@ fun CupertinoGroupedSection(
 
         if (glass) {
             Column(Modifier.fillMaxWidth().glassCardFinish(LoonCard, 16.dp), content = content)
-        } else if (miuix) {
-            MiuixCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.fillMaxWidth(), content = content)
-            }
         } else Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -190,7 +183,6 @@ fun CupertinoCell(
     onClick: (() -> Unit)? = null
 ) {
     val haptic = rememberIosHaptic()
-    val miuix = LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX
     val textMeasurer = rememberTextMeasurer()
 
     Row(
@@ -212,15 +204,15 @@ fun CupertinoCell(
             Box(
                 modifier = Modifier.size(30.dp)
                     .clip(RoundedCornerShape(7.dp))
-                    .background(if (customIcon != null) Color.Transparent else if (LocalGlassEnabled.current) iconBg.copy(alpha = 0.10f) else if (miuix) Color.Transparent else iconBg),
+                    .background(if (customIcon != null) Color.Transparent else if (LocalGlassEnabled.current) iconBg.copy(alpha = 0.10f) else iconBg),
                 contentAlignment = Alignment.Center
             ) {
                 if (customIcon != null) customIcon()
                 else if (icon != null) Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (miuix || LocalGlassEnabled.current) iconBg else Color.White,
-                    modifier = Modifier.size(if (miuix || LocalGlassEnabled.current) 22.dp else 17.dp)
+                    tint = if (LocalGlassEnabled.current) iconBg else Color.White,
+                    modifier = Modifier.size(if (LocalGlassEnabled.current) 22.dp else 17.dp)
                 )
             }
             Spacer(Modifier.width(13.dp))
@@ -316,31 +308,6 @@ fun CupertinoSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
-        val action = rememberHapticValueAction(onCheckedChange)
-        val currentEnabled by rememberUpdatedState(enabled)
-        val silentNativeHaptic = remember {
-            object : androidx.compose.ui.hapticfeedback.HapticFeedback {
-                override fun performHapticFeedback(hapticFeedbackType: androidx.compose.ui.hapticfeedback.HapticFeedbackType) = Unit
-            }
-        }
-        // Upstream has unconditional native feedback; the app owns the opt-in policy.
-        CompositionLocalProvider(androidx.compose.ui.platform.LocalHapticFeedback provides silentNativeHaptic) {
-            MiuixSwitch(
-                checked = checked,
-                onCheckedChange = { if (currentEnabled) action(it) },
-                modifier = modifier.then(if (LocalGlassEnabled.current) Modifier.glassCardFinish(if (checked) IosBlue else LoonSwitchUncheckedTrack, 20.dp) else Modifier),
-                colors = top.yukonga.miuix.kmp.basic.SwitchDefaults.switchColors(
-                    checkedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else IosBlue,
-                    uncheckedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else LoonSwitchUncheckedTrack,
-                    disabledCheckedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else IosBlue.copy(alpha = 0.5f),
-                    disabledUncheckedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else LoonSwitchUncheckedTrack.copy(alpha = 0.5f)
-                ),
-                enabled = enabled
-            )
-        }
-        return
-    }
     val haptic = rememberIosHaptic()
     val checkedTrackColor = IosBlue
     val uncheckedTrackColor = LoonSwitchUncheckedTrack

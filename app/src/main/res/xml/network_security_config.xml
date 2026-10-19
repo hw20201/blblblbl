@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Cleartext HTTP is permitted for subscriptions, remote scripts, and local proxies. -->
-    <base-config cleartextTrafficPermitted="true" />
-    <!-- The loopback exception is kept for local tooling only. -->
+    <!-- Remote subscriptions and scripts require TLS. Native Mihomo providers use their own stack. -->
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- Exact loopback names only; the local mixed-port proxy must continue to work. -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>

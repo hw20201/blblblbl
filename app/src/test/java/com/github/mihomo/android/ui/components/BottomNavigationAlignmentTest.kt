@@ -65,7 +65,7 @@ class BottomNavigationAlignmentTest {
         val width = mutableIntStateOf(360)
         val selected = mutableIntStateOf(0)
         compose.setContent {
-            MihomoTheme(uiStyle = style.value, themeMode = mode.value) {
+            MihomoTheme( themeMode = mode.value) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, font.floatValue), LocalAppLanguage provides "zh") {
                     Box(Modifier.width(width.intValue.dp)) {
                         LoonFloatingBottomBar(selected.intValue, { selected.intValue = it })
@@ -73,7 +73,7 @@ class BottomNavigationAlignmentTest {
                 }
             }
         }
-        for (targetStyle in UiStyle.entries) for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
             for (scale in listOf(1f, 1.3f, 2f)) {
                 compose.runOnIdle {
                     style.value = targetStyle; mode.value = targetMode
@@ -92,13 +92,13 @@ class BottomNavigationAlignmentTest {
     @Test fun settingsPreviewUsesThreeRealInteractiveTabCells() {
         val style = mutableStateOf(UiStyle.CUPERTINO)
         compose.setContent {
-            MihomoTheme(uiStyle = style.value) {
+            MihomoTheme() {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1f), LocalAppLanguage provides "zh") {
                     Box(Modifier.width(360.dp)) { GlassThemeSection(0.5f, {}) }
                 }
             }
         }
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             compose.runOnIdle { style.value = targetStyle }
             for (i in 0..2) {
                 compose.onNodeWithTag("bottom-tab-$i").performClick().assertIsSelected()

@@ -72,7 +72,7 @@ class GlassEnabledRenderTest {
         val cardTint = Color(0xFF26A6C8)
 
         compose.setContent {
-            MihomoTheme(themeMode = mode.value, uiStyle = style.value, glassIntensity = 1f, glassEnabled = enabled.value) {
+            MihomoTheme(themeMode = mode.value, glassIntensity = 1f, glassEnabled = enabled.value) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1f), LocalGlassIntensity provides 1f, LocalGlassEnabled provides enabled.value) {
                     val navTint = if (LocalLoonColors.current.isDark) Color(0xFF202329) else Color(0xFFF9FBFF)
                     expectedNav = navTint
@@ -96,7 +96,7 @@ class GlassEnabledRenderTest {
             }
         }
 
-        for (targetStyle in UiStyle.entries) {
+        for (targetStyle in listOf(UiStyle.CUPERTINO)) {
             for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 compose.runOnIdle {
                     style.value = targetStyle

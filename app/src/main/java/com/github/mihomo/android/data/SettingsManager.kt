@@ -7,6 +7,12 @@ enum class PerAppProxyMode {
     DISABLED, WHITELIST, BLACKLIST
 }
 
+data class LanCredentials(val username: String, val password: String) { val encoded: String get() = "$username:$password" }
+private const val KEY_LAN_USER = "lan_auth_user"
+private const val KEY_LAN_PASSWORD = "lan_auth_password"
+private const val LAN_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"
+private val lanCredentialLock = Any()
+private val lanSecureRandom = java.security.SecureRandom()
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK
 }
@@ -60,6 +66,19 @@ class SettingsManager(context: Context) {
         get() = prefs.getBoolean("allow_lan", false)
         set(value) = prefs.edit().putBoolean("allow_lan", value).apply()
 
+    fun lanCredentials(): LanCredentials = synchronized(lanCredentialLock) {
+        val user = prefs.getString(KEY_LAN_USER, null)
+        val password = prefs.getString(KEY_LAN_PASSWORD, null)
+        if (!user.isNullOrBlank() && !password.isNullOrBlank()) return@synchronized LanCredentials(user, password)
+        regenerateLanCredentialsLocked()
+    }
+    fun regenerateLanCredentials(): LanCredentials = synchronized(lanCredentialLock) { regenerateLanCredentialsLocked() }
+    private fun regenerateLanCredentialsLocked(): LanCredentials {
+        val password = buildString { repeat(16) { append(LAN_PASSWORD_ALPHABET[lanSecureRandom.nextInt(LAN_PASSWORD_ALPHABET.length)]) } }
+        // commit() makes generated credentials durable before callers can start the shared listener.
+        check(prefs.edit().putString(KEY_LAN_USER, "nexus").putString(KEY_LAN_PASSWORD, password).commit()) { "Unable to persist LAN credentials" }
+        return LanCredentials("nexus", password)
+    }
     /** Switches the DNS enhanced mode between fake-ip and redir-host. */
     var fakeIpEnabled: Boolean
         get() = prefs.getBoolean("fake_ip_enabled", true)

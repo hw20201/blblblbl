@@ -29,28 +29,28 @@ class UiStyleComponentsTest {
         var entries = 0
         var disposals = 0
         compose.setContent {
-            MihomoTheme(uiStyle = style.value) {
+            MihomoTheme() {
                 DisposableEffect(Unit) { entries++; onDispose { disposals++ } }
                 var clicks by remember { mutableIntStateOf(0) }
                 CupertinoCell(title = "Clicks $clicks", onClick = { clicks++ })
             }
         }
         compose.onNodeWithText("Clicks 0").performClick()
-        compose.runOnIdle { style.value = UiStyle.MIUIX }
+        compose.runOnIdle { style.value = UiStyle.CUPERTINO }
         compose.onNodeWithText("Clicks 1").assertExists().performClick()
         compose.runOnIdle { style.value = UiStyle.CUPERTINO }
         compose.onNodeWithText("Clicks 2").assertExists()
         compose.runOnIdle { assertEquals(1, entries); assertEquals(0, disposals) }
     }
 
-    @Test fun miuixSwitchRespectsHapticsAndDisabledState() {
+    @Test fun cupertinoSwitchRespectsHapticsAndDisabledState() {
         val enabled = mutableStateOf(true)
         val checked = mutableStateOf(false)
         val feedback = mutableStateOf(false)
         var ticks = 0
         var calls = 0
         compose.setContent {
-            MihomoTheme(uiStyle = UiStyle.MIUIX) {
+            MihomoTheme() {
                 CompositionLocalProvider(
                     LocalHapticFeedbackEnabled provides { feedback.value },
                     LocalHapticFeedbackPerformer provides { ticks++ }
@@ -72,7 +72,7 @@ class UiStyleComponentsTest {
         val style = mutableStateOf(UiStyle.CUPERTINO)
         val mode = mutableStateOf(ThemeMode.LIGHT)
         compose.setContent {
-            MihomoTheme(uiStyle = style.value, themeMode = mode.value) {
+            MihomoTheme( themeMode = mode.value) {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, 1.6f)) {
                     Column(Modifier.width(320.dp)) {
@@ -84,7 +84,7 @@ class UiStyleComponentsTest {
                 }
             }
         }
-        UiStyle.entries.forEach { target ->
+        listOf(UiStyle.CUPERTINO).forEach { target ->
             compose.runOnIdle { style.value = target; mode.value = ThemeMode.LIGHT }
             compose.onNodeWithText("Light").assertExists()
             compose.onNodeWithText("较长的网络设置标题").assertExists()

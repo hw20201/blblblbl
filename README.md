@@ -28,4 +28,19 @@
 ## 说明
 
 - 支持架构：`arm64-v8a`
-- 订阅支持：`HTTP` 与 `HTTPS` 链接导入
+- 界面：仅保留 Cupertino；旧版保存的 Miuix 偏好会自动按 Cupertino 读取。保留 Liquid Glass 开关与强度。
+- 订阅与远程脚本：远程地址必须使用 `HTTPS`；`HTTP` 仅允许精确的 `127.0.0.1` 与 `localhost` 回环地址，远程 HTTP 链接需更换为 HTTPS。
+- 局域网共享：其他设备需使用共享页显示的用户名和随机密码；可复制、轮换。应用本机回环访问免认证。
+- 订阅脚本：保留 QuickJS 主引擎与 Rhino 1.7.15 兜底，不换引擎。新增 256 KiB UTF-8 源文件上限、慢执行日志，以及逐 runtime 的 QuickJS 原生 3 秒 deadline、64 MiB 堆与 512 KiB 栈限制。创建、守卫、执行和清理均使用同一调用线程；守卫不可用时拒绝无界 QuickJS，进入既有 Rhino 兜底（不影响应用启动）。Rhino 保留指令限时，并使用单调时钟和不可被脚本捕获的宿主超时信号。Android 实际中断、内存边界与设备性能仍需真机验收。
+- 配置安全：仅接受可解析的 YAML 映射；非法 YAML 或序列/标量根直接拒绝，不把未过滤的文本拼入运行时配置。
+- R8：默认关闭；`-Pnexus.r8=true` 仅供实验构建，需独立真机验收。普通 Release 草稿不启用。
+
+## 许可证
+
+本项目以 **GNU General Public License v3.0** 发布，全文见 [LICENSE](LICENSE)。
+
+Mihomo 内核与上游 Android 适配层各自的许可证见 [native/LICENSE.mihomo](native/LICENSE.mihomo) 与
+[native/LICENSE.upstream](native/LICENSE.upstream)。分发二进制时需要同时提供本仓库源码、
+`native/patches/` 补丁与构建脚本，以满足 GPL 合规义务。
+
+界面与交互参考的上游项目：[kanwox/Nexus](https://github.com/kanwox/Nexus)。
