@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +39,9 @@ import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.LocalGlassTokens
+import com.github.mihomo.android.ui.glass.NavigationLensState
+import com.github.mihomo.android.ui.glass.ProxyGroupGlass
+import com.github.mihomo.android.ui.glass.useProxyGroupGlass
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -115,7 +119,8 @@ fun ProxiesScreen(
     listModeState: LazyListState = rememberLazyListState(),
     groupRowState: LazyListState = rememberLazyListState(),
     expandedGroups: SnapshotStateMap<String, Boolean> = remember { mutableStateMapOf() },
-    perGroupTabStates: SnapshotStateMap<String, LazyListState> = remember { mutableStateMapOf() }
+    perGroupTabStates: SnapshotStateMap<String, LazyListState> = remember { mutableStateMapOf() },
+    glassScene: NavigationLensState? = null
 ) {
     var showOptionsMenu by remember { mutableStateOf(false) }
     val activeTabState = if (selectedGroupName.isNotBlank()) {
@@ -450,6 +455,7 @@ fun ProxiesScreen(
                                         val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$selectedGroupName:${proxy.name}")
                                         LoonProxyItemCard(
                                             proxy = proxy,
+                                            glassScene = if (currentViewMode == "TABS") glassScene else null,
                                             isSelected = proxy.name == currentNow,
                                             columns = nodeColumns,
                                             isTesting = isItemTesting,
@@ -743,6 +749,7 @@ private fun LoonGroupHeaderCard(
 @Composable
 private fun LoonProxyItemCard(
     proxy: Proxy,
+    glassScene: NavigationLensState? = null,
     isSelected: Boolean,
     columns: Int = 1,
     isTesting: Boolean = false,
@@ -782,6 +789,7 @@ private fun LoonProxyItemCard(
         1 -> {
             ProxyGlassCard(
                 modifier = Modifier
+                    .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(54.dp)
                     .clip(RoundedCornerShape(14.dp))
@@ -875,6 +883,7 @@ private fun LoonProxyItemCard(
         2 -> {
             ProxyGlassCard(
                 modifier = Modifier
+                    .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(62.dp)
                     .clip(RoundedCornerShape(14.dp))
@@ -886,6 +895,7 @@ private fun LoonProxyItemCard(
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
+                groupScene = if (useProxyGroupGlass(proxy.isGroup, columns, glassScene != null)) glassScene else null,
                 accent = if (isSelected) IosBlue else null
             ) {
                 Column(
@@ -963,6 +973,7 @@ private fun LoonProxyItemCard(
         else -> {
             ProxyGlassCard(
                 modifier = Modifier
+                    .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(56.dp)
                     .clip(RoundedCornerShape(12.dp))
@@ -1048,16 +1059,19 @@ private fun LoonProxyItemCard(
 }
 
 
-/** Static, translucent card material: no per-card scene capture, blur, shader, or animation. */
+/** Existing static material; only explicitly supplied two-column GROUP scenes opt into the new bevel. */
 @Composable
 private fun ProxyGlassCard(
     modifier: Modifier,
     color: Color,
     shape: RoundedCornerShape,
     accent: Color? = null,
+    groupScene: NavigationLensState? = null,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
-    if (GlassDefaults.enabled) {
+    if (GlassDefaults.enabled && groupScene != null) {
+        ProxyGroupGlass(modifier, shape, groupScene, accent, content)
+    } else if (GlassDefaults.enabled) {
         val tokens = LocalGlassTokens.current
         val tint = if (accent == null) tokens.tint else androidx.compose.ui.graphics.lerp(tokens.tintAccent, accent, 0.12f)
         val fill = Brush.linearGradient(

@@ -806,6 +806,7 @@ class MainActivity : ComponentActivity() {
                         val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
 
                         ProxiesScreen(
+                            glassScene = cardScene,
                             groups = proxyGroups,
                             groupMap = computedGroupMap,
                             groupIcons = parsedProfile.groupIcons,
