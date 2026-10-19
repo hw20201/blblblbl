@@ -46,9 +46,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassPalettes
+import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NexusGlassBackground
 import com.github.mihomo.android.ui.glass.ProvideGlassTheme
-import com.github.mihomo.android.ui.glass.glassIsDark
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
@@ -61,7 +62,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -107,6 +107,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settingsManager = SettingsManager(this)
+        // Restore the saved palette before the first frame so there is no flash of the default.
+        GlassDefaults.palette = GlassPalettes.byKey(settingsManager.glassPaletteKey)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -709,7 +711,7 @@ class MainActivity : ComponentActivity() {
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
         ) {
         ProvideGlassTheme {
-        NexusGlassBackground(dark = glassIsDark) {
+        NexusGlassBackground(palette = glassPalette) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1209,6 +1211,11 @@ class MainActivity : ComponentActivity() {
                                 AppearanceScreen(
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
+                                    palette = GlassDefaults.palette,
+                                    onPaletteChanged = { spec ->
+                                        GlassDefaults.palette = spec
+                                        settingsManager.glassPaletteKey = spec.key
+                                    },
                                     onLanguageChanged = { code -> appLanguage = code },
                                     nodeColumns = nodeColumns,
                                     onNodeColumnsChanged = { cols ->

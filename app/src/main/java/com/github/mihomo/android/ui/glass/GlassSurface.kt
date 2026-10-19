@@ -16,59 +16,41 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
- * Tokens for the glass surface family.
+ * Panel material for one palette.
  *
  * No per-panel blur is used. `Modifier.blur` requires API 31 while `minSdk` is 26, and each blurred
  * panel costs a full-size `saveLayer` — on the dashboard that is a dozen layers redrawn every time
- * the traffic counters tick. Instead the material is expressed as *tint + rim + sheen* over the
- * colour field in [NexusGlassBackground], which is what actually sells the effect at a fraction of
- * the cost. `softBlurIfSupported()` is available for one-off decorative layers.
+ * the traffic counters tick. The material is expressed as *tint + rim + sheen* over the colour
+ * field in [NexusGlassBackground], which is what actually sells the effect at a fraction of the cost.
  */
 @Immutable
 data class GlassTokens(
-    /** Base panel tint. Kept semi-transparent so the field behind it shows through. */
+    /** Panel fill at the top-left. */
     val tint: Color,
-    /** Tint blended under an accent colour (upload / download cards). */
+    /** Panel fill at the bottom-right; the pair creates the soft diagonal falloff. */
+    val tintEnd: Color,
+    /** Fill used when an accent is blended underneath (upload / download cards). */
     val tintAccent: Color,
     val edge: Color,
     val rimTop: Color,
     val rimBottom: Color,
-    /** Diagonal sheen strength. */
     val sheen: Float,
     val isDark: Boolean
 )
 
-val DarkGlassTokens = GlassTokens(
-    tint = Color(0x4816161A),
-    tintAccent = Color(0x3316161A),
-    edge = Color(0x24FFFFFF),
-    rimTop = Color(0x8FFFFFFF),
-    rimBottom = Color(0x3380B4FF),
-    sheen = 0.09f,
-    isDark = true
-)
-
-val LightGlassTokens = GlassTokens(
-    tint = Color(0x8FFFFFFF),
-    tintAccent = Color(0x73FFFFFF),
-    edge = Color(0xB8FFFFFF),
-    rimTop = Color(0xF2FFFFFF),
-    rimBottom = Color(0x3370A0FF),
-    sheen = 0.34f,
-    isDark = false
-)
-
-val LocalGlassTokens = staticCompositionLocalOf { DarkGlassTokens }
+val LocalGlassTokens = staticCompositionLocalOf { GlassPalettes.CREAM.toTokens() }
 
 /**
- * Rim + sheen. Call this on a modifier chain that is already clipped to the panel shape.
+ * Rim + sheen. Apply this to a modifier chain that is already clipped to the panel shape.
  *
  * The top rim is the single most important cue: a bright hairline that fades at both ends reads as
  * a lens edge, whereas a uniform 1px border reads as a plain card.
  */
-fun Modifier.glassSurface(tokens: GlassTokens = DarkGlassTokens): Modifier =
+fun Modifier.glassSurface(tokens: GlassTokens = LocalGlassTokens.current): Modifier =
     this.drawWithContent {
         drawContent()
         val w = size.width
@@ -117,8 +99,8 @@ fun Modifier.glassSurface(tokens: GlassTokens = DarkGlassTokens): Modifier =
  * A glass slab. [accent] carries the semantic colour of a card (upload green, download blue);
  * leave it null for a neutral surface.
  *
- * Expects [NexusGlassBackground] somewhere behind it. Without one it still renders, but a glass
- * panel over flat black is just a dark card — the colour field is not optional in practice.
+ * Expects [NexusGlassBackground] somewhere behind it: a glass panel over flat colour is just a
+ * plain card, because the material reads its colour from what is behind it.
  */
 @Composable
 fun GlassSurface(
@@ -130,14 +112,14 @@ fun GlassSurface(
 ) {
     val fill = if (accent == null) {
         Brush.linearGradient(
-            listOf(tokens.tint, tokens.tint.copy(alpha = tokens.tint.alpha * 0.86f)),
+            listOf(tokens.tint, tokens.tintEnd),
             start = Offset.Zero,
             end = Offset.Infinite
         )
     } else {
-        // Blend the accent *below* the tint so a saturated hue can't wash out white text.
+        // Blend the accent *below* the tint so a saturated hue cannot wash out the type.
         Brush.linearGradient(
-            listOf(lerp(tokens.tintAccent, accent, 0.26f), tokens.tint),
+            listOf(lerp(tokens.tintAccent, accent, 0.26f), tokens.tintEnd),
             start = Offset.Zero,
             end = Offset.Infinite
         )
@@ -152,7 +134,7 @@ fun GlassSurface(
     )
 }
 
-/** Convenience for the common "row inside a section" case. */
+/** Convenience for the "row inside a section" case. */
 @Composable
 fun GlassSection(
     modifier: Modifier = Modifier,
@@ -164,3 +146,11 @@ fun GlassSection(
     tokens = tokens,
     content = content
 )
+
+/** Corner radii, aligned with the Cupertino surface family the restored UI uses. */
+object GlassRadius {
+    val section: Dp = 14.dp
+    val card: Dp = 18.dp
+    val bar: Dp = 32.dp
+    val sheet: Dp = 28.dp
+}

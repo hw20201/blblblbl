@@ -19,6 +19,8 @@ import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassPalettePicker
+import com.github.mihomo.android.ui.glass.GlassPaletteSpec
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -30,7 +32,9 @@ fun AppearanceScreen(
     onShowGroupIconsChanged: (Boolean) -> Unit,
     nodeColumns: Int,
     onNodeColumnsChanged: (Int) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    palette: GlassPaletteSpec = GlassDefaults.palette,
+    onPaletteChanged: (GlassPaletteSpec) -> Unit = { GlassDefaults.palette = it }
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -88,6 +92,28 @@ fun AppearanceScreen(
                     )
                     if (index < themes.size - 1) {
                         CupertinoIndentedDivider(startIndent = 16.dp)
+                    }
+                }
+            }
+
+            // Section 1b: 色泽主题 (glass palette)
+            if (GlassDefaults.enabled) {
+                CupertinoGroupedSection(
+                    title = AppStrings.get("palette_section", lang),
+                    footer = AppStrings.get("palette_footer", lang)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 14.dp)
+                    ) {
+                        GlassPalettePicker(
+                            selected = palette,
+                            labelProvider = { spec ->
+                                AppStrings.get("palette_" + spec.key, lang)
+                            },
+                            onSelect = onPaletteChanged
+                        )
                     }
                 }
             }

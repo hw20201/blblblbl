@@ -359,7 +359,15 @@ object AppStrings {
         "tile_connected" to "已连接",
         "tile_connecting" to "连接中…",
         "tile_disconnecting" to "断开中…",
-        "tile_disconnected" to "已断开"
+        "tile_disconnected" to "已断开",
+        "palette_section" to "色泽主题",
+        "palette_footer" to "决定界面底色与玻璃折射的颜色。仅影响外观，不改动任何代理行为。",
+        "palette_white" to "白玻璃",
+        "palette_blue" to "浅蓝",
+        "palette_cream" to "奶白",
+        "palette_mint" to "薄荷",
+        "palette_lavender" to "薰衣草",
+        "palette_midnight" to "午夜"
     )
 
     private val enExtra = mapOf(
@@ -439,7 +447,15 @@ object AppStrings {
         "tile_connected" to "Connected",
         "tile_connecting" to "Connecting…",
         "tile_disconnecting" to "Disconnecting…",
-        "tile_disconnected" to "Disconnected"
+        "tile_disconnected" to "Disconnected",
+        "palette_section" to "Colour Theme",
+        "palette_footer" to "Chooses the backdrop the glass refracts. Appearance only — proxy behaviour is untouched.",
+        "palette_white" to "Porcelain",
+        "palette_blue" to "Azure",
+        "palette_cream" to "Cream",
+        "palette_mint" to "Mint",
+        "palette_lavender" to "Lavender",
+        "palette_midnight" to "Midnight"
     )
 
     private val ruExtra = mapOf(
@@ -509,7 +525,15 @@ object AppStrings {
         "tile_connected" to "Подключено",
         "tile_connecting" to "Подключение…",
         "tile_disconnecting" to "Отключение…",
-        "tile_disconnected" to "Отключено"
+        "tile_disconnected" to "Отключено",
+        "palette_section" to "Цветовая тема",
+        "palette_footer" to "Определяет фон, который преломляет стекло. Только внешний вид — прокси не затрагивается.",
+        "palette_white" to "Фарфор",
+        "palette_blue" to "Лазурь",
+        "palette_cream" to "Крем",
+        "palette_mint" to "Мята",
+        "palette_lavender" to "Лаванда",
+        "palette_midnight" to "Полночь"
     )
 
     private val zhAll = zh + zhExtra

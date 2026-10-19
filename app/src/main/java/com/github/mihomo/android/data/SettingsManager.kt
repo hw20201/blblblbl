@@ -17,6 +17,10 @@ enum class ThemeMode {
     SYSTEM, LIGHT, DARK
 }
 
+/** Default palette: the warm white one, which keeps the orange brand identity. */
+private const val KEY_GLASS_PALETTE = "glass_palette"
+private const val DEFAULT_GLASS_PALETTE = "cream"
+
 class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
 
@@ -167,6 +171,14 @@ class SettingsManager(context: Context) {
     var appLanguage: String
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"
         set(value) = prefs.edit().putString("app_language", value).apply()
+
+    /**
+     * Selected glass palette key. Unknown values fall back to the default rather than crashing, so
+     * a palette can be removed from a future build without a migration.
+     */
+    var glassPaletteKey: String
+        get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
+        set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
 
     /** Master switch for haptic feedback on key interactions. */
     var hapticEnabled: Boolean
