@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.InstalledApp
 import com.github.mihomo.android.data.PerAppProxyMode
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 
 private val iconBitmapCache = androidx.collection.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(300)
@@ -49,7 +50,7 @@ fun AppRoutingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
     ) {
         // Cupertino Navigation Bar

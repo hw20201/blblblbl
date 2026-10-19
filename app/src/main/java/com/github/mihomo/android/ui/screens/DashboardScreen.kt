@@ -42,6 +42,7 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.mihomo.android.data.DashboardData
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlin.math.roundToInt
@@ -183,7 +184,11 @@ fun DashboardScreen(
     }
 
     val isDarkTheme = LocalLoonColors.current.isDark
-    val topBgBrush = if (isDarkTheme) {
+    // With glass enabled the shared backdrop already provides the colour field, so the screen
+    // itself must stay transparent or it would paint over it.
+    val topBgBrush = if (GlassDefaults.enabled) {
+        Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+    } else if (isDarkTheme) {
         Brush.verticalGradient(
             colors = listOf(LoonBg, LoonBg)
         )
@@ -206,7 +211,7 @@ fun DashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(LoonBg)
+                .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
             Column(
                 modifier = Modifier

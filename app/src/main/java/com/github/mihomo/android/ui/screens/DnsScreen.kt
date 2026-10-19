@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.LogRepository
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -106,7 +107,7 @@ fun DnsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
     ) {
         // Cupertino Navigation Bar

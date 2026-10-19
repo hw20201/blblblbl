@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassRadius
+import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -131,22 +134,34 @@ fun CupertinoGroupedSection(
             )
         }
 
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .border(
-                    width = 0.5.dp,
-                    color = LoonCardBorder,
-                    shape = RoundedCornerShape(14.dp)
-                ),
-            color = LoonCard,
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Column(
+        if (GlassDefaults.enabled) {
+            GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
-                content = content
-            )
+                shape = RoundedCornerShape(GlassRadius.section)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    content = content
+                )
+            }
+        } else {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(
+                        width = 0.5.dp,
+                        color = LoonCardBorder,
+                        shape = RoundedCornerShape(14.dp)
+                    ),
+                color = LoonCard,
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    content = content
+                )
+            }
         }
 
         if (!footer.isNullOrBlank()) {

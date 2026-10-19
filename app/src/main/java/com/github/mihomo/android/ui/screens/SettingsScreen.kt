@@ -33,6 +33,7 @@ import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.data.TunStack
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -91,7 +92,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
             .padding(top = 10.dp)
     ) {

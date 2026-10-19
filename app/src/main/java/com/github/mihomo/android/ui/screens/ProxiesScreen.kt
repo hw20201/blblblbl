@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -134,7 +135,7 @@ fun ProxiesScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
     ) {
         Column(
             modifier = Modifier

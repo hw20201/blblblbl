@@ -28,6 +28,7 @@ import com.github.mihomo.android.data.LogEntry
 import com.github.mihomo.android.data.RequestLogRepository
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -128,7 +129,7 @@ fun RequestLogsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
     ) {
         // Cupertino Navigation Bar

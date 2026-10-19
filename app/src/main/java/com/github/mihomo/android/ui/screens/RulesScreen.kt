@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.data.ParsedRule
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,7 +76,7 @@ fun RulesScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
     ) {
         // Cupertino Navigation Bar

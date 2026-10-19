@@ -31,6 +31,7 @@ import com.github.mihomo.android.data.LanCredentials
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -98,7 +99,7 @@ fun NetworkShareScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
     ) {
         CupertinoNavBar(

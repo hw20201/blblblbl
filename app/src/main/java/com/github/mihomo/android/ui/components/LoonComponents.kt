@@ -42,6 +42,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.mihomo.android.ui.glass.GlassAccent
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassRadius
+import com.github.mihomo.android.ui.glass.GlassSurface
+import com.github.mihomo.android.ui.glass.glassTextPrimary
+import com.github.mihomo.android.ui.glass.glassTextSecondary
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -49,8 +55,19 @@ fun LoonTrafficCard(
     modifier: Modifier = Modifier,
     title: String,
     speed: String,
-    isUpload: Boolean
+    isUpload: Boolean,
+    glass: Boolean = GlassDefaults.enabled
 ) {
+    if (glass) {
+        LoonTrafficCardGlass(
+            modifier = modifier,
+            title = title,
+            speed = speed,
+            isUpload = isUpload
+        )
+        return
+    }
+
     val gradient = if (isUpload) {
         Brush.horizontalGradient(listOf(Color(0xFF00C853), Color(0xFF00E676)))
     } else {
@@ -108,6 +125,58 @@ fun LoonTrafficCard(
                     modifier = Modifier.size(width = 32.dp, height = 38.dp)
                 )
             }
+        }
+    }
+}
+
+/**
+ * Glass variant of [LoonTrafficCard]. Same geometry (82dp tall, 18dp radius, arrow on the right) so
+ * the dashboard layout is untouched; only the material changes. The accent now tints the panel
+ * instead of filling it, which is what makes the metric legible over a busy colour field.
+ */
+@Composable
+private fun LoonTrafficCardGlass(
+    modifier: Modifier = Modifier,
+    title: String,
+    speed: String,
+    isUpload: Boolean
+) {
+    val accent = if (isUpload) GlassAccent.upload else GlassAccent.download
+    GlassSurface(
+        modifier = modifier.height(82.dp),
+        shape = RoundedCornerShape(GlassRadius.card),
+        accent = accent
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 14.dp, end = 56.dp)
+        ) {
+            Text(
+                text = title,
+                color = glassTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = if (speed.isBlank()) "--" else speed,
+                color = glassTextPrimary,
+                fontSize = 15.5.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            IosTrafficArrow(
+                isUpload = isUpload,
+                modifier = Modifier.size(width = 32.dp, height = 38.dp)
+            )
         }
     }
 }
@@ -304,103 +373,128 @@ fun LoonShortcutCard(
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
+    val pressModifier = modifier
+        .height(118.dp)
+        .iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+            haptic.lightTick()
+            onClick()
+        }
+
+    // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.
+    if (GlassDefaults.enabled) {
+        GlassSurface(
+            modifier = pressModifier,
+            shape = RoundedCornerShape(GlassRadius.card)
+        ) {
+            ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+        }
+        return
+    }
+
     Surface(
-        modifier = modifier
-            .height(118.dp)
+        modifier = pressModifier
             .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
             .clip(RoundedCornerShape(18.dp))
             .border(
                 width = 0.5.dp,
                 color = LoonCardBorder,
                 shape = RoundedCornerShape(18.dp)
-            )
-            .iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
-                haptic.lightTick()
-                onClick()
-            },
+            ),
         color = LoonCard
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Text info on top-left
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = 14.dp, end = 56.dp)
-            ) {
+        ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+    }
+}
+
+/** Shared body of [LoonShortcutCard]; identical in both material variants. */
+@Composable
+private fun ShortcutCardContent(
+    title: String,
+    subtitle: String,
+    icon: @Composable () -> Unit,
+    isEditing: Boolean,
+    onDelete: (() -> Unit)?
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Text info on top-left
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 14.dp, top = 14.dp, end = 56.dp)
+        ) {
+            Text(
+                text = title,
+                color = LoonTextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            if (subtitle.isNotBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = title,
-                    color = LoonTextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
+                    text = subtitle,
+                    color = LoonTextSecondary,
+                    fontSize = 12.sp,
                     maxLines = 1
                 )
-                if (subtitle.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = subtitle,
-                        color = LoonTextSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 1
-                    )
-                }
             }
+        }
 
-            // Bottom-left: clean chevron '>' button or drag handle (no background color block)
+        // Bottom-left: clean chevron '>' button or drag handle (no background color block)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 14.dp, bottom = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isEditing) {
+                Canvas(modifier = Modifier.size(18.dp)) {
+                    val stroke = 2.dp.toPx()
+                    val w = size.width
+                    val h = size.height
+                    val color = Color(0xFF9AA0AE)
+                    drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
+                    drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFF9AA0AE),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // Bottom-right large floating illustration
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 10.dp, bottom = 10.dp)
+                .size(54.dp),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            icon()
+        }
+
+        // Red minus/remove button badge at top-right in edit mode
+        if (isEditing && onDelete != null) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 14.dp, bottom = 14.dp),
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF3B30))
+                    .clickable { onDelete() },
                 contentAlignment = Alignment.Center
             ) {
-                if (isEditing) {
-                    Canvas(modifier = Modifier.size(18.dp)) {
-                        val stroke = 2.dp.toPx()
-                        val w = size.width
-                        val h = size.height
-                        val color = Color(0xFF9AA0AE)
-                        drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
-                        drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
-                    }
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = Color(0xFF9AA0AE),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            // Bottom-right large floating illustration
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 10.dp, bottom = 10.dp)
-                    .size(54.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                icon()
-            }
-
-            // Red minus/remove button badge at top-right in edit mode
-            if (isEditing && onDelete != null) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFFF3B30))
-                        .clickable { onDelete() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "\u2212",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
+                Text(
+                    text = "\u2212",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
         }
     }
@@ -865,6 +959,16 @@ fun LoonFloatingBottomBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (GlassDefaults.enabled) {
+        GlassSurface(
+            modifier = modifier.shadow(16.dp, RoundedCornerShape(GlassRadius.bar), spotColor = Color(0x33000000)),
+            shape = RoundedCornerShape(GlassRadius.bar)
+        ) {
+            BottomBarItems(selectedTab, onTabSelected)
+        }
+        return
+    }
+
     Surface(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
@@ -872,6 +976,12 @@ fun LoonFloatingBottomBar(
         shape = RoundedCornerShape(32.dp),
         color = LocalLoonColors.current.bottomBarBg
     ) {
+        BottomBarItems(selectedTab, onTabSelected)
+    }
+}
+
+@Composable
+private fun BottomBarItems(selectedTab: Int, onTabSelected: (Int) -> Unit) {
         Row(
             modifier = Modifier
                 .padding(horizontal = 28.dp, vertical = 7.dp),
@@ -900,7 +1010,6 @@ fun LoonFloatingBottomBar(
                 onClick = { onTabSelected(2) }
             )
         }
-    }
 }
 
 @Composable

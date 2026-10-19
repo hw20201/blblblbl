@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -44,6 +45,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.NexusGlassBackground
+import com.github.mihomo.android.ui.glass.ProvideGlassTheme
+import com.github.mihomo.android.ui.glass.glassIsDark
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
@@ -703,10 +708,12 @@ class MainActivity : ComponentActivity() {
             // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
         ) {
+        ProvideGlassTheme {
+        NexusGlassBackground(dark = glassIsDark) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(LoonBg)
+                .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
             // 1. Primary main tabs: HorizontalPager keeps all 3 tabs persistently composed!
             HorizontalPager(
@@ -1018,7 +1025,7 @@ class MainActivity : ComponentActivity() {
                     label = "SubScreenOverlayTransition"
                 ) { subScreen ->
                     if (subScreen != null) {
-                    Box(modifier = Modifier.fillMaxSize().background(LoonBg)) {
+                    Box(modifier = Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
                         when (subScreen) {
                             SubScreen.PROFILES -> {
                                 ProfilesScreen(
@@ -1251,6 +1258,8 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        }
+        } // end NexusGlassBackground / ProvideGlassTheme
         } // end CompositionLocalProvider
     }
 }
