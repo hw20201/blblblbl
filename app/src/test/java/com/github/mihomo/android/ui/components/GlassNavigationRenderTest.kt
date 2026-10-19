@@ -67,7 +67,7 @@ class GlassNavigationRenderTest {
             for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 compose.runOnIdle { mode.value = targetMode; style.value = targetStyle }
                 compose.waitForIdle()
-                compose.onNodeWithText("仪表").performClick()
+                compose.onNodeWithText("首页").performClick()
                 compose.runOnIdle { assertEquals(0, tab) }
                 compose.runOnIdle {
                     val view = compose.activity.window.decorView

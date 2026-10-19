@@ -1,12 +1,16 @@
 package com.github.mihomo.android.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import com.github.mihomo.android.ui.components.rememberGlassBackdrop
+import com.github.mihomo.android.ui.components.LocalGlassBackdrop
+import com.github.mihomo.android.ui.components.glassBackdropSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
@@ -20,10 +24,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.GlassEffect
 import com.github.mihomo.android.ui.components.CupertinoGroupedSection
 import com.github.mihomo.android.ui.components.GlassNavigationSurface
+import com.github.mihomo.android.ui.components.LoonBottomNavigationTabs
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.github.mihomo.android.ui.theme.LocalGlassIntensity
 import com.github.mihomo.android.ui.theme.LocalGlassEnabled
 import com.github.mihomo.android.ui.theme.SettingsTypography
@@ -61,21 +69,29 @@ fun GlassThemeSection(
                 color = LoonTextSecondary,
                 style = SettingsTypography.Description
             )
-            CompositionLocalProvider(LocalGlassIntensity provides normalizedValue, LocalGlassEnabled provides enabled) {
+            val previewBackdrop = rememberGlassBackdrop()
+            CompositionLocalProvider(
+                LocalGlassIntensity provides normalizedValue,
+                LocalGlassEnabled provides enabled,
+                LocalGlassBackdrop provides previewBackdrop
+            ) {
                 Box(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
                         .background(LoonBg).padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Separate sibling source: colours visibly diffuse through the glass,
+                    // while navigation content is excluded from backdrop recording.
+                    Box(Modifier.matchParentSize().glassBackdropSource(previewBackdrop, enabled).drawBehind {
+                        drawRect(LoonPreviewBase)
+                        drawCircle(Color(0xFF57B8F2).copy(alpha = 0.62f), size.width * 0.23f,
+                            Offset(size.width * 0.20f, size.height * 0.70f))
+                        drawCircle(Color(0xFFB08AF4).copy(alpha = 0.55f), size.width * 0.20f,
+                            Offset(size.width * 0.73f, size.height * 0.20f))
+                    })
                     GlassNavigationSurface(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("首页", color = LoonTextPrimary, style = SettingsTypography.NavigationLabel)
-                            Text("代理　设置", color = LoonTextSecondary, style = SettingsTypography.NavigationLabel)
-                        }
+                        var previewTab by remember { mutableIntStateOf(0) }
+                        LoonBottomNavigationTabs(previewTab, { previewTab = it })
                     }
                 }
             }
@@ -94,3 +110,5 @@ fun GlassThemeSection(
         }
     }
 }
+
+private val LoonPreviewBase = Color(0xFFDFE8F2)

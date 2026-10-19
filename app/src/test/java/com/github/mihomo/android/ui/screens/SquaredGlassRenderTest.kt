@@ -1,7 +1,9 @@
 package com.github.mihomo.android.ui.screens
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +22,9 @@ import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.UiStyle
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
+import com.github.mihomo.android.ui.components.LocalGlassBackdrop
+import com.github.mihomo.android.ui.components.rememberGlassBackdrop
+import com.github.mihomo.android.ui.components.glassBackdropSource
 import com.github.mihomo.android.ui.theme.LocalAppLanguage
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import org.junit.Rule
@@ -49,7 +54,9 @@ class SquaredGlassRenderTest {
                 uiStyle = style.value,
                 glassIntensity = glassIntensity.value
             ) {
+                val backdrop = rememberGlassBackdrop()
                 CompositionLocalProvider(
+                    LocalGlassBackdrop provides backdrop,
                     LocalDensity provides Density(1f, 1f),
                     LocalAppLanguage provides "zh"
                 ) {
@@ -62,7 +69,7 @@ class SquaredGlassRenderTest {
                                 )
                             }
                         } else {
-                            Box(Modifier.width(360.dp)) {
+                            Box(Modifier.width(360.dp).glassBackdropSource(backdrop)) {
                                 DashboardScreen(
                                     scrollState = ScrollState(0),
                                     vpnState = VpnState(status = VpnState.Status.STOPPED),
@@ -108,7 +115,12 @@ class SquaredGlassRenderTest {
         fun saveWindowScreenshot(fileName: String) {
             val view = compose.activity.window.decorView
             val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-            view.draw(Canvas(bitmap))
+            var result = -1
+            compose.runOnIdle {
+                PixelCopy.request(compose.activity.window, bitmap, { result = it }, Handler(Looper.getMainLooper()))
+            }
+            compose.waitForIdle()
+            org.junit.Assert.assertEquals(PixelCopy.SUCCESS, result)
             val image = File("build/reports/ui-preview/$fileName")
             image.parentFile.mkdirs()
             image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -127,11 +139,19 @@ class SquaredGlassRenderTest {
             }
         }
 
-        compose.runOnIdle { showGlassSettings.value = true; glassIntensity.value = 0f }
-        compose.waitForIdle()
-        saveWindowScreenshot("glass-settings-0.png")
-        compose.runOnIdle { glassIntensity.value = 1f }
-        compose.waitForIdle()
-        saveWindowScreenshot("glass-settings-100.png")
+        for (targetStyle in UiStyle.entries) {
+            for (targetMode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
+                for (intensity in listOf(0f, 1f)) {
+                    compose.runOnIdle {
+                        showGlassSettings.value = true
+                        glassIntensity.value = intensity
+                        style.value = targetStyle
+                        mode.value = targetMode
+                    }
+                    compose.waitForIdle()
+                    saveWindowScreenshot("glass-settings-${targetStyle.name.lowercase()}-${targetMode.name.lowercase()}-${(intensity * 100).toInt()}.png")
+                }
+            }
+        }
     }
 }

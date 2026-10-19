@@ -41,6 +41,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
+import com.github.mihomo.android.ui.components.LocalGlassBackdrop
+import com.github.mihomo.android.ui.components.rememberGlassBackdrop
+import com.github.mihomo.android.ui.components.glassBackdropSource
 import com.github.mihomo.android.ui.components.LocalMainBottomBarInset
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
@@ -721,7 +724,9 @@ class MainActivity : ComponentActivity() {
 
         var mainBottomBarHeightPx by remember { mutableIntStateOf(0) }
         val mainBottomBarInset = with(LocalDensity.current) { mainBottomBarHeightPx.toDp() }
+        val navigationBackdrop = rememberGlassBackdrop()
         CompositionLocalProvider(
+            LocalGlassBackdrop provides navigationBackdrop,
             LocalAppLanguage provides appLanguage,
             // Read synchronously after each action, including the preference switch itself.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
@@ -737,7 +742,7 @@ class MainActivity : ComponentActivity() {
                 state = pagerState,
                 userScrollEnabled = false,
                 beyondViewportPageCount = 2,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().glassBackdropSource(navigationBackdrop, glassEnabled && currentSubScreen == null)
             ) { page ->
                 when (page) {
                     0 -> {

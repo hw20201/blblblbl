@@ -21,32 +21,32 @@ import com.github.mihomo.android.ui.theme.LocalGlassEnabled
 @Composable
 internal fun Modifier.glassCardFinish(tint: Color, radius: Dp): Modifier {
     val shape = RoundedCornerShape(radius)
-    val intensity = LocalGlassIntensity.current
+    val intensity = LocalGlassIntensity.current.coerceIn(0f, 1f)
     if (!LocalGlassEnabled.current) return clip(shape).background(tint.copy(alpha = 1f))
+    // Keep the tint genuinely translucent; the underlying screen remains visible.
+    val base = tint.copy(alpha = 0.62f + 0.16f * intensity)
     return clip(shape)
         .background(Brush.verticalGradient(listOf(
-            tint.copy(alpha = 1f - 0.04f * intensity),
-            tint.copy(alpha = 1f - 0.12f * intensity)
+            base.copy(alpha = base.alpha + 0.08f * intensity),
+            base.copy(alpha = base.alpha)
         )))
-        .border(0.75.dp, glassCardRim(), shape)
+        .border(0.8.dp, glassCardRim(), shape)
 }
 
 @Composable
 internal fun glassCardRim(): Brush {
     if (!LocalGlassEnabled.current) return Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
-    val intensity = LocalGlassIntensity.current
+    val intensity = LocalGlassIntensity.current.coerceIn(0f, 1f)
     return Brush.verticalGradient(listOf(
-        Color.White.copy(alpha = 0.85f * intensity),
-        Color.White.copy(alpha = 0.12f * intensity),
-        Color(0xFF74839C).copy(alpha = 0.16f * intensity)
+        Color.White.copy(alpha = 0.48f * intensity),
+        Color.White.copy(alpha = 0.13f * intensity),
+        Color(0xFF74839C).copy(alpha = 0.20f * intensity)
     ))
 }
 
-/**
- * A restrained glass-inspired surface, not a backdrop/refraction shader.
- * Dense tint keeps scrolling text from competing with the navigation labels.
- * Only the surface is translucent: content remains sharp at every Android API level.
- * No continuous animation, screen capture, RenderEffect, or extra render dependency.
+/** Two layers: live backdrop frost (API 31+) then translucent tint and rim.
+ * Foreground icons/labels are never blurred. Older/software renderers and hosts
+ * without a backdrop use the translucent material as a safe, legible fallback.
  */
 @Composable
 internal fun GlassNavigationSurface(
@@ -55,29 +55,34 @@ internal fun GlassNavigationSurface(
     content: @Composable BoxScope.() -> Unit
 ) {
     val dark = LocalLoonColors.current.isDark
-    val intensity = LocalGlassIntensity.current
+    val intensity = LocalGlassIntensity.current.coerceIn(0f, 1f)
     val enabled = LocalGlassEnabled.current
     val shape = RoundedCornerShape(radius)
     val tint = if (dark) Color(0xFF202329) else Color(0xFFF9FBFF)
-    val fill = if (!enabled) Brush.verticalGradient(listOf(tint, tint)) else Brush.verticalGradient(
-        listOf(
-            tint.copy(alpha = 1f - 0.06f * intensity),
-            tint.copy(alpha = 1f - (if (dark) 0.12f else 0.16f) * intensity)
-        )
-    )
-    val rim = if (!enabled) Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)) else Brush.verticalGradient(
-        listOf(
-            Color.White.copy(alpha = (if (dark) 0.38f else 0.96f) * intensity),
-            Color.White.copy(alpha = (if (dark) 0.12f else 0.52f) * intensity),
-            (if (dark) Color.White else Color(0xFF74839C)).copy(alpha = 0.28f * intensity)
-        )
-    )
+    val fill = if (!enabled) Brush.verticalGradient(listOf(tint, tint)) else {
+        val alphaTop = (if (dark) 0.60f else 0.30f) + 0.12f * intensity
+        val alphaBottom = (if (dark) 0.66f else 0.39f) + 0.12f * intensity
+        Brush.verticalGradient(listOf(
+            tint.copy(alpha = alphaTop),
+            tint.copy(alpha = alphaBottom)
+        ))
+    }
+    val rim = if (!enabled) Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)) else {
+        Brush.verticalGradient(listOf(
+            Color.White.copy(alpha = (if (dark) 0.16f else 0.32f) + 0.30f * intensity),
+            Color.White.copy(alpha = 0.06f + 0.18f * intensity),
+            (if (dark) Color(0xFF9BA9C0) else Color(0xFF66758D)).copy(alpha = 0.10f + 0.18f * intensity)
+        ))
+    }
     Box(
         modifier = modifier
-            .then(if (enabled) Modifier.shadow(6.dp, shape, spotColor = Color.Black.copy(alpha = 0.08f)) else Modifier)
+            .then(if (enabled) Modifier.shadow(8.dp + 8.dp * intensity, shape, spotColor = Color.Black.copy(alpha = 0.10f)) else Modifier)
             .clip(shape)
-            .background(fill)
-            .border(0.75.dp, rim, shape),
-        content = content
-    )
+    ) {
+        if (enabled) {
+            Box(Modifier.matchParentSize().glassBackdrop(LocalGlassBackdrop.current, intensity))
+        }
+        Box(Modifier.matchParentSize().background(fill).border(0.8.dp, rim, shape))
+        content()
+    }
 }

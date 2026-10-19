@@ -5,6 +5,13 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.clickable
 import com.github.mihomo.android.ui.components.hapticClickable
 import com.github.mihomo.android.ui.components.rememberHapticAction
@@ -886,38 +893,42 @@ fun LoonFloatingBottomBar(
             .padding(horizontal = 18.dp),
         radius = radius
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 5.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val lang = LocalAppLanguage.current
-            BottomNavItem(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Default.Speed,
-                label = AppStrings.get("nav_dashboard", lang),
-                isSelected = selectedTab == 0,
-                onClick = { onTabSelected(0) }
-            )
-            BottomNavItem(
-                modifier = Modifier.weight(1f),
-                customIcon = { tint ->
-                    StandardCubeIcon(tint = tint)
-                },
-                label = AppStrings.get("nav_proxies", lang),
-                isSelected = selectedTab == 1,
-                onClick = { onTabSelected(1) }
-            )
-            BottomNavItem(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.Settings,
-                label = AppStrings.get("nav_settings", lang),
-                isSelected = selectedTab == 2,
-                onClick = { onTabSelected(2) }
-            )
-        }
+        LoonBottomNavigationTabs(selectedTab, onTabSelected)
+    }
+}
+
+/** The preview and real navigation use exactly the same geometry and semantics. */
+@Composable
+internal fun LoonBottomNavigationTabs(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth()
+            .padding(horizontal = 5.dp, vertical = 5.dp)
+            .selectableGroup(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val lang = LocalAppLanguage.current
+        BottomNavItem(
+            modifier = Modifier.weight(1f), index = 0,
+            icon = Icons.Default.Speed,
+            label = AppStrings.get("nav_dashboard", lang),
+            isSelected = selectedTab == 0, onClick = { onTabSelected(0) }
+        )
+        BottomNavItem(
+            modifier = Modifier.weight(1f), index = 1,
+            customIcon = { tint -> StandardCubeIcon(tint = tint) },
+            label = AppStrings.get("nav_proxies", lang),
+            isSelected = selectedTab == 1, onClick = { onTabSelected(1) }
+        )
+        BottomNavItem(
+            modifier = Modifier.weight(1f), index = 2,
+            icon = Icons.Outlined.Settings,
+            label = AppStrings.get("nav_settings", lang),
+            isSelected = selectedTab == 2, onClick = { onTabSelected(2) }
+        )
     }
 }
 
@@ -975,6 +986,7 @@ fun StandardCubeIcon(
 @Composable
 private fun BottomNavItem(
     modifier: Modifier = Modifier,
+    index: Int,
     icon: ImageVector? = null,
     customIcon: (@Composable (Color) -> Unit)? = null,
     label: String,
@@ -992,48 +1004,45 @@ private fun BottomNavItem(
         animationSpec = tween(durationMillis = 180),
         label = "nav_glass_lens"
     )
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.025f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "nav_scale"
-    )
-
+    // Never scale the selected cell: it must share the same icon centre and
+    // text baseline as its neighbours, including with enlarged system fonts.
     Column(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            .testTag("bottom-tab-$index")
             .clip(RoundedCornerShape(16.dp))
             .background(lens)
-            .then(Modifier.clickable(
+            .selectable(
+                selected = isSelected,
+                role = Role.Tab,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
                 onClick = rememberHapticAction(onClick)
-            ))
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 6.dp, vertical = 5.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            )
+            .heightIn(min = 54.dp)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        if (customIcon != null) {
-            customIcon(tint)
-        } else if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(22.dp)
+        Box(Modifier.size(22.dp).testTag("bottom-icon-$index"), contentAlignment = Alignment.Center) {
+            if (customIcon != null) customIcon(tint)
+            else if (icon != null) Icon(
+                imageVector = icon, contentDescription = null,
+                tint = tint, modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(modifier = Modifier.height(1.dp))
+        Spacer(Modifier.height(3.dp))
         Text(
             text = label,
+            modifier = Modifier.fillMaxWidth().testTag("bottom-label-$index"),
             color = tint,
-            style = SettingsTypography.NavigationLabel,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+            style = SettingsTypography.NavigationLabel.copy(
+                platformStyle = PlatformTextStyle(includeFontPadding = false)
+            ),
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
