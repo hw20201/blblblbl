@@ -48,6 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.mihomo.android.ui.theme.*
+import top.yukonga.miuix.kmp.basic.BasicComponent as MiuixBasicComponent
+import top.yukonga.miuix.kmp.basic.Card as MiuixCard
+import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -121,6 +124,7 @@ fun CupertinoGroupedSection(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val displayHeader = header ?: title
+    val miuix = LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -137,7 +141,11 @@ fun CupertinoGroupedSection(
             )
         }
 
-        Surface(
+        if (miuix) {
+            MiuixCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth(), content = content)
+            }
+        } else Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
@@ -183,6 +191,27 @@ fun CupertinoCell(
 ) {
     val haptic = rememberIosHaptic()
     val hasTrailing = trailing != null || !value.isNullOrBlank() || showChevron
+
+    if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
+        MiuixBasicComponent(
+            modifier = modifier.fillMaxWidth(),
+            title = title,
+            summary = subtitle,
+            leftAction = customIcon ?: icon?.let { image ->
+                { Icon(imageVector = image, contentDescription = null, tint = iconBg, modifier = Modifier.size(24.dp)) }
+            },
+            rightActions = {
+                if (trailing != null) trailing()
+                else {
+                    if (!value.isNullOrBlank()) Text(value, color = LoonTextSecondary, maxLines = 2)
+                    if (showChevron) Icon(Icons.Default.ChevronRight, null, tint = LoonChevronTint)
+                }
+            },
+            enabled = enabled,
+            onClick = onClick?.let { { haptic.selection(); it() } }
+        )
+        return
+    }
 
     Row(
         modifier = modifier
@@ -327,6 +356,25 @@ fun CupertinoSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
+        val action = rememberHapticValueAction(onCheckedChange)
+        val currentEnabled by rememberUpdatedState(enabled)
+        val silentNativeHaptic = remember {
+            object : androidx.compose.ui.hapticfeedback.HapticFeedback {
+                override fun performHapticFeedback(hapticFeedbackType: androidx.compose.ui.hapticfeedback.HapticFeedbackType) = Unit
+            }
+        }
+        // Upstream has unconditional native feedback; the app owns the opt-in policy.
+        CompositionLocalProvider(androidx.compose.ui.platform.LocalHapticFeedback provides silentNativeHaptic) {
+            MiuixSwitch(
+                checked = checked,
+                onCheckedChange = { if (currentEnabled) action(it) },
+                modifier = modifier,
+                enabled = enabled
+            )
+        }
+        return
+    }
     val haptic = rememberIosHaptic()
     val checkedTrackColor = IosGreen
     val uncheckedTrackColor = LoonSwitchUncheckedTrack

@@ -35,8 +35,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.core.ClashCore
-import com.github.mihomo.android.data.ScriptItem
-import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
@@ -71,10 +69,7 @@ fun SettingsScreen(
     onIpv6EnabledChanged: (Boolean) -> Unit = {},
     onTunMtuChanged: (Int) -> Unit = {},
     onMipsCongestionControllerChanged: (String) -> Unit = {},
-    onScriptsChanged: () -> Unit = {},
-    onNavigateToScripts: () -> Unit,
-    onNavigateToProfiles: () -> Unit,
-    onNavigateToAppRouting: () -> Unit,
+    onNavigateToConfigurationCenter: () -> Unit,
     onNavigateToLogs: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToDns: () -> Unit
@@ -93,18 +88,11 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var currentLogLevel by remember { mutableStateOf(settingsManager.logLevel) }
 
-    var scripts by remember { mutableStateOf(emptyList<ScriptItem>()) }
     var coreVersion by remember { mutableStateOf("") }
 
-    // SharedPreferences + JSON decoding and the native version query are not composition work.
+    // The native version query is not composition work.
     LaunchedEffect(Unit) {
-        scripts = withContext(Dispatchers.IO) { ScriptManager.getScripts(context) }
         coreVersion = withContext(Dispatchers.IO) { ClashCore.getCoreVersion() }
-    }
-
-    fun refreshScripts() {
-        scripts = ScriptManager.getScripts(context)
-        onScriptsChanged()
     }
 
     Column(
@@ -185,6 +173,14 @@ fun SettingsScreen(
                 onCheckedChange = onBootOnStartupChanged
             )
             LoonDivider()
+            LoonSettingsSwitchItem(
+                icon = Icons.Default.Share,
+                iconBg = Color(0xFFEC4899),
+                title = AppStrings.get("settings_lan_share", lang),
+                checked = allowLan,
+                onCheckedChange = onAllowLanChanged
+            )
+            LoonDivider()
             LoonSettingsItem(
                 icon = Icons.Default.Security,
                 iconBg = Color(0xFFF59E0B),
@@ -229,48 +225,16 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Section 2: 脚本
-        LoonSectionHeader(title = AppStrings.get("settings_scripts", lang))
+        // Configuration management is grouped in one dedicated destination.
+        LoonSectionHeader(title = "配置管理")
         CupertinoGroupedSection(horizontalPadding = 0.dp) {
-            LoonSettingsItem(
-                icon = Icons.Default.Code,
-                iconBg = Color(0xFF3B82F6),
-                title = AppStrings.get("settings_scripts", lang),
-                value = "${scripts.size}",
-                showChevron = true,
-                onClick = onNavigateToScripts
-            )
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section 3: 分流与规则
-        LoonSectionHeader(title = AppStrings.get("settings_routing_section", lang))
-        CupertinoGroupedSection(horizontalPadding = 0.dp) {
-            LoonSettingsItem(
-                icon = Icons.Default.Apps,
-                iconBg = Color(0xFF8B5CF6),
-                title = AppStrings.get("settings_app_routing", lang),
-                value = "",
-                showChevron = true,
-                onClick = onNavigateToAppRouting
-            )
-            LoonDivider()
-            LoonSettingsSwitchItem(
-                icon = Icons.Default.Share,
-                iconBg = Color(0xFFEC4899),
-                title = AppStrings.get("settings_lan_share", lang),
-                checked = allowLan,
-                onCheckedChange = onAllowLanChanged
-            )
-            LoonDivider()
             LoonSettingsItem(
                 icon = Icons.Default.FolderOpen,
                 iconBg = Color(0xFF3B82F6),
-                title = AppStrings.get("settings_profiles_subs", lang),
-                value = "",
+                title = "配置中心",
+                value = "配置、订阅、脚本与规则资源",
                 showChevron = true,
-                onClick = onNavigateToProfiles
+                onClick = onNavigateToConfigurationCenter
             )
         }
 

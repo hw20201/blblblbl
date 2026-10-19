@@ -28,7 +28,9 @@ fun AppearanceScreen(
     onShowGroupIconsChanged: (Boolean) -> Unit,
     nodeColumns: Int,
     onNodeColumnsChanged: (Int) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    uiStyle: com.github.mihomo.android.data.UiStyle = com.github.mihomo.android.data.UiStyle.CUPERTINO,
+    onUiStyleChanged: (com.github.mihomo.android.data.UiStyle) -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -59,6 +61,19 @@ fun AppearanceScreen(
                 .padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            CupertinoGroupedSection(title = "界面风格") {
+                com.github.mihomo.android.data.UiStyle.entries.forEachIndexed { index, style ->
+                    CupertinoCell(
+                        title = if (style == com.github.mihomo.android.data.UiStyle.CUPERTINO) "Cupertino" else "Miuix",
+                        subtitle = if (style == com.github.mihomo.android.data.UiStyle.MIUIX) "实验性组件 · 独立于深浅色模式" else null,
+                        trailing = {
+                            if (uiStyle == style) Icon(Icons.Default.Check, contentDescription = "已选择", tint = IosBlue)
+                        },
+                        onClick = { onUiStyleChanged(style) }
+                    )
+                    if (index == 0) CupertinoIndentedDivider(startIndent = 16.dp)
+                }
+            }
             // Section 1: 主题模式
             val themes = listOf(
                 ThemeMode.SYSTEM to AppStrings.get("theme_system", lang),

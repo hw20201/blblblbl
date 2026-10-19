@@ -14,6 +14,9 @@ enum class ThemeMode {
 class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
 
+    var uiStyle: UiStyle
+        get() = UiStyle.fromKey(prefs.getString("ui_style", null))
+        set(value) = prefs.edit().putString("ui_style", value.name).apply()
     var selectedProfileId: String?
         get() = prefs.getString("selected_profile_id", null)
         set(value) = prefs.edit().putString("selected_profile_id", value).apply()
@@ -85,26 +88,26 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("proxies_view_mode", "TABS") ?: "TABS"
         set(value) = prefs.edit().putString("proxies_view_mode", value).apply()
 
-    // Visible shortcuts set
-    var visibleShortcuts: Set<String>
-        get() = prefs.getStringSet(
-            "visible_shortcuts",
-            setOf("nodes", "profiles", "request_logs", "dns", "rules", "routing", "plugins", "network_share")
-        ) ?: setOf("nodes", "profiles", "request_logs", "dns", "rules", "routing", "plugins", "network_share")
-        set(value) = prefs.edit().putStringSet("visible_shortcuts", value).apply()
-
-    // Ordered shortcuts list (for reordering)
-    var shortcutOrder: List<String>
-        get() {
-            val raw = prefs.getString("shortcut_order", null)
-            return if (raw.isNullOrBlank()) {
-                listOf("nodes", "profiles", "request_logs", "dns", "rules", "routing", "plugins", "network_share")
-            } else {
-                raw.split(",")
-            }
+    // Migrate once: show newly introduced actions while preserving custom order/visibility.
+    private fun migrateShortcuts() {
+        if (!prefs.getBoolean("shortcuts_actions_v1", false)) {
+            val existing = prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty()
+            prefs.edit().putStringSet("visible_shortcuts", existing + DashboardShortcuts.added)
+                .putBoolean("shortcuts_actions_v1", true).apply()
         }
+    }
+    var visibleShortcuts: Set<String>
+        get() {
+            migrateShortcuts()
+            return prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty().toSet()
+        }
+        set(value) {
+            migrateShortcuts()
+            prefs.edit().putStringSet("visible_shortcuts", value).apply()
+        }
+    var shortcutOrder: List<String>
+        get() = DashboardShortcuts.order(prefs.getString("shortcut_order", null))
         set(value) = prefs.edit().putString("shortcut_order", value.joinToString(",")).apply()
-
     // JavaScript Scripting & Rewrite Settings
     var scriptingEnabled: Boolean
         get() = prefs.getBoolean("scripting_enabled", true)

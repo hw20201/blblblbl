@@ -144,6 +144,8 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.5")
     
+    // Experimental upstream API: pinned to the Kotlin 2.1 / Compose 1.7 line.
+    implementation("top.yukonga.miuix.kmp:miuix:0.3.3")
     // Coroutines & Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

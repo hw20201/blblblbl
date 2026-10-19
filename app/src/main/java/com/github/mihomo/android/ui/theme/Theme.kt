@@ -16,6 +16,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.github.mihomo.android.data.ThemeMode
+import com.github.mihomo.android.data.UiStyle
+import top.yukonga.miuix.kmp.theme.MiuixTheme as NativeMiuixTheme
+import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
+import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
 
 
 data class LoonThemeColors(
@@ -70,10 +74,12 @@ val DarkLoonThemeColors = LoonThemeColors(
 )
 
 val LocalLoonColors = staticCompositionLocalOf { LightLoonThemeColors }
+val LocalUiStyle = staticCompositionLocalOf { UiStyle.CUPERTINO }
 
 @Composable
 fun MihomoTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    uiStyle: UiStyle = UiStyle.CUPERTINO,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -84,6 +90,15 @@ fun MihomoTheme(
     }
 
     val loonColors = if (isDark) DarkLoonThemeColors else LightLoonThemeColors
+    val uiColors = if (uiStyle == UiStyle.MIUIX) {
+        if (isDark) loonColors.copy(
+            bg = Color(0xFF101114), card = Color(0xFF202226), cardBorder = Color(0xFF30343A),
+            bottomBarBg = Color(0xFF1B1D21), bottomBarBorder = Color(0xFF30343A)
+        ) else loonColors.copy(
+            bg = Color(0xFFF1F2F5), card = Color(0xFFFFFFFF), cardBorder = Color(0xFFE5E7EB),
+            bottomBarBg = Color(0xFFF9FAFC), bottomBarBorder = Color(0xFFE1E4E9)
+        )
+    } else loonColors
 
     val colorScheme = if (isDark) {
         darkColorScheme(
@@ -91,12 +106,12 @@ fun MihomoTheme(
             onPrimary = Color.White,
             primaryContainer = Color(0xFF3B2414),
             onPrimaryContainer = LoonOrangeLight,
-            background = loonColors.bg,
-            surface = loonColors.card,
-            surfaceVariant = loonColors.bg,
-            onBackground = loonColors.textPrimary,
-            onSurface = loonColors.textPrimary,
-            onSurfaceVariant = loonColors.textSecondary
+            background = uiColors.bg,
+            surface = uiColors.card,
+            surfaceVariant = uiColors.bg,
+            onBackground = uiColors.textPrimary,
+            onSurface = uiColors.textPrimary,
+            onSurfaceVariant = uiColors.textSecondary
         )
     } else {
         lightColorScheme(
@@ -104,19 +119,19 @@ fun MihomoTheme(
             onPrimary = Color.White,
             primaryContainer = LoonOrangeBg,
             onPrimaryContainer = LoonOrange,
-            background = loonColors.bg,
-            surface = loonColors.card,
-            surfaceVariant = loonColors.bg,
-            onBackground = loonColors.textPrimary,
-            onSurface = loonColors.textPrimary,
-            onSurfaceVariant = loonColors.textSecondary
+            background = uiColors.bg,
+            surface = uiColors.card,
+            surfaceVariant = uiColors.bg,
+            onBackground = uiColors.textPrimary,
+            onSurface = uiColors.textPrimary,
+            onSurfaceVariant = uiColors.textSecondary
         )
     }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val statusBarColor = loonColors.bg.toArgb()
-        val navBarColor = loonColors.bg.toArgb()
+        val statusBarColor = uiColors.bg.toArgb()
+        val navBarColor = uiColors.bg.toArgb()
         SideEffect {
             val window = view.context.findActivity()?.window ?: return@SideEffect
             window.statusBarColor = statusBarColor
@@ -128,13 +143,25 @@ fun MihomoTheme(
 
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     CompositionLocalProvider(
-        LocalLoonColors provides loonColors,
+        LocalLoonColors provides uiColors,
+        LocalUiStyle provides uiStyle,
         androidx.compose.foundation.LocalOverscrollConfiguration provides null
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-            content = content
-        )
+        ) {
+            // Keep one stable composition path: changing the style must not dispose MainAppScreen.
+            val miuixColors = if (isDark) miuixDarkColorScheme() else miuixLightColorScheme()
+            val legacyIndication = androidx.compose.foundation.LocalIndication.current
+            NativeMiuixTheme(colors = miuixColors) {
+                val indication = if (uiStyle == UiStyle.MIUIX) {
+                    androidx.compose.foundation.LocalIndication.current
+                } else legacyIndication
+                CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides indication) {
+                    content()
+                }
+            }
+        }
     }
 }
 

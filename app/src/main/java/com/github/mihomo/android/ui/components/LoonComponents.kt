@@ -294,6 +294,18 @@ private fun IosTrafficArrow(
     }
 }
 
+
+@Composable
+private fun ShortcutSurface(modifier: Modifier, color: Color, content: @Composable () -> Unit) {
+    if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
+        top.yukonga.miuix.kmp.basic.Card(modifier = modifier, cornerRadius = 26.dp, color = color) {
+            content()
+        }
+    } else {
+        Surface(modifier = modifier, color = color, content = content)
+    }
+}
+
 @Composable
 fun LoonShortcutCard(
     modifier: Modifier = Modifier,
@@ -304,16 +316,17 @@ fun LoonShortcutCard(
     onDelete: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    Surface(
+    val corner = if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) 26.dp else 18.dp
+    ShortcutSurface(
         modifier = modifier
             .height(118.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(corner))
             .border(
                 width = 1.dp,
                 color = LoonCardBorder,
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(corner)
             )
-            .shadow(2.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
+            .shadow(2.dp, RoundedCornerShape(corner), spotColor = Color(0x0A000000))
             .iosPressable(enabled = !isEditing, onClick = rememberHapticAction(onClick)),
         color = LoonCard
     ) {
@@ -862,14 +875,15 @@ fun LoonFloatingBottomBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val radius = if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) 22.dp else 32.dp
     Surface(
         modifier = modifier
             .widthIn(max = 360.dp)
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
-            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
-        shape = RoundedCornerShape(32.dp),
+            .shadow(16.dp, RoundedCornerShape(radius), spotColor = Color(0x1F000000))
+            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(radius)),
+        shape = RoundedCornerShape(radius),
         color = LocalLoonColors.current.bottomBarBg
     ) {
         Row(

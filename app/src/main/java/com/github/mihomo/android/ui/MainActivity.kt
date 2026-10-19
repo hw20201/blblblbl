@@ -57,6 +57,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 enum class SubScreen {
+    CONFIGURATION_CENTER,
     PROFILES,
     APP_ROUTING,
     LOGS,
@@ -105,8 +106,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themeMode by remember { mutableStateOf(settingsManager.themeMode) }
-            MihomoTheme(themeMode = themeMode) {
+            var uiStyle by remember { mutableStateOf(settingsManager.uiStyle) }
+            MihomoTheme(themeMode = themeMode, uiStyle = uiStyle) {
                 MainAppScreen(
+                    currentUiStyle = uiStyle,
+                    onUiStyleChanged = { style ->
+                        settingsManager.uiStyle = style
+                        uiStyle = style
+                    },
                     currentThemeMode = themeMode,
                     onThemeModeChanged = { newMode ->
                         settingsManager.themeMode = newMode
@@ -119,6 +126,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleToggleVpn() {
         val currentStatus = MihomoVpnService.vpnState.value.status
+        if (currentStatus == VpnState.Status.STOPPING) return
         if (currentStatus == VpnState.Status.RUNNING || currentStatus == VpnState.Status.STARTING) {
             MihomoVpnService.stop(this)
         } else {
@@ -133,6 +141,8 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun MainAppScreen(
+        currentUiStyle: UiStyle,
+        onUiStyleChanged: (UiStyle) -> Unit,
         currentThemeMode: ThemeMode,
         onThemeModeChanged: (ThemeMode) -> Unit
     ) {
@@ -140,6 +150,11 @@ class MainActivity : ComponentActivity() {
         var currentTab by rememberSaveable { mutableStateOf(0) }
         var currentSubScreen by rememberSaveable(stateSaver = subScreenSaver) {
             mutableStateOf<SubScreen?>(null)
+        }
+        var childReturnsToConfigCenter by rememberSaveable { mutableStateOf(false) }
+        fun backToOrigin() {
+            currentSubScreen = if (childReturnsToConfigCenter) SubScreen.CONFIGURATION_CENTER else null
+            childReturnsToConfigCenter = false
         }
         var overrideTargetProfileId by rememberSaveable { mutableStateOf<String?>(null) }
         var overrideTargetProfile by remember { mutableStateOf<ProfileItem?>(null) }
@@ -675,15 +690,13 @@ class MainActivity : ComponentActivity() {
                     if (overrideTargetProfile != null) {
                         currentSubScreen = SubScreen.PROFILE_OVERRIDE
                     } else {
-                        currentSubScreen = null
+                        backToOrigin()
                     }
                 }
                 SubScreen.PROFILE_OVERRIDE -> {
                     currentSubScreen = SubScreen.PROFILES
                 }
-                else -> {
-                    currentSubScreen = null
-                }
+                else -> backToOrigin()
             }
         }
 
@@ -731,6 +744,8 @@ class MainActivity : ComponentActivity() {
                             visibleShortcuts = visibleShortcuts,
                             shortcutOrder = shortcutOrder,
                             onToggleVpn = { handleToggleVpn() },
+                            uiStyle = currentUiStyle,
+                            onToggleUiStyle = { onUiStyleChanged(currentUiStyle.toggled()) },
                             onModeSelected = { newMode ->
                                 tunnelMode = newMode
                                 settingsManager.tunnelMode = newMode.value
@@ -887,16 +902,7 @@ class MainActivity : ComponentActivity() {
                             settingsManager.mipsCongestionController = mipsCongestionController
                             restartTunnelForSettings()
                         },
-                        onScriptsChanged = {
-                            parseActiveProfile()
-                        },
-                        onNavigateToScripts = {
-                            overrideTargetProfile = null
-                            overrideTargetProfileId = null
-                            currentSubScreen = SubScreen.SCRIPTS
-                        },
-                        onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
-                        onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
+                        onNavigateToConfigurationCenter = { currentSubScreen = SubScreen.CONFIGURATION_CENTER },
                         onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
                         onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                         onNavigateToDns = { currentSubScreen = SubScreen.DNS }
@@ -930,6 +936,7 @@ class MainActivity : ComponentActivity() {
                     transitionSpec = {
                         fun getDepth(s: SubScreen?): Int = when (s) {
                             null -> 0
+                            SubScreen.CONFIGURATION_CENTER -> 1
                             SubScreen.PROFILES, SubScreen.APP_ROUTING, SubScreen.LOGS,
                             SubScreen.RULES, SubScreen.DNS, SubScreen.REQUESTS, SubScreen.NETWORK_SHARE,
                             SubScreen.APPEARANCE -> 1
@@ -961,11 +968,18 @@ class MainActivity : ComponentActivity() {
                     if (subScreen != null) {
                     Box(modifier = Modifier.fillMaxSize().background(LoonBg)) {
                         when (subScreen) {
+                            SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
+                                onNavigateToProfiles = { childReturnsToConfigCenter = true; currentSubScreen = SubScreen.PROFILES },
+                                onNavigateToScripts = { overrideTargetProfile = null; overrideTargetProfileId = null; childReturnsToConfigCenter = true; currentSubScreen = SubScreen.SCRIPTS },
+                                onNavigateToRules = { childReturnsToConfigCenter = true; currentSubScreen = SubScreen.RULES },
+                                onNavigateToAppRouting = { childReturnsToConfigCenter = true; currentSubScreen = SubScreen.APP_ROUTING },
+                                onBack = { backToOrigin() }
+                            )
                             SubScreen.PROFILES -> {
                                 ProfilesScreen(
                                     profiles = profiles,
                                     selectedProfileId = selectedProfileId,
-                                    onBack = { currentSubScreen = null },
+                                    onBack = { backToOrigin() },
                                     onSelectProfile = { profile ->
                                         selectedProfileId = profile.id
                                         settingsManager.selectedProfileId = profile.id
@@ -1045,7 +1059,7 @@ class MainActivity : ComponentActivity() {
                                         if (overrideTargetProfile != null) {
                                             currentSubScreen = SubScreen.PROFILE_OVERRIDE
                                         } else {
-                                            currentSubScreen = null
+                                            backToOrigin()
                                         }
                                     },
                                     onScriptsChanged = {
@@ -1059,7 +1073,7 @@ class MainActivity : ComponentActivity() {
                                     selectedPackages = selectedPackages,
                                     apps = installedApps,
                                     isLoading = isAppsLoading,
-                                    onBack = { currentSubScreen = null },
+                                    onBack = { backToOrigin() },
                                     onModeChanged = { mode ->
                                         perAppMode = mode
                                         settingsManager.perAppProxyMode = mode
@@ -1077,7 +1091,7 @@ class MainActivity : ComponentActivity() {
                             }
                             SubScreen.LOGS -> {
                                 LogsScreen(
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { backToOrigin() }
                                 )
                             }
                             SubScreen.RULES -> {
@@ -1085,7 +1099,7 @@ class MainActivity : ComponentActivity() {
                                     rules = parsedProfile.rules,
                                     totalRules = parsedProfile.totalRules,
                                     tunnelMode = tunnelMode,
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { backToOrigin() }
                                 )
                             }
                             SubScreen.DNS -> {
@@ -1102,13 +1116,13 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { backToOrigin() }
                                 )
                             }
                             SubScreen.REQUESTS -> {
                                 RequestLogsScreen(
                                     vpnState = vpnState,
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { backToOrigin() }
                                 )
                             }
                             SubScreen.NETWORK_SHARE -> {
@@ -1126,11 +1140,13 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     vpnState = vpnState,
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { backToOrigin() }
                                 )
                             }
                             SubScreen.APPEARANCE -> {
                                 AppearanceScreen(
+                                    uiStyle = currentUiStyle,
+                                    onUiStyleChanged = onUiStyleChanged,
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
                                     onLanguageChanged = { code -> appLanguage = code },
@@ -1144,7 +1160,7 @@ class MainActivity : ComponentActivity() {
                                         showGroupIcons = show
                                         settingsManager.showGroupIcons = show
                                     },
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { backToOrigin() }
                                 )
                             }
                         }
