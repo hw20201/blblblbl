@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -27,8 +28,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Panel material for one palette.
  *
- * The default material uses tint, rim and sheen. Only shortcut cards with a separate backdrop
- * opt into per-card Gaussian filtering on supported hardware; navigation keeps its AGSL optics.
+ * The default material uses tint, rim and sheen. Shortcut cards replay the already-soft shared
+ * mesh with a colour-responsive bevel, without Gaussian filtering; navigation keeps its optics.
  */
 @Immutable
 data class GlassTokens(
@@ -139,33 +140,32 @@ fun GlassSurface(
             start = Offset.Zero,
             end = Offset.Infinite
         )
-        // The source already has a veil. A second strong white sheen hid the filtering.
-        // Keep the rim, but let the filtered colour field carry the shortcut material.
-        val cardTokens = tokens.copy(sheen = tokens.sheen * 0.35f)
+        // The source is already diffuse. Keep all optical work behind the content and never
+        // paint a fixed white outline over the live sampled bevel.
         Box(modifier = modifier.clip(shape)) {
-            CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled)
+            CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled,
+                softMeshRim = true, isDark = tokens.isDark)
             Box(Modifier.matchParentSize().background(translucentFill, shape)
-                .glassSurface(cardTokens).restrainedCardRim(cardTokens, shape))
+                .then(if (Build.VERSION.SDK_INT < 33) Modifier.restrainedCardRim(shape) else Modifier))
             Box(Modifier.matchParentSize(), content = content)
         }
     }
 }
 
-/** B-style two-layer edge, deliberately dimmer than a neon halo. Background only, no blur. */
-private fun Modifier.restrainedCardRim(tokens: GlassTokens, shape: Shape): Modifier = drawWithCache {
+/** API 31/32: modulate the sampled colour, rather than cover it with a white outline. */
+private fun Modifier.restrainedCardRim(shape: Shape): Modifier = drawWithCache {
     val inset = 1.8.dp.toPx()
     val outer = shape.createOutline(size, layoutDirection, this)
     val innerSize = Size((size.width - 2 * inset).coerceAtLeast(0f), (size.height - 2 * inset).coerceAtLeast(0f))
     val inner = shape.createOutline(innerSize, layoutDirection, this)
     val edge = Brush.verticalGradient(listOf(
-        Color.White.copy(alpha = if (tokens.isDark) .26f else .48f),
-        tokens.rimBottom.copy(alpha = if (tokens.isDark) .12f else .20f)
+        Color(0xFFF8F8F8), Color(0xFFE8E8E8)
     ))
     onDrawWithContent {
         drawContent()
-        drawOutline(outer, edge, style = Stroke(.75.dp.toPx()))
+        drawOutline(outer, edge, style = Stroke(.75.dp.toPx()), blendMode = BlendMode.Modulate)
         translate(inset, inset) {
-            drawOutline(inner, Color.White.copy(alpha = if (tokens.isDark) .07f else .15f), style = Stroke(.5.dp.toPx()))
+            drawOutline(inner, Color(0xFFF5F5F5), style = Stroke(.5.dp.toPx()), blendMode = BlendMode.Modulate)
         }
     }
 }

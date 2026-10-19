@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.mihomo.android.data.SettingsManager
@@ -81,7 +82,19 @@ class ThemeColorGridRenderingTest {
             }
         }
         compose.waitForIdle()
-        save(screenshot(), "theme-grid-before.png")
+        val actualScreen = screenshot()
+        val gridBounds = compose.onNodeWithTag("appearance-theme-color-grid")
+            .fetchSemanticsNode().boundsInRoot
+        val topSwatch = compose.onNodeWithContentDescription(
+            "#${GlassPalettes.keyForColor(ThemeColorGrid.first()).substringAfter(':')}"
+        ).fetchSemanticsNode().boundsInRoot
+        val bottomSwatch = compose.onNodeWithContentDescription(
+            "#${GlassPalettes.keyForColor(ThemeColorGrid.last()).substringAfter(':')}"
+        ).fetchSemanticsNode().boundsInRoot
+        assertEquals("actual AppearanceScreen grid has no top inset", topSwatch.top, gridBounds.top, 0.01f)
+        assertEquals("actual AppearanceScreen grid has no bottom inset", bottomSwatch.bottom, gridBounds.bottom, 0.01f)
+        assertTrue("PixelCopy must contain the rendered AppearanceScreen", actualScreen.width > 0 && actualScreen.height > 0)
+        save(actualScreen, "theme-grid-before.png")
         // Different hue columns, not preset aliases. Values come from the rendered grid itself.
         val blue = GlassPalettes.keyForColor(ThemeColorGrid[12 + 4 * 12 + 2])
         val coral = GlassPalettes.keyForColor(ThemeColorGrid[12 + 4 * 12 + 5])

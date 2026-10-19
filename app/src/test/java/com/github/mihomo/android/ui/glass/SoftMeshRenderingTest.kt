@@ -127,10 +127,13 @@ class SoftMeshRenderingTest {
             assertEquals("draw-only motion must not recompose dashboard", beforeCount, compositions)
             val cardEmpty = Rect(title.left + 30, title.top + 62, title.right - 70, title.bottom - 12)
             val cardDelta = difference(first, next, cardEmpty)
+            val rimDelta = difference(first, next,
+                Rect(title.left + 24, title.top + 1, title.right - 24, title.top + 3))
             val dockDelta = difference(first, next,
                 Rect(dock.left + 20, dock.top + 8, dock.left + 60, dock.top + 16))
-            log.appendLine("t=$time: empty shortcut RGB-sum mean delta=$cardDelta; dock=$dockDelta; content compositions=$compositions")
+            log.appendLine("t=$time: empty shortcut RGB-sum mean delta=$cardDelta; rim=$rimDelta; dock=$dockDelta; content compositions=$compositions")
             assertTrue("moving background reaches actual card sampling: $cardDelta", cardDelta > 0.4)
+            assertTrue("actual shortcut bevel follows the mesh rather than a fixed white outline: $rimDelta", rimDelta > 0.4)
             assertTrue("moving background reaches dock sample: $dockDelta", dockDelta > 0.2)
             assertSharpTitle(first, next, title, foreground)
             for (row in 0..1) for (col in 0..1) {

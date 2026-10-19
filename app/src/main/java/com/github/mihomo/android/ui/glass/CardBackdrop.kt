@@ -28,23 +28,39 @@ import androidx.compose.ui.platform.LocalDensity
 internal fun shouldBlurCardBackdrop(apiLevel: Int, hardwareAccelerated: Boolean): Boolean =
     apiLevel >= 31 && hardwareAccelerated
 
-/** Allows the actual dashboard to be rendered with only its shortcut filter toggled. */
+/** Legacy preview switch; soft-mesh shortcuts now skip Gaussian filtering in either state. */
 internal val LocalShortcutBlurEnabled = staticCompositionLocalOf { true }
 
 /** Replay only the backdrop at its root-relative position; never record card content here. */
 @Composable
-internal fun BoxScope.CardBackdrop(lens: NavigationLensState, fallback: Brush, blurEnabled: Boolean = true) {
+internal fun BoxScope.CardBackdrop(
+    lens: NavigationLensState,
+    fallback: Brush,
+    blurEnabled: Boolean = true,
+    softMeshRim: Boolean = false,
+    isDark: Boolean = false
+) {
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val blur = remember(density) {
-        if (Build.VERSION.SDK_INT >= 31) {
+    val rim = remember(softMeshRim) {
+        if (softMeshRim && Build.VERSION.SDK_INT >= 33) ShortcutMeshOptics() else null
+    }
+    val blur = remember(density, softMeshRim, blurEnabled) {
+        if (!softMeshRim && blurEnabled && Build.VERSION.SDK_INT >= 31) {
             RenderEffect.createBlurEffect(16f * density, 16f * density, Shader.TileMode.CLAMP)
                 .asComposeRenderEffect()
         } else null
     }
     Box(Modifier.matchParentSize()
         .onGloballyPositioned { origin = it.positionInRoot() }
-        .graphicsLayer { renderEffect = if (blurEnabled) blur else null }
+        .graphicsLayer {
+            if (Build.VERSION.SDK_INT >= 33 && rim != null) {
+                rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark)
+                renderEffect = rim.effect
+            } else {
+                renderEffect = blur
+            }
+        }
         .drawWithContent {
             if (shouldBlurCardBackdrop(Build.VERSION.SDK_INT, drawContext.canvas.nativeCanvas.isHardwareAccelerated)) {
                 val offset = lens.origin - origin
