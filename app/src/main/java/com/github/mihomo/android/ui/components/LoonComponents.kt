@@ -48,6 +48,8 @@ import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.glassTextPrimary
 import com.github.mihomo.android.ui.glass.NavigationLensState
+import com.github.mihomo.android.ui.glass.glassPalette
+import com.github.mihomo.android.ui.glass.NavigationLens
 import com.github.mihomo.android.ui.glass.NavigationGlassSurface
 import com.github.mihomo.android.ui.glass.glassTextSecondary
 import com.github.mihomo.android.ui.theme.*
@@ -962,8 +964,31 @@ fun LoonFloatingBottomBar(
     lens: NavigationLensState? = null
 ) {
     if (GlassDefaults.enabled) {
-        NavigationGlassSurface(modifier = modifier, lens = lens) {
-            BottomBarItems(selectedTab, onTabSelected)
+        // Capsule first, travelling lens on top. Only the lens samples the scene, so three tabs
+        // still cost one shader pass rather than one per tab.
+        Box(
+            modifier = modifier
+                // Composed by Content() below, so this Box takes its size from the capsule rather
+                // than collapsing to zero — the lens measures its own width, it cannot do that
+                // inside a matchParentSize child.
+                .wrapContentSize(Alignment.BottomCenter)
+                .height(BOTTOM_BAR_HEIGHT)
+                // The lens overhangs the capsule on purpose; never crop it.
+                .graphicsLayer { clip = false }
+        ) {
+            // Capsule keeps the cheap static material: no scene sampling, no shader pass.
+            GlassSurface(
+                modifier = Modifier.matchParentSize(),
+                shape = RoundedCornerShape(GlassRadius.bar)
+            ) {}
+            BottomBarItems(selectedTab, onTabSelected, glassMode = true, hideSelectedIcon = lens != null)
+            NavigationLens(
+                selectedSlot = selectedTab.coerceIn(0, BOTTOM_BAR_SLOTS - 1),
+                slotCount = BOTTOM_BAR_SLOTS,
+                lens = lens,
+                modifier = Modifier.matchParentSize(),
+                icon = { BottomBarLensIcon(selectedTab) }
+            )
         }
         return
     }
@@ -979,12 +1004,34 @@ fun LoonFloatingBottomBar(
     }
 }
 
+/** Number of slots in the bottom bar; the lens travels between their centres. */
+private const val BOTTOM_BAR_SLOTS = 3
+
+/** Capsule height. Fixed so the lens can overhang it without changing the layout. */
+private val BOTTOM_BAR_HEIGHT = 64.dp
+private val BOTTOM_BAR_WIDTH = 304.dp
+
+/** Icon shown inside the travelling lens for the selected slot. */
 @Composable
-private fun BottomBarItems(selectedTab: Int, onTabSelected: (Int) -> Unit) {
+private fun BottomBarLensIcon(selectedTab: Int) {
+    val tint = glassPalette.accent
+    when (selectedTab) {
+        0 -> Icon(Icons.Default.Speed, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        1 -> StandardCubeIcon(tint = tint, modifier = Modifier.size(24.dp))
+        else -> Icon(Icons.Outlined.Settings, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun BottomBarItems(
+    selectedTab: Int, onTabSelected: (Int) -> Unit,
+    glassMode: Boolean = false, hideSelectedIcon: Boolean = false
+) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 28.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(40.dp),
+                .then(if (glassMode) Modifier.widthIn(max = BOTTOM_BAR_WIDTH).fillMaxWidth() else Modifier)
+                .padding(horizontal = if (glassMode) 0.dp else 28.dp, vertical = 7.dp),
+            horizontalArrangement = if (glassMode) Arrangement.SpaceEvenly else Arrangement.spacedBy(40.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val lang = LocalAppLanguage.current
@@ -992,6 +1039,8 @@ private fun BottomBarItems(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                 icon = Icons.Default.Speed,
                 label = AppStrings.get("nav_dashboard", lang),
                 isSelected = selectedTab == 0,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 0,
                 onClick = { onTabSelected(0) }
             )
             BottomNavItem(
@@ -1000,12 +1049,16 @@ private fun BottomBarItems(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                 },
                 label = AppStrings.get("nav_proxies", lang),
                 isSelected = selectedTab == 1,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 1,
                 onClick = { onTabSelected(1) }
             )
             BottomNavItem(
                 icon = Icons.Outlined.Settings,
                 label = AppStrings.get("nav_settings", lang),
                 isSelected = selectedTab == 2,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 2,
                 onClick = { onTabSelected(2) }
             )
         }
@@ -1068,6 +1121,8 @@ private fun BottomNavItem(
     customIcon: (@Composable (Color) -> Unit)? = null,
     label: String,
     isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    hideIcon: Boolean = false,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
@@ -1086,7 +1141,7 @@ private fun BottomNavItem(
     )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -1101,15 +1156,10 @@ private fun BottomNavItem(
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (customIcon != null) {
-            customIcon(tint)
-        } else if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(22.dp)
-            )
+        Box(modifier = Modifier.graphicsLayer { alpha = if (hideIcon) 0f else 1f }) {
+            if (customIcon != null) customIcon(tint) else if (icon != null) {
+                Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+            }
         }
         Spacer(modifier = Modifier.height(1.dp))
         Text(

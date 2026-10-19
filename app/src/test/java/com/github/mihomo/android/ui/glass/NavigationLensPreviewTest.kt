@@ -28,6 +28,7 @@ import com.github.mihomo.android.ui.theme.LocalAppLanguage
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +45,30 @@ class NavigationLensPreviewTest {
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+    }
+
+    @Test fun travelMorphAndMeasuredSlotGeometryStayWithinBarBounds() {
+        assertEquals(0f, stretchFor(0f), 0.0001f)
+        assertEquals(1f, stretchFor(0.5f), 0.0001f)
+        assertEquals(0f, stretchFor(1f), 0.0001f)
+        assertEquals(50f, lensCenterFor(0f, 100f, 0.5f), 0.0001f)
+        val current = lensCenterFor(20f, 100f, 0.4f)
+        // A fresh leg starts at the old in-flight centre and preserves its current shape.
+        assertEquals(current, lensCenterFor(current, -40f, 0f), 0.0001f)
+        val inFlightStretch = lensStretchFor(0.4f, 0f)
+        assertEquals(inFlightStretch, lensStretchFor(0f, inFlightStretch), 0.0001f)
+        assertEquals(0f, lensStretchFor(1f, inFlightStretch), 0.0001f)
+        assertTrue(lensCenterFor(current, -40f, 0.5f) < current)
+        for (step in 0..100) assertTrue(lensStretchFor(step / 100f, inFlightStretch) in 0f..1f)
+        val barWidth = 180f
+        val lensWidth = 62f
+        val offsets = (0..2).map { lensLeftFor(it, 3, barWidth, lensWidth) }
+        assertTrue(offsets.zipWithNext().all { (left, right) -> right > left })
+        assertTrue(offsets.first() >= 0f)
+        assertTrue(offsets.last() + lensWidth <= barWidth)
+        assertEquals(0f, lensLeftFor(0, 3, 0f, lensWidth), 0.0001f)
+        assertEquals(304f / 6f - 31f, lensLeftFor(0, 3, 304f, 62f), 0.0001f)
+        assertEquals(304f * 5f / 6f - 31f, lensLeftFor(2, 3, 304f, 62f), 0.0001f)
     }
 
     @Test fun dashboardPreviewsAndNavigationCallbacks() {
