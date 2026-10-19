@@ -6,7 +6,7 @@
 
 **结合的是两库的技术思路，不是把两套库叠起来。** 沿用现有的快捷卡片共享背景 `GraphicsLayer`，对应 Haze 的“明确区分源与效果、限定效果面积、复用配置”思路；采用 liquid-glass 的克制折射、轻微色彩提升、显式质量分级思路。没有新增外部依赖，没有全栈升级，也没有把 Haze/LiquidGlass 的实现代码复制进项目。
 
-Hybrid 保留原有外侧亮面与内侧回折面；API 33+ 仅在 4.6dp 窄斜边内增加最大 1.25dp 位移，中央仍保持平整。色彩提升为浅色 1.045 倍、深色 1.025 倍，远低于 liquid-glass Full 默认的 1.4 倍；不增加色散、颗粒纹理、发光白边或额外高斯模糊。光学始终在文字和图标后面，连最低档的光泽也不会覆盖文字。
+Hybrid 保留原有外侧亮面与内侧回折面；API 33+ 当前在 7.2dp 斜边内增加最大 2.1dp 位移（初版 `4496636` 为 4.6dp / 1.25dp），中央仍保持平整。亮面和内侧回折面同比加宽，但不增加固定白色亮度。色彩提升为浅色 1.045 倍、深色 1.025 倍，远低于 liquid-glass Full 默认的 1.4 倍；不增加色散、颗粒纹理、发光白边或额外高斯模糊。光学始终在文字和图标后面，连最低档的光泽也不会覆盖文字。
 
 ## 为什么不直接依赖两个库
 
@@ -45,9 +45,19 @@ Flat **不是全局零分配**：屏幕和底部导航现有 recorder 未修改�
 
 输出位于 `app/build/outputs/shortcut-hybrid/`。成对图名为 `api35-{light|dark}-{baseline|hybrid}-{t00|t24}.png`。查看拼接图时：**左列基线、右列实验；上排 0 秒、下排 24 秒**。整页图检查布局和导航，卡片裁剪图检查边缘厚度、背景颜色响应、标题清晰度。拼接只复制原始截图像素，不重绘、增强或修饰效果。
 
+### 加宽版与初版的直接比较
+
+本轮先在 `449663617e7959b216f6cd7b28bef0673a3ee4e0` 原样重新运行明暗模式 Hybrid 测试，保存修改前截图；再修改参数并运行同一真实 Dashboard 测试。不是拿最初的 Baseline 去替代“上一个 Hybrid”。前后均为 seed 734921、0/24 秒的 Native PixelCopy 输出。
+
+前后原图分别保存在 `/workspace/nexus-shortcut-wider-edge-evidence/before/` 与 `after/`；`comparison/` 下的 `light-cards-before-after-t00-t24.png`、`dark-cards-before-after-t00-t24.png` 及同名 `dashboard` 整页图均为**左侧初版、右侧加宽版，上排 0 秒、下排 24 秒**。配套 `scripts/compare_shortcut_edge_previews.py` 使用测试导出的真实四卡 semantics bounds，而非目测坐标；检查四组前后截图的卡片外区域、dock 及四卡内缩 12px 区域。后者包含已知布局中的标题、图标和中心区域，不做 OCR，也不重绘截图。
+
+本轮 **79 项玻璃相关测试、23 个测试类全部通过，0 失败/错误/跳过**；Debug/Release Kotlin 编译与 Detekt 均通过。四组截图的卡片外区域、dock，以及全部 16 个卡片内部区域最大通道差均为 0；标题核心像素浅色 91/91、深色 96/96 在背景运动中保持稳定，Dashboard 无额外重组。边缘有实际像素变化，浅色比深色更明显。API31/26 与低 RAM 回退测试继续通过，未改其绘制路径。本轮未重新运行整套非玻璃测试或 Lint，初版历史结果见下。
+
+没有新增源、效果层或逐卡时钟；每个边缘像素仍最多 3 次背景采样，但变宽后有更多边缘像素进入此路径，因此不能承诺帧耗时或功耗不变，仍需真机测量。
+
 ## 代码与验证
 
-生产代码只涉及 `ui/glass/GlassSurface.kt`、`CardBackdrop.kt`、`ShortcutMeshOptics.kt` 和新增 `ShortcutGlassDesign.kt`；测试新增 `ShortcutHybridRenderingTest.kt`、`ShortcutHybridPolicyTest.kt`，截图对比脚本为 `scripts/compare_shortcut_hybrid_previews.py`。`NavigationLens.kt`、背景生成和配色网格文件不改。
+累计生产代码只涉及 `ui/glass/GlassSurface.kt`、`CardBackdrop.kt`、`ShortcutMeshOptics.kt` 和新增 `ShortcutGlassDesign.kt`；测试新增 `ShortcutHybridRenderingTest.kt`、`ShortcutHybridPolicyTest.kt`，截图对比脚本为 `scripts/compare_shortcut_hybrid_previews.py` 和 `scripts/compare_shortcut_edge_previews.py`。本轮生产代码仅调整 `ShortcutMeshOptics.kt`，渲染测试仅增加四卡坐标导出。`NavigationLens.kt`、背景生成和配色网格文件不改。
 
 可复现命令（不生成 APK）：
 
@@ -58,13 +68,15 @@ export ANDROID_HOME=/home/ubuntu/Android/Sdk
 ./gradlew :app:testDebugUnitTest :app:compileDebugKotlin :app:compileReleaseKotlin :app:lintDebug :app:lintRelease :app:detekt --no-configuration-cache --console=plain
 ./gradlew :app:lintRelease :app:detekt --continue --no-configuration-cache --console=plain
 python3 scripts/compare_shortcut_hybrid_previews.py
+./gradlew :app:testDebugUnitTest --tests '*ui.glass.*' :app:compileDebugKotlin :app:compileReleaseKotlin :app:detekt --no-configuration-cache --console=plain
+python3 scripts/compare_shortcut_edge_previews.py --before /workspace/nexus-shortcut-wider-edge-evidence/before --after /workspace/nexus-shortcut-wider-edge-evidence/after --regions /workspace/nexus-shortcut-wider-edge-evidence/after/api35-light-hybrid-regions.json --output /workspace/nexus-shortcut-wider-edge-evidence/comparison
 ```
 
 `--no-configuration-cache` 是本次命令行设置：基线自带的 `verifyNativeLibraries` task 捕获了 Gradle script 对象，首次缓存配置会失败。未为此改写用户的原生校验任务或 `gradle.properties`。
 
-验证结果：新增的 9 项测试全部通过；完整 Debug 单元测试为 **231 项、63 个测试类，0 失败、0 错误、0 跳过**。Debug/Release Kotlin 编译和 Detekt 均通过。Debug Lint 为 1 error / 81 warnings，Release Lint 为 1 error / 80 warnings，二者都因原有 `MihomoTileService.kt:63` 的 `StartActivityAndCollapseDeprecated` 报错未通过；该文件相对基线未改，原基线留存的 Lint XML 也包含同一错误，本次改动文件没有新增 Lint 条目。未通过过滤规则或新增 Lint baseline 隐藏此问题。
+初版 `4496636` 的验证结果：新增的 9 项测试全部通过；完整 Debug 单元测试为 **231 项、63 个测试类，0 失败、0 错误、0 跳过**。Debug/Release Kotlin 编译和 Detekt 均通过。Debug Lint 为 1 error / 81 warnings，Release Lint 为 1 error / 80 warnings，二者都因原有 `MihomoTileService.kt:63` 的 `StartActivityAndCollapseDeprecated` 报错未通过；该文件相对基线未改，原基线留存的 Lint XML 也包含同一错误，初版改动文件没有新增 Lint 条目。未通过过滤规则或新增 Lint baseline 隐藏此问题。
 
-共导出 14 张原生截图：A/B 八张，加三个降级场景各两个时刻。A/B 左列四张基线截图与原基线 `2c9b62e` 已有 native 渲染逐像素一致，最大通道差为 0；四组 A/B 的快捷卡片外区域和底部导航最大通道差也为 0。背景从 0 秒到 24 秒，Hybrid 浅色卡片中心/边缘 RGB-sum 平均变化为 18.686 / 20.524，深色为 24.882 / 41.341；标题不透明核心像素浅色 91/91、深色 96/96 保持稳定，Dashboard 不随纯背景运动重组。这些数值用于检验响应和字形，不是画质评分或性能指标。深色 A/B 差异较小，属于刻意克制的增量，而非明显改换材质。
+初版共导出 14 张原生截图：A/B 八张，加三个降级场景各两个时刻。A/B 左列四张基线截图与原基线 `2c9b62e` 已有 native 渲染逐像素一致，最大通道差为 0；四组 A/B 的快捷卡片外区域和底部导航最大通道差也为 0。背景从 0 秒到 24 秒，初版 Hybrid 浅色卡片中心/边缘 RGB-sum 平均变化为 18.686 / 20.524，深色为 24.882 / 41.341；标题不透明核心像素浅色 91/91、深色 96/96 保持稳定，Dashboard 不随纯背景运动重组。这些数值用于检验响应和字形，不是画质评分或性能指标。
 
 真实设备的首次 shader 创建耗时、滑动/拖拽帧时间、GPU 内存、热量和功耗尚未测量；模拟渲染只验证视觉和行为，**不证明省电或真机性能改善**。本分支不 push、不 merge、不改 1.0.22 Draft APK，也不执行 Release APK 打包。
 

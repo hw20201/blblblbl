@@ -25,7 +25,10 @@ internal const val SHORTCUT_GLASS_SHADER = """
         float2 q = p - viewport * 0.5;
         float2 n = q - clamp(q, -viewport * 0.5 + r, viewport * 0.5 - r);
         float depth = r - length(n);
-        float edge = 1.0 - smoothstep(0.0, 4.6 * density, depth);
+        // Widen only Hybrid. Baseline and the unsupported-device paths retain their optics.
+        float bevelScale = mix(1.0, 7.2 / 4.6, hybrid);
+        float edge = 1.0 - smoothstep(0.0, 4.6 * density * bevelScale, depth);
+        float faceDepth = depth / bevelScale;
         half4 c = backdrop.eval(p);
         // Same-pass chroma lift; no colour-filter layer or second blur.
         half gray = dot(c.rgb, half3(0.2126, 0.7152, 0.0722));
@@ -33,9 +36,9 @@ internal const val SHORTCUT_GLASS_SHADER = """
         if (edge > 0.001) {
             float2 normal = n / max(length(n), 0.001);
             half4 unbent = c;
-            // Only the curved 4.6dp bevel bends. Foreground is an untouched sibling.
+            // Hybrid bends only the curved 7.2dp bevel; keep the centre and foreground flat.
             if (hybrid > 0.5) {
-                c = backdrop.eval(clamp(p - normal * edge * edge * 1.25 * density,
+                c = backdrop.eval(clamp(p - normal * edge * edge * 2.1 * density,
                     float2(0.5), viewport - float2(0.5)));
             }
             half4 inner = backdrop.eval(clamp(p - normal * 4.0 * density,
@@ -43,9 +46,10 @@ internal const val SHORTCUT_GLASS_SHADER = """
             half light = dot(c.rgb, half3(0.2126, 0.7152, 0.0722));
             half3 relief = clamp((unbent.rgb - inner.rgb) * (0.24 + hybrid * 0.10), -0.025, 0.025);
             half facing = 0.65 - normal.y * 0.25 - normal.x * 0.12;
-            float outer = 1.0 - smoothstep(0.0, 1.35 * density, depth);
-            float innerFace = smoothstep(1.25 * density, 1.85 * density, depth)
-                * (1.0 - smoothstep(2.15 * density, 3.15 * density, depth));
+            // Scale both faces with the band, rather than adding a brighter/whiter outline.
+            float outer = 1.0 - smoothstep(0.0, 1.35 * density, faceDepth);
+            float innerFace = smoothstep(1.25 * density, 1.85 * density, faceDepth)
+                * (1.0 - smoothstep(2.15 * density, 3.15 * density, faceDepth));
             // Local luminance limits the catch: never a fixed white/neon outline.
             half3 bounce = c.rgb * mix(0.60, 0.45, dark) * (1.0 - light) * facing;
             half3 shade = c.rgb * (0.045 + normal.y * 0.015);

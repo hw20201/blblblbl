@@ -102,12 +102,20 @@ class ShortcutHybridRenderingTest {
         }
         compose.waitForIdle()
         val card = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
+        val regions = listOf("Nodes", "Profiles", "Rules", "Requests").associateWith {
+            compose.onNodeWithTag("shortcut-card-$it").fetchSemanticsNode().boundsInRoot
+        }
         compose.onNodeWithTag("navigation-dock").fetchSemanticsNode()
         val count = compositions
         val first = screenshot()
         val variant = suffix ?: if (design == ShortcutGlassDesign.Baseline) "baseline" else "hybrid"
         val mode = if (dark) "dark" else "light"
         val name = "api${android.os.Build.VERSION.SDK_INT}-$mode-$variant"
+        val regionsJson = regions.entries.joinToString(",", prefix = "{", postfix = "}\n") { (title, bounds) ->
+            "\"$title\":[${bounds.left.toInt()},${bounds.top.toInt()},${bounds.right.toInt()},${bounds.bottom.toInt()}]"
+        }
+        File("build/outputs/shortcut-hybrid").also { it.mkdirs() }
+            .resolve("$name-regions.json").writeText(regionsJson)
         save(first, "$name-t00.png")
         val title = Rect(card.left + 14, card.top + 14, card.right - 56, card.top + 33)
         val titleCores = countCores(first, title, foreground)
