@@ -150,6 +150,7 @@ fun MihomoTheme(
 
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     CompositionLocalProvider(
+        com.github.mihomo.android.ui.components.LocalGlassMaterialBackdrop provides com.github.mihomo.android.ui.components.rememberGlassBackdrop(),
         LocalLoonColors provides uiColors,
         LocalUiStyle provides uiStyle,
         LocalGlassIntensity provides com.github.mihomo.android.data.GlassEffect.normalize(glassIntensity),

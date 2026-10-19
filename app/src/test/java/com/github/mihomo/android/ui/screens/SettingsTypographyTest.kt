@@ -91,7 +91,7 @@ class SettingsTypographyTest {
                         node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results)
                         results.single().layoutInput.style.fontSize
                     }.toSet()
-                assertEquals(context, setOf(17.sp, 11.sp), navigationSizes)
+                assertEquals(context, setOf(32.sp, 11.sp), navigationSizes)
                 if (targetWidth == 360f && targetScale == 1f) saveWindow("${targetStyle.name.lowercase()}-initial.png")
                 val title = layout("TUN 堆栈模式")
                 assertEquals(context, 15.sp, title.layoutInput.style.fontSize)

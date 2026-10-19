@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [35])
+@Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
 class DashboardActionsTest {
     @get:Rule val compose = createComposeRule()
 

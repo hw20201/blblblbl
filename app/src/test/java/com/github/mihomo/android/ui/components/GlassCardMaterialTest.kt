@@ -92,8 +92,8 @@ class GlassCardMaterialTest {
                 compose.runOnIdle { intensity.value = 0f }
                 compose.waitForIdle()
                 val zero = screenshot()
-                assertEquals("zero intensity removes directional decoration",
-                    zero.getPixel(left + 35, top + 30), zero.getPixel(left + width - 35, top + 30))
+                // Minimum strength is still frosted glass; only the switch makes it opaque.
+                assertNotEquals("zero intensity still reveals the backdrop", tint.toArgb(), zero.getPixel(left + 35, top + 30))
                 assertNotEquals("intensity still changes material", highlight, zero.getPixel(left + 35, top + 30))
                 compose.runOnIdle { enabled.value = false }
                 compose.waitForIdle()

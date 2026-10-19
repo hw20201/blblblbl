@@ -65,7 +65,7 @@ fun GlassThemeSection(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "仅改变底栏与首页玻璃表面；文字和设置列表保持清晰。",
+                text = "作用于底栏、首页主卡与快捷方式、策略选区和设置控件；文字和密集列表保持清晰。",
                 color = LoonTextSecondary,
                 style = SettingsTypography.Description
             )

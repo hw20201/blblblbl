@@ -744,6 +744,8 @@ class MainActivity : ComponentActivity() {
                 beyondViewportPageCount = 2,
                 modifier = Modifier.fillMaxSize().glassBackdropSource(navigationBackdrop, glassEnabled && currentSubScreen == null)
             ) { page ->
+                // Pager retains neighbouring pages; each pane must own its wallpaper source.
+                CompositionLocalProvider(com.github.mihomo.android.ui.components.LocalGlassMaterialBackdrop provides rememberGlassBackdrop()) {
                 when (page) {
                     0 -> {
                         val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
@@ -938,6 +940,7 @@ class MainActivity : ComponentActivity() {
             }
             }
 
+            }
             var lastActiveSubScreen by remember { mutableStateOf<SubScreen?>(null) }
             LaunchedEffect(currentSubScreen) {
                 if (currentSubScreen != null) {

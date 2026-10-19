@@ -86,7 +86,7 @@ class BottomNavigationAlignmentTest {
                 }
             }
         }
-        listOf("首页", "代理", "设置").forEach { compose.onNodeWithText(it).assertExists() }
+        listOf("仪表", "策略", "设置").forEach { compose.onNodeWithText(it).assertExists() }
     }
 
     @Test fun settingsPreviewUsesThreeRealInteractiveTabCells() {

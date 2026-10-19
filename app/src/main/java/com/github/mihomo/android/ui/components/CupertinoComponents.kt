@@ -121,6 +121,7 @@ fun CupertinoGroupedSection(
     title: String? = null,
     footer: String? = null,
     horizontalPadding: Dp = 16.dp,
+    glass: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val displayHeader = header ?: title
@@ -139,7 +140,9 @@ fun CupertinoGroupedSection(
             )
         }
 
-        if (miuix) {
+        if (glass) {
+            Column(Modifier.fillMaxWidth().glassCardFinish(LoonCard, 16.dp), content = content)
+        } else if (miuix) {
             MiuixCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth(), content = content)
             }
@@ -193,7 +196,7 @@ fun CupertinoCell(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = 44.dp)
             .then(
                 if (onClick != null && enabled) {
                     Modifier.iosPressable {
@@ -202,22 +205,22 @@ fun CupertinoCell(
                     }
                 } else Modifier
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (customIcon != null || icon != null) {
             Box(
                 modifier = Modifier.size(30.dp)
                     .clip(RoundedCornerShape(7.dp))
-                    .background(if (miuix || customIcon != null) Color.Transparent else iconBg),
+                    .background(if (customIcon != null) Color.Transparent else if (LocalGlassEnabled.current) iconBg.copy(alpha = 0.10f) else if (miuix) Color.Transparent else iconBg),
                 contentAlignment = Alignment.Center
             ) {
                 if (customIcon != null) customIcon()
                 else if (icon != null) Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (miuix) iconBg else Color.White,
-                    modifier = Modifier.size(if (miuix) 24.dp else 17.dp)
+                    tint = if (miuix || LocalGlassEnabled.current) iconBg else Color.White,
+                    modifier = Modifier.size(if (miuix || LocalGlassEnabled.current) 22.dp else 17.dp)
                 )
             }
             Spacer(Modifier.width(13.dp))
@@ -326,14 +329,20 @@ fun CupertinoSwitch(
             MiuixSwitch(
                 checked = checked,
                 onCheckedChange = { if (currentEnabled) action(it) },
-                modifier = modifier,
+                modifier = modifier.then(if (LocalGlassEnabled.current) Modifier.glassCardFinish(if (checked) IosBlue else LoonSwitchUncheckedTrack, 20.dp) else Modifier),
+                colors = top.yukonga.miuix.kmp.basic.SwitchDefaults.switchColors(
+                    checkedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else IosBlue,
+                    uncheckedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else LoonSwitchUncheckedTrack,
+                    disabledCheckedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else IosBlue.copy(alpha = 0.5f),
+                    disabledUncheckedTrackColor = if (LocalGlassEnabled.current) Color.Transparent else LoonSwitchUncheckedTrack.copy(alpha = 0.5f)
+                ),
                 enabled = enabled
             )
         }
         return
     }
     val haptic = rememberIosHaptic()
-    val checkedTrackColor = IosGreen
+    val checkedTrackColor = IosBlue
     val uncheckedTrackColor = LoonSwitchUncheckedTrack
 
     val trackColor by animateColorAsState(
@@ -359,7 +368,7 @@ fun CupertinoSwitch(
             .alpha(if (enabled) 1f else 0.5f)
             .size(width = 51.dp, height = 31.dp)
             .clip(RoundedCornerShape(15.5.dp))
-            .background(trackColor)
+            .then(if (LocalGlassEnabled.current) Modifier.glassCardFinish(trackColor, 15.5.dp).background(trackColor.copy(alpha = 0.48f)) else Modifier.background(trackColor))
             .toggleable(
                 value = checked,
                 enabled = enabled,

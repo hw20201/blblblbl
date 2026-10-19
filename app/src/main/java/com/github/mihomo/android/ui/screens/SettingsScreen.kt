@@ -100,14 +100,14 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .glassScreenBackground()
             .padding(bottom = LocalMainBottomBarInset.current)
-            .background(LoonBg)
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 16.dp)
     ) {
         // Top Title
-        CupertinoNavBar(title = AppStrings.get("settings_title", lang))
+        Text(AppStrings.get("settings_title", lang), color = LoonTextPrimary, fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 14.dp))
 
         // Scrollable content area below Top Title
         Column(
@@ -231,12 +231,12 @@ fun SettingsScreen(
 
         // Configuration management is grouped in one dedicated destination.
         LoonSectionHeader(title = "配置管理")
-        CupertinoGroupedSection(horizontalPadding = 0.dp) {
+        CupertinoGroupedSection(horizontalPadding = 0.dp, glass = true) {
             LoonSettingsItem(
                 icon = Icons.Default.FolderOpen,
                 iconBg = Color(0xFF3B82F6),
                 title = "配置中心",
-                value = "配置、订阅、脚本与规则资源",
+                subtitle = "配置、订阅、脚本与规则资源",
                 showChevron = true,
                 onClick = onNavigateToConfigurationCenter
             )

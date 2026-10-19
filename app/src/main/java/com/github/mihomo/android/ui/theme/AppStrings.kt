@@ -8,8 +8,8 @@ val LocalAppLanguage = compositionLocalOf { "SYSTEM" }
 
 object AppStrings {
     private val zh = mapOf(
-        "nav_dashboard" to "首页",
-        "nav_proxies" to "代理",
+        "nav_dashboard" to "仪表",
+        "nav_proxies" to "策略",
         "nav_profiles" to "配置",
         "nav_settings" to "设置",
         "mode_rule" to "规则模式",
