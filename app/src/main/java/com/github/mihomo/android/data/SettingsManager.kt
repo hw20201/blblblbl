@@ -148,6 +148,10 @@ class SettingsManager(context: Context) {
         }
         set(value) = prefs.edit().putString("theme_mode", value.name).apply()
 
+    var glassIntensity: Float
+        get() = GlassEffect.normalize(prefs.getFloat("glass_intensity", GlassEffect.DEFAULT_INTENSITY))
+        set(value) = prefs.edit().putFloat("glass_intensity", GlassEffect.normalize(value)).apply()
+
     var appLanguage: String
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"
         set(value) = prefs.edit().putString("app_language", value).apply()

@@ -107,8 +107,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             var themeMode by remember { mutableStateOf(settingsManager.themeMode) }
             var uiStyle by remember { mutableStateOf(settingsManager.uiStyle) }
-            MihomoTheme(themeMode = themeMode, uiStyle = uiStyle) {
+            var glassIntensity by remember { mutableFloatStateOf(settingsManager.glassIntensity) }
+            MihomoTheme(themeMode = themeMode, uiStyle = uiStyle, glassIntensity = glassIntensity) {
                 MainAppScreen(
+                    glassIntensity = glassIntensity,
+                    onGlassIntensityChanged = { value ->
+                        settingsManager.glassIntensity = value
+                        glassIntensity = settingsManager.glassIntensity
+                    },
                     currentUiStyle = uiStyle,
                     onUiStyleChanged = { style ->
                         settingsManager.uiStyle = style
@@ -144,7 +150,9 @@ class MainActivity : ComponentActivity() {
         currentUiStyle: UiStyle,
         onUiStyleChanged: (UiStyle) -> Unit,
         currentThemeMode: ThemeMode,
-        onThemeModeChanged: (ThemeMode) -> Unit
+        onThemeModeChanged: (ThemeMode) -> Unit,
+        glassIntensity: Float,
+        onGlassIntensityChanged: (Float) -> Unit
     ) {
         // Primary Tabs: 0: 仪表, 1: 策略, 2: 配置
         var currentTab by rememberSaveable { mutableStateOf(0) }
@@ -1147,6 +1155,8 @@ class MainActivity : ComponentActivity() {
                                 AppearanceScreen(
                                     uiStyle = currentUiStyle,
                                     onUiStyleChanged = onUiStyleChanged,
+                                    glassIntensity = glassIntensity,
+                                    onGlassIntensityChanged = onGlassIntensityChanged,
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
                                     onLanguageChanged = { code -> appLanguage = code },

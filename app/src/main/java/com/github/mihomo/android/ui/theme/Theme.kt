@@ -14,12 +14,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.UiStyle
 import top.yukonga.miuix.kmp.theme.MiuixTheme as NativeMiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
+import top.yukonga.miuix.kmp.theme.defaultTextStyles
 
 
 data class LoonThemeColors(
@@ -44,7 +47,7 @@ val LightLoonThemeColors = LoonThemeColors(
     card = Color(0xFFFFFFFF), // Apple Secondary System Grouped Background
     cardBorder = Color(0x1A000000), // Clean iOS hairline border
     textPrimary = Color(0xFF000000), // iOS Primary Text
-    textSecondary = Color(0xFF8E8E93), // iOS Secondary Label
+    textSecondary = Color(0xFF646871), // Accessible secondary label
     textMuted = Color(0xFFC7C7CC), // iOS Tertiary Label
     bottomBarBg = Color.White.copy(alpha = 0.88f),
     bottomBarBorder = Color(0x1F000000),
@@ -61,7 +64,7 @@ val DarkLoonThemeColors = LoonThemeColors(
     card = Color(0xFF1C1C1E), // Apple Secondary System Grouped Background
     cardBorder = Color(0x2EFFFFFF), // Clean iOS dark hairline border
     textPrimary = Color(0xFFFFFFFF), // iOS White Text
-    textSecondary = Color(0xFF8E8E93), // iOS Secondary Label
+    textSecondary = Color(0xFFA5A7AE), // Accessible secondary label
     textMuted = Color(0xFF636366), // iOS Tertiary Label
     bottomBarBg = Color(0xFF1C1C1E).copy(alpha = 0.90f),
     bottomBarBorder = Color(0x26FFFFFF),
@@ -75,11 +78,13 @@ val DarkLoonThemeColors = LoonThemeColors(
 
 val LocalLoonColors = staticCompositionLocalOf { LightLoonThemeColors }
 val LocalUiStyle = staticCompositionLocalOf { UiStyle.CUPERTINO }
+val LocalGlassIntensity = staticCompositionLocalOf { 0.5f }
 
 @Composable
 fun MihomoTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     uiStyle: UiStyle = UiStyle.CUPERTINO,
+    glassIntensity: Float = 0.5f,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -145,6 +150,7 @@ fun MihomoTheme(
     CompositionLocalProvider(
         LocalLoonColors provides uiColors,
         LocalUiStyle provides uiStyle,
+        LocalGlassIntensity provides com.github.mihomo.android.data.GlassEffect.normalize(glassIntensity),
         androidx.compose.foundation.LocalOverscrollConfiguration provides null
     ) {
         MaterialTheme(
@@ -153,7 +159,13 @@ fun MihomoTheme(
             // Keep one stable composition path: changing the style must not dispose MainAppScreen.
             val miuixColors = if (isDark) miuixDarkColorScheme() else miuixLightColorScheme()
             val legacyIndication = androidx.compose.foundation.LocalIndication.current
-            NativeMiuixTheme(colors = miuixColors) {
+            NativeMiuixTheme(
+                colors = miuixColors,
+                textStyles = defaultTextStyles(
+                    headline1 = TextStyle(fontSize = 14.sp),
+                    body2 = TextStyle(fontSize = 12.sp)
+                )
+            ) {
                 val indication = if (uiStyle == UiStyle.MIUIX) {
                     androidx.compose.foundation.LocalIndication.current
                 } else legacyIndication

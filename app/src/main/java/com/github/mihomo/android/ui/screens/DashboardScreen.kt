@@ -297,20 +297,20 @@ fun DashboardScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(26.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Section Header: 快捷方式
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 14.dp),
+                        .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = AppStrings.get("shortcuts", lang),
                         color = LoonTextPrimary,
-                        fontSize = 22.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
 
@@ -330,7 +330,7 @@ fun DashboardScreen(
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val spacingDp = 12.dp
                     val itemWidthDp = (maxWidth - spacingDp) / 2
-                    val itemHeightDp = 118.dp
+                    val itemHeightDp = 108.dp
 
                     val density = LocalDensity.current
                     val itemWidthPx = with(density) { itemWidthDp.toPx() }

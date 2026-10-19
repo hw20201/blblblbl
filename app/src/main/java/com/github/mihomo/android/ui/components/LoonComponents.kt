@@ -60,20 +60,21 @@ fun LoonTrafficCard(
 
     Surface(
         modifier = modifier
-            .height(82.dp)
+            .height(80.dp)
             .shadow(
                 elevation = 6.dp,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(16.dp),
                 spotColor = if (isUpload) Color(0x3300C853) else Color(0x334A69FF)
             ),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.Transparent
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(gradient)
+                .border(0.75.dp, glassCardRim(), RoundedCornerShape(16.dp))
         ) {
             // Primary Information (Title & Real-time speed)
             Column(
@@ -91,7 +92,7 @@ fun LoonTrafficCard(
                 Text(
                     text = if (speed.isBlank()) "--" else speed,
                     color = Color.White,
-                    fontSize = 15.5.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
                 )
@@ -297,12 +298,14 @@ private fun IosTrafficArrow(
 
 @Composable
 private fun ShortcutSurface(modifier: Modifier, color: Color, content: @Composable () -> Unit) {
+    val miuix = LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX
+    val glass = modifier.glassCardFinish(color, if (miuix) 17.dp else 16.dp)
     if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
-        top.yukonga.miuix.kmp.basic.Card(modifier = modifier, cornerRadius = 26.dp, color = color) {
+        top.yukonga.miuix.kmp.basic.Card(modifier = glass, cornerRadius = 17.dp, color = Color.Transparent) {
             content()
         }
     } else {
-        Surface(modifier = modifier, color = color, content = content)
+        Surface(modifier = glass, color = Color.Transparent, content = content)
     }
 }
 
@@ -316,10 +319,10 @@ fun LoonShortcutCard(
     onDelete: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    val corner = if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) 26.dp else 18.dp
+    val corner = if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) 17.dp else 16.dp
     ShortcutSurface(
         modifier = modifier
-            .height(118.dp)
+            .height(108.dp)
             .clip(RoundedCornerShape(corner))
             .border(
                 width = 1.dp,
@@ -335,12 +338,12 @@ fun LoonShortcutCard(
             Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = 14.dp, end = 56.dp)
+                    .padding(start = 12.dp, top = 12.dp, end = 12.dp)
             ) {
                 Text(
                     text = title,
                     color = LoonTextPrimary,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
                 )
@@ -349,7 +352,7 @@ fun LoonShortcutCard(
                     Text(
                         text = subtitle,
                         color = LoonTextSecondary,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         maxLines = 1
                     )
                 }
@@ -359,7 +362,7 @@ fun LoonShortcutCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 14.dp, bottom = 14.dp),
+                    .padding(start = 12.dp, bottom = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (isEditing) {
@@ -385,8 +388,8 @@ fun LoonShortcutCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 10.dp, bottom = 10.dp)
-                    .size(54.dp),
+                    .padding(end = 8.dp, bottom = 8.dp)
+                    .size(48.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 icon()
@@ -875,21 +878,18 @@ fun LoonFloatingBottomBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val radius = if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) 22.dp else 32.dp
-    Surface(
+    val radius = if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) 18.dp else 20.dp
+    GlassNavigationSurface(
         modifier = modifier
             .widthIn(max = 360.dp)
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .shadow(16.dp, RoundedCornerShape(radius), spotColor = Color(0x1F000000))
-            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(radius)),
-        shape = RoundedCornerShape(radius),
-        color = LocalLoonColors.current.bottomBarBg
+            .padding(horizontal = 18.dp),
+        radius = radius
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 7.dp),
+                .padding(horizontal = 5.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -982,12 +982,18 @@ private fun BottomNavItem(
     onClick: () -> Unit
 ) {
     val tint by animateColorAsState(
-        targetValue = if (isSelected) IosBlue else Color(0xFF8E8E93),
+        targetValue = if (isSelected) IosBlue else LoonTextSecondary,
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
+    val lens by animateColorAsState(
+        targetValue = if (isSelected) IosBlue.copy(alpha = if (LocalLoonColors.current.isDark) 0.20f else 0.09f)
+            else Color.Transparent,
+        animationSpec = tween(durationMillis = 180),
+        label = "nav_glass_lens"
+    )
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.08f else 1.0f,
+        targetValue = if (isSelected) 1.025f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -1001,12 +1007,15 @@ private fun BottomNavItem(
                 scaleX = scale
                 scaleY = scale
             }
+            .clip(RoundedCornerShape(16.dp))
+            .background(lens)
             .then(Modifier.clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
                 onClick = rememberHapticAction(onClick)
             ))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 6.dp, vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (customIcon != null) {
@@ -1023,7 +1032,7 @@ private fun BottomNavItem(
         Text(
             text = label,
             color = tint,
-            fontSize = 10.5.sp,
+            fontSize = 10.sp,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal

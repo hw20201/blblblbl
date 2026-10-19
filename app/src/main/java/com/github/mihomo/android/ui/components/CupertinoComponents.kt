@@ -193,23 +193,37 @@ fun CupertinoCell(
     val hasTrailing = trailing != null || !value.isNullOrBlank() || showChevron
 
     if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
-        MiuixBasicComponent(
-            modifier = modifier.fillMaxWidth(),
-            title = title,
-            summary = subtitle,
-            leftAction = customIcon ?: icon?.let { image ->
-                { Icon(imageVector = image, contentDescription = null, tint = iconBg, modifier = Modifier.size(24.dp)) }
-            },
-            rightActions = {
-                if (trailing != null) trailing()
-                else {
-                    if (!value.isNullOrBlank()) Text(value, color = LoonTextSecondary, maxLines = 2)
-                    if (showChevron) Icon(Icons.Default.ChevronRight, null, tint = LoonChevronTint)
-                }
-            },
-            enabled = enabled,
-            onClick = onClick?.let { { haptic.selection(); it() } }
-        )
+        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+            val trailingMaxWidth = maxWidth * 0.46f
+            MiuixBasicComponent(
+                modifier = Modifier.fillMaxWidth(),
+                title = title,
+                summary = subtitle,
+                leftAction = customIcon ?: icon?.let { image ->
+                    { Icon(imageVector = image, contentDescription = null, tint = iconBg, modifier = Modifier.size(24.dp)) }
+                },
+                rightActions = {
+                    if (trailing != null) trailing()
+                    else Row(
+                        modifier = Modifier.widthIn(max = trailingMaxWidth),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        if (!value.isNullOrBlank()) {
+                            Text(value, color = LoonTextSecondary, fontSize = 13.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f))
+                        }
+                        if (showChevron) {
+                            if (!value.isNullOrBlank()) Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.ChevronRight, null, tint = LoonChevronTint)
+                        }
+                    }
+                },
+                enabled = enabled,
+                onClick = onClick?.let { { haptic.selection(); it() } }
+            )
+        }
         return
     }
 
@@ -266,7 +280,7 @@ fun CupertinoCell(
                 Text(
                     text = title,
                     color = if (enabled) LoonTextPrimary else LoonTextMuted,
-                    fontSize = 15.5.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Normal,
                     letterSpacing = (-0.2).sp
                 )
@@ -295,7 +309,7 @@ fun CupertinoCell(
                     Text(
                         text = value,
                         color = LoonTextSecondary,
-                        fontSize = 14.5.sp,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.Normal,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
