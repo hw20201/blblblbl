@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.github.mihomo.android.data.ThemeMode
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.resolveGlassPalette
+import com.github.mihomo.android.ui.glass.toLoonColors
 
 
 data class LoonThemeColors(
@@ -83,11 +86,14 @@ fun MihomoTheme(
         ThemeMode.DARK -> true
     }
 
-    val loonColors = if (isDark) DarkLoonThemeColors else LightLoonThemeColors
+    val palette = resolveGlassPalette(GlassDefaults.palette, isDark)
+    val loonColors = if (GlassDefaults.enabled) palette.toLoonColors()
+        else if (isDark) DarkLoonThemeColors else LightLoonThemeColors
+    val accent = if (GlassDefaults.enabled) palette.accent else LoonOrange
 
     val colorScheme = if (isDark) {
         darkColorScheme(
-            primary = LoonOrange,
+            primary = accent,
             onPrimary = Color.White,
             primaryContainer = Color(0xFF3B2414),
             onPrimaryContainer = LoonOrangeLight,
@@ -100,7 +106,7 @@ fun MihomoTheme(
         )
     } else {
         lightColorScheme(
-            primary = LoonOrange,
+            primary = accent,
             onPrimary = Color.White,
             primaryContainer = LoonOrangeBg,
             onPrimaryContainer = LoonOrange,

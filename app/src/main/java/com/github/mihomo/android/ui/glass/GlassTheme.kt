@@ -8,6 +8,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.github.mihomo.android.ui.theme.DarkLoonThemeColors
+import com.github.mihomo.android.ui.theme.LightLoonThemeColors
+import com.github.mihomo.android.ui.theme.LocalLoonColors
+import com.github.mihomo.android.ui.theme.LoonThemeColors
 
 /**
  * Global switches for the glass surface family.
@@ -23,6 +27,21 @@ object GlassDefaults {
 
 val LocalGlassPalette = staticCompositionLocalOf { GlassPalettes.CREAM }
 
+/** Theme mode remains authoritative; keep the saved light palette for the next light session. */
+fun resolveGlassPalette(selected: GlassPaletteSpec, isDark: Boolean): GlassPaletteSpec =
+    if (isDark) GlassPalettes.MIDNIGHT else selected.takeUnless { it.isDark } ?: GlassPalettes.CREAM
+
+/** Legacy Cupertino text and opaque dialogs must agree with the glass backdrop. */
+fun GlassPaletteSpec.toLoonColors(): LoonThemeColors =
+    (if (isDark) DarkLoonThemeColors else LightLoonThemeColors).copy(
+        bg = base,
+        cardBorder = edge,
+        textPrimary = textPrimary,
+        textSecondary = textSecondary,
+        textMuted = textMuted,
+        bottomBarBorder = edge
+    )
+
 /**
  * Provides the active palette to every descendant.
  *
@@ -31,7 +50,7 @@ val LocalGlassPalette = staticCompositionLocalOf { GlassPalettes.CREAM }
  */
 @Composable
 fun ProvideGlassTheme(content: @Composable () -> Unit) {
-    val palette = GlassDefaults.palette
+    val palette = resolveGlassPalette(GlassDefaults.palette, LocalLoonColors.current.isDark)
     CompositionLocalProvider(
         LocalGlassPalette provides palette,
         LocalGlassTokens provides palette.toTokens(),

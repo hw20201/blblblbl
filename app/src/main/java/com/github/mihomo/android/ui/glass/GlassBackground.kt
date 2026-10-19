@@ -11,6 +11,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.github.mihomo.android.ui.theme.LoonBg
 
 /**
  * The colour field that glass panels refract.
@@ -29,6 +30,10 @@ fun NexusGlassBackground(
     palette: GlassPaletteSpec = LocalGlassPalette.current,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
+    if (!GlassDefaults.enabled) {
+        Box(modifier = modifier.fillMaxSize().background(LoonBg), content = content)
+        return
+    }
     Box(
         modifier = modifier
             .fillMaxSize()

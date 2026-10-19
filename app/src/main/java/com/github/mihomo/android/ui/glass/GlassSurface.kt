@@ -50,7 +50,7 @@ val LocalGlassTokens = staticCompositionLocalOf { GlassPalettes.CREAM.toTokens()
  * The top rim is the single most important cue: a bright hairline that fades at both ends reads as
  * a lens edge, whereas a uniform 1px border reads as a plain card.
  */
-fun Modifier.glassSurface(tokens: GlassTokens = LocalGlassTokens.current): Modifier =
+fun Modifier.glassSurface(tokens: GlassTokens): Modifier =
     this.drawWithContent {
         drawContent()
         val w = size.width

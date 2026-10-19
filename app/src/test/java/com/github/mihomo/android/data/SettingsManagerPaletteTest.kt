@@ -49,6 +49,24 @@ class SettingsManagerPaletteTest {
     }
 
     @Test
+    fun changingPaletteOnlyWritesThePalettePreference() {
+        prefs.edit()
+            .putString("tun_stack", "mips")
+            .putBoolean("ipv6_enabled", true)
+            .putBoolean("allow_lan", false)
+            .putBoolean("haptic_enabled", false)
+            .putString("app_language", "en")
+            .putString("lan_username", "existing-user")
+            .putString("lan_password", "existing-password")
+            .commit()
+        val before = prefs.all.toMap()
+        GlassPalettes.all.forEach { palette ->
+            settings.glassPaletteKey = palette.key
+            assertEquals(before, prefs.all.filterKeys { it != "glass_palette" })
+        }
+    }
+
+    @Test
     fun unknownKeyFallsBackToTheDefaultInsteadOfCrashing() {
         // A palette removed in a future build must not strand a user on a blank screen.
         settings.glassPaletteKey = "does-not-exist"

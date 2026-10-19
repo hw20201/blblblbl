@@ -35,11 +35,11 @@ class UpstreamUiRestorationTest {
         prefs.edit().clear().commit()
     }
 
-    @Test fun productionUiHasNoGlassRendererOrAppearanceControls() {
+    @Test fun legacyGlassRendererStaysRemovedAndUpstreamFallbackIsPreserved() {
         val root = listOf(File("src/main/java"), File("app/src/main/java"))
             .first { it.isDirectory }
         val removedReferences = listOf(
-            "GlassBackdrop", "GlassSurface", "GlassWallpaper", "GlassEffect",
+            "GlassBackdrop", "GlassWallpaper", "GlassEffect",
             "GlassThemeSection", "glassEnabled", "glassIntensity", "LocalUiStyle"
         )
         root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { file ->

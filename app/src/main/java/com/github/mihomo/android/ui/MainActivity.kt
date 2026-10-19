@@ -1027,7 +1027,7 @@ class MainActivity : ComponentActivity() {
                     label = "SubScreenOverlayTransition"
                 ) { subScreen ->
                     if (subScreen != null) {
-                    Box(modifier = Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
+                    NexusGlassBackground(palette = glassPalette) {
                         when (subScreen) {
                             SubScreen.PROFILES -> {
                                 ProfilesScreen(
@@ -1208,13 +1208,23 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             SubScreen.APPEARANCE -> {
+                                val activePalette = glassPalette
                                 AppearanceScreen(
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
-                                    palette = GlassDefaults.palette,
+                                    palette = activePalette,
                                     onPaletteChanged = { spec ->
-                                        GlassDefaults.palette = spec
-                                        settingsManager.glassPaletteKey = spec.key
+                                        // Midnight is the dark-mode surface, not a replacement
+                                        // for the saved light palette used when daylight returns.
+                                        if (!spec.isDark) {
+                                            GlassDefaults.palette = spec
+                                            settingsManager.glassPaletteKey = spec.key
+                                        }
+                                        // Cross-brightness swatches explicitly select a theme mode.
+                                        // Same-brightness changes retain SYSTEM and its day/night cycle.
+                                        if (spec.isDark != activePalette.isDark) {
+                                            onThemeModeChanged(if (spec.isDark) ThemeMode.DARK else ThemeMode.LIGHT)
+                                        }
                                     },
                                     onLanguageChanged = { code -> appLanguage = code },
                                     nodeColumns = nodeColumns,
