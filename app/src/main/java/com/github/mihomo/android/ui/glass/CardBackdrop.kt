@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -27,9 +28,12 @@ import androidx.compose.ui.platform.LocalDensity
 internal fun shouldBlurCardBackdrop(apiLevel: Int, hardwareAccelerated: Boolean): Boolean =
     apiLevel >= 31 && hardwareAccelerated
 
+/** Allows the actual dashboard to be rendered with only its shortcut filter toggled. */
+internal val LocalShortcutBlurEnabled = staticCompositionLocalOf { true }
+
 /** Replay only the backdrop at its root-relative position; never record card content here. */
 @Composable
-internal fun BoxScope.CardBackdrop(lens: NavigationLensState, fallback: Brush) {
+internal fun BoxScope.CardBackdrop(lens: NavigationLensState, fallback: Brush, blurEnabled: Boolean = true) {
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
     val blur = remember(density) {
@@ -40,7 +44,7 @@ internal fun BoxScope.CardBackdrop(lens: NavigationLensState, fallback: Brush) {
     }
     Box(Modifier.matchParentSize()
         .onGloballyPositioned { origin = it.positionInRoot() }
-        .graphicsLayer { renderEffect = blur }
+        .graphicsLayer { renderEffect = if (blurEnabled) blur else null }
         .drawWithContent {
             if (shouldBlurCardBackdrop(Build.VERSION.SDK_INT, drawContext.canvas.nativeCanvas.isHardwareAccelerated)) {
                 val offset = lens.origin - origin

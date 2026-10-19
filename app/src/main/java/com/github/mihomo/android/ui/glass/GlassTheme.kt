@@ -127,7 +127,7 @@ val glassTextMuted: Color
 val glassAccent: Color
     @Composable
     @ReadOnlyComposable
-    get() = LocalGlassPalette.current.accent
+    get() = LocalGlassPalette.current.uiAccent
 
 /**
  * Semantic accents that stay constant across palettes.

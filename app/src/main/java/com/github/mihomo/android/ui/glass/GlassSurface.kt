@@ -10,12 +10,16 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -108,6 +112,7 @@ fun GlassSurface(
     accent: Color? = null,
     tokens: GlassTokens = LocalGlassTokens.current,
     lens: NavigationLensState? = null,
+    blurEnabled: Boolean = true,
     content: @Composable BoxScope.() -> Unit
 ) {
     val fill = if (accent == null) {
@@ -130,14 +135,37 @@ fun GlassSurface(
         Box(modifier = modifier.clip(shape).background(fill).glassSurface(tokens), content = content)
     } else {
         val translucentFill = Brush.linearGradient(
-            listOf(tokens.tint.copy(alpha = tokens.tint.alpha * 0.34f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.34f)),
+            listOf(tokens.tint.copy(alpha = tokens.tint.alpha * 0.20f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.20f)),
             start = Offset.Zero,
             end = Offset.Infinite
         )
+        // The source already has a veil. A second strong white sheen hid the filtering.
+        // Keep the rim, but let the filtered colour field carry the shortcut material.
+        val cardTokens = tokens.copy(sheen = tokens.sheen * 0.35f)
         Box(modifier = modifier.clip(shape)) {
-            CardBackdrop(lens = lens, fallback = fill)
-            Box(Modifier.matchParentSize().background(translucentFill, shape).glassSurface(tokens))
+            CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled)
+            Box(Modifier.matchParentSize().background(translucentFill, shape)
+                .glassSurface(cardTokens).restrainedCardRim(cardTokens, shape))
             Box(Modifier.matchParentSize(), content = content)
+        }
+    }
+}
+
+/** B-style two-layer edge, deliberately dimmer than a neon halo. Background only, no blur. */
+private fun Modifier.restrainedCardRim(tokens: GlassTokens, shape: Shape): Modifier = drawWithCache {
+    val inset = 1.8.dp.toPx()
+    val outer = shape.createOutline(size, layoutDirection, this)
+    val innerSize = Size((size.width - 2 * inset).coerceAtLeast(0f), (size.height - 2 * inset).coerceAtLeast(0f))
+    val inner = shape.createOutline(innerSize, layoutDirection, this)
+    val edge = Brush.verticalGradient(listOf(
+        Color.White.copy(alpha = if (tokens.isDark) .26f else .48f),
+        tokens.rimBottom.copy(alpha = if (tokens.isDark) .12f else .20f)
+    ))
+    onDrawWithContent {
+        drawContent()
+        drawOutline(outer, edge, style = Stroke(.75.dp.toPx()))
+        translate(inset, inset) {
+            drawOutline(inner, Color.White.copy(alpha = if (tokens.isDark) .07f else .15f), style = Stroke(.5.dp.toPx()))
         }
     }
 }

@@ -47,6 +47,7 @@ import com.github.mihomo.android.ui.glass.GlassAccent
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
+import com.github.mihomo.android.ui.glass.LocalShortcutBlurEnabled
 import com.github.mihomo.android.ui.glass.glassTextPrimary
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.glassPalette
@@ -377,11 +378,14 @@ fun LoonShortcutCard(
     onDelete: (() -> Unit)? = null,
     /** Background-only scene; never includes this card or navigation content. */
     lens: NavigationLensState? = null,
+    /** Disable only the Gaussian filter for same-material visual comparisons. */
+    blurEnabled: Boolean = LocalShortcutBlurEnabled.current,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
     val pressModifier = modifier
         .height(118.dp)
+        .testTag("shortcut-card-$title")
         .iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
             haptic.lightTick()
             onClick()
@@ -392,7 +396,8 @@ fun LoonShortcutCard(
         GlassSurface(
             modifier = pressModifier,
             shape = RoundedCornerShape(GlassRadius.card),
-            lens = lens
+            lens = lens,
+            blurEnabled = blurEnabled
         ) {
             ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
         }

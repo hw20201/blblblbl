@@ -50,6 +50,7 @@ import com.github.mihomo.android.ui.glass.GlassPalettes
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NexusGlassBackground
 import com.github.mihomo.android.ui.glass.ProvideGlassTheme
+import com.github.mihomo.android.ui.glass.ProvideSoftMeshMotion
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
@@ -704,6 +705,7 @@ class MainActivity : ComponentActivity() {
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
         ) {
         ProvideGlassTheme {
+        ProvideSoftMeshMotion {
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
         Box(Modifier.fillMaxSize()) {
@@ -1280,6 +1282,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
         } // scene + dock overlay
+        } // end shared background motion
         } // end ProvideGlassTheme
         } // end CompositionLocalProvider
     }

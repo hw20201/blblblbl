@@ -96,11 +96,15 @@ fun AppearanceScreen(
                 }
             }
 
-            // Section 1b: 色泽主题 (glass palette)
+            // Section 1b: customizable glass theme color grid.
             if (GlassDefaults.enabled) {
                 CupertinoGroupedSection(
-                    title = AppStrings.get("palette_section", lang),
-                    footer = AppStrings.get("palette_footer", lang)
+                    title = when (lang) { "zh" -> "主题色"; "ru" -> "Цвет темы"; else -> "Theme color" },
+                    footer = when (lang) {
+                        "zh" -> "选择网格中的任意纯色，即时应用到强调色与玻璃背景。"
+                        "ru" -> "Выберите цвет сетки для акцентов и стеклянного фона."
+                        else -> "Choose a grid color to apply it to accents and the glass background."
+                    }
                 ) {
                     Column(
                         modifier = Modifier
@@ -110,7 +114,9 @@ fun AppearanceScreen(
                         GlassPalettePicker(
                             selected = palette,
                             labelProvider = { spec ->
-                                AppStrings.get("palette_" + spec.key, lang)
+                                if (spec.key.startsWith("custom:")) {
+                                    if (lang == "zh") spec.labelZh else spec.labelEn
+                                } else AppStrings.get("palette_" + spec.key, lang)
                             },
                             onSelect = onPaletteChanged
                         )

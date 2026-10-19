@@ -89,7 +89,7 @@ fun MihomoTheme(
     val palette = resolveGlassPalette(GlassDefaults.palette, isDark)
     val loonColors = if (GlassDefaults.enabled) palette.toLoonColors()
         else if (isDark) DarkLoonThemeColors else LightLoonThemeColors
-    val accent = if (GlassDefaults.enabled) palette.accent else LoonOrange
+    val accent = if (GlassDefaults.enabled) palette.uiAccent else LoonOrange
 
     val colorScheme = if (isDark) {
         darkColorScheme(

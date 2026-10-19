@@ -3,18 +3,25 @@ package com.github.mihomo.android.ui.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import com.github.mihomo.android.ui.glass.GlassDefaults
 
-// Loon Brand Colors
-val LoonOrange = Color(0xFFFF6B00)
-val LoonOrangeLight = Color(0xFFFF8533)
-val LoonOrangeBg = Color(0xFFFFF4EB)
+// Legacy presets retain their approved colors; grid choices also reach existing custom controls.
+private fun themeControlAccent(fallback: Color): Color {
+    val palette = GlassDefaults.palette
+    return if (GlassDefaults.enabled && palette.key.startsWith("custom:")) palette.uiAccent else fallback
+}
+val LoonOrange: Color get() = themeControlAccent(Color(0xFFFF6B00))
+val LoonOrangeLight: Color get() = themeControlAccent(Color(0xFFFF8533))
+val LoonOrangeBg: Color get() = if (GlassDefaults.enabled && GlassDefaults.palette.key.startsWith("custom:"))
+    lerp(Color.White, GlassDefaults.palette.uiAccent, .09f) else Color(0xFFFFF4EB)
 
 val LoonGreen = Color(0xFF00C853)
 val LoonGreenDark = Color(0xFF00A844)
 val LoonBlue = Color(0xFF4A69FF)
 val LoonBlueDark = Color(0xFF3852D4)
 
-val LoonEditBlue = Color(0xFF2F80ED)
+val LoonEditBlue: Color get() = themeControlAccent(Color(0xFF2F80ED))
 val LoonEditBlueBg: Color
     @Composable
     @ReadOnlyComposable
@@ -52,7 +59,7 @@ val LoonTextMuted: Color
     get() = LocalLoonColors.current.textMuted
 
 // Apple Official System Palette
-val IosBlue = Color(0xFF007AFF)
+val IosBlue: Color get() = themeControlAccent(Color(0xFF007AFF))
 val IosGreen = Color(0xFF34C759)
 val IosIndigo = Color(0xFF5856D6)
 val IosOrange = Color(0xFFFF9500)
@@ -94,8 +101,8 @@ val LoonSwitchUncheckedTrack: Color
     get() = LocalLoonColors.current.switchUncheckedTrack
 
 // Legacy compatibility
-val CyanPrimary = LoonOrange
-val CyanVariant = LoonOrangeLight
+val CyanPrimary: Color get() = LoonOrange
+val CyanVariant: Color get() = LoonOrangeLight
 val CyanGlow = Color(0x33FF6B00)
 val OledBlack = Color(0xFF000000)
 val DarkSurface = Color(0xFF1C1C1E)
@@ -124,4 +131,3 @@ val TextMuted: Color
 val GreenSuccess = IosGreen
 val YellowWarning = IosOrange
 val RedDanger = IosRed
-

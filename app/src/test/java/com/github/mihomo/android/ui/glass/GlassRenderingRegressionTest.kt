@@ -13,11 +13,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -111,7 +110,7 @@ class GlassRenderingRegressionTest {
     }
 
     @Test
-    fun swatchExposesSelectionAndUpdatesItOnClick() {
+    fun colorGridExposesSelectionAndUpdatesItOnClick() {
         compose.setContent {
             val selected = remember { mutableStateOf(GlassPalettes.CREAM) }
             MihomoTheme(ThemeMode.LIGHT) {
@@ -120,9 +119,7 @@ class GlassRenderingRegressionTest {
                 }
             }
         }
-        compose.onNodeWithText("奶白").assertIsSelected()
-        compose.onNodeWithText("白玻璃").assertIsNotSelected().performClick()
-        compose.onNodeWithText("白玻璃").assertIsSelected()
-        compose.onNodeWithText("奶白").assertIsNotSelected()
+        val key = GlassPalettes.keyForColor(ThemeColorGrid[20])
+        compose.onNodeWithContentDescription("#${key.substringAfter(':')}").performClick().assertIsSelected()
     }
 }

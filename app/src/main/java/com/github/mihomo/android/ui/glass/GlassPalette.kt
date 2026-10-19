@@ -2,6 +2,9 @@ package com.github.mihomo.android.ui.glass
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 
 /**
  * A colour stop in the backdrop field.
@@ -49,7 +52,9 @@ data class GlassPaletteSpec(
     val textSecondary: Color,
     val textMuted: Color,
     /** Colour used for the swatch preview in Settings. */
-    val swatch: List<Color>
+    val swatch: List<Color>,
+    /** Contrast-limited control color; the original chosen RGB remains in accent/key. */
+    val uiAccent: Color = accent
 )
 
 /**
@@ -225,6 +230,56 @@ object GlassPalettes {
     /** Display order: light to dark. */
     val all: List<GlassPaletteSpec> = listOf(WHITE, BLUE, CREAM, MINT, LAVENDER, MIDNIGHT)
 
-    fun byKey(key: String?): GlassPaletteSpec =
-        all.firstOrNull { it.key == key } ?: CREAM
+    private val customKey = Regex("custom:([0-9a-fA-F]{6})")
+
+    /** Strict, stable key format lets any RGB swatch survive settings persistence. */
+    fun keyForColor(color: Color): String =
+        "custom:%06X".format(color.toArgb() and 0xFFFFFF)
+
+    fun byKey(key: String?): GlassPaletteSpec {
+        all.firstOrNull { it.key == key }?.let { return it }
+        val match = key?.let(customKey::matchEntire) ?: return CREAM
+        val rgb = match.groupValues[1].toLongOrNull(16)?.toInt() ?: return CREAM
+        return custom(Color(0xFF000000.toInt() or rgb), key!!)
+    }
+
+    private fun custom(accent: Color, key: String): GlassPaletteSpec {
+        // Gently mix the selected hue into a cool ice-blue/lavender mesh, avoiding neon saturation.
+        val softened = androidx.compose.ui.graphics.lerp(accent, Color(0xFFB9C8F5), 0.48f)
+        val pale = androidx.compose.ui.graphics.lerp(softened, Color.White, 0.48f)
+        val warm = androidx.compose.ui.graphics.lerp(pale, Color(0xFFE2D9F6), 0.42f)
+        val base = androidx.compose.ui.graphics.lerp(Color(0xFFF7F9FD), pale, 0.12f)
+        val panel = androidx.compose.ui.graphics.lerp(Color.White, pale, 0.10f)
+        val blobs = listOf(
+            GlassBlob(softened.copy(alpha = 0.34f), 0.10f, -0.02f, 0.46f),
+            GlassBlob(warm.copy(alpha = 0.30f), 0.96f, 0.16f, 0.40f),
+            GlassBlob(androidx.compose.ui.graphics.lerp(pale, Color(0xFFD5E8FA), 0.35f).copy(alpha = 0.30f), -0.04f, 0.42f, 0.40f),
+            GlassBlob(androidx.compose.ui.graphics.lerp(warm, pale, 0.5f).copy(alpha = 0.25f), 0.98f, 1.02f, 0.44f)
+        )
+        return GlassPaletteSpec(
+            key = key, labelZh = "自定义颜色", labelEn = "Custom color", isDark = false,
+            accent = accent, base = base, veil = Color(0x66FFFFFF), blobs = blobs,
+            panelStart = Color(0xB8FFFFFF), panelEnd = androidx.compose.ui.graphics.lerp(Color(0x66FFFFFF), panel, 0.15f),
+            panelAccent = Color(0x8AFFFFFF), edge = Color(0xF2FFFFFF), rimTop = Color.White,
+            rimBottom = softened.copy(alpha = 0.20f), sheen = 0.34f,
+            textPrimary = Color(0xFF12151C), textSecondary = Color(0x9912151C), textMuted = Color(0x6612151C),
+            swatch = listOf(base, pale, accent), uiAccent = balancedControlAccent(accent)
+        )
+    }
+}
+
+/** Keep black/white/pastel swatches from making controls disappear in either brightness mode. */
+private fun balancedControlAccent(color: Color): Color {
+    val luminance = color.luminance()
+    if (luminance in .16f.. .24f) return color
+    val increasing = luminance < .16f
+    val end = if (increasing) Color.White else Color.Black
+    var lo = 0f
+    var hi = 1f
+    repeat(12) {
+        val mid = (lo + hi) / 2f
+        val value = lerp(color, end, mid).luminance()
+        if ((value < .20f) == increasing) lo = mid else hi = mid
+    }
+    return lerp(color, end, (lo + hi) / 2f)
 }
