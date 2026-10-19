@@ -131,6 +131,8 @@ android {
         }
         jniLibs {
             useLegacyPackaging = true
+            // The guard's NDK build must not strip/rewrite pinned core binaries.
+            keepDebugSymbols += setOf("**/libclash.so", "**/libbridge.so")
         }
     }
 }
