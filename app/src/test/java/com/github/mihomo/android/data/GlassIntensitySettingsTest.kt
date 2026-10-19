@@ -31,6 +31,21 @@ class GlassIntensitySettingsTest {
     }
 
     @Test
+    fun enabledPreferencePersistsIndependentlyOfIntensityAndUiStyle() {
+        val settings = SettingsManager(context)
+        settings.uiStyle = UiStyle.MIUIX
+        settings.glassIntensity = 0.82f
+        settings.glassEnabled = false
+
+        val reopened = SettingsManager(context)
+        assertEquals(false, reopened.glassEnabled)
+        assertEquals(0.82f, reopened.glassIntensity, 0f)
+        assertEquals(UiStyle.MIUIX, reopened.uiStyle)
+        reopened.glassEnabled = true
+        assertEquals(0.82f, SettingsManager(context).glassIntensity, 0f)
+    }
+
+    @Test
     fun outOfRangeAndNonFiniteValuesNormalize() {
         val settings = SettingsManager(context)
         settings.glassIntensity = -0.25f

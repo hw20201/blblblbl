@@ -40,6 +40,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -48,7 +49,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.mihomo.android.ui.theme.*
-import top.yukonga.miuix.kmp.basic.BasicComponent as MiuixBasicComponent
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import kotlinx.coroutines.launch
@@ -134,9 +134,7 @@ fun CupertinoGroupedSection(
             Text(
                 text = displayHeader.uppercase(),
                 color = LoonTextSecondary,
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.3.sp,
+                style = SettingsTypography.SectionHeader,
                 modifier = Modifier.padding(start = 14.dp, bottom = 6.dp)
             )
         }
@@ -167,8 +165,7 @@ fun CupertinoGroupedSection(
             Text(
                 text = footer,
                 color = LoonTextSecondary,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                style = SettingsTypography.Description,
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp, end = 14.dp)
             )
         }
@@ -190,140 +187,86 @@ fun CupertinoCell(
     onClick: (() -> Unit)? = null
 ) {
     val haptic = rememberIosHaptic()
-    val hasTrailing = trailing != null || !value.isNullOrBlank() || showChevron
-
-    if (LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX) {
-        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-            val trailingMaxWidth = maxWidth * 0.46f
-            MiuixBasicComponent(
-                modifier = Modifier.fillMaxWidth(),
-                title = title,
-                summary = subtitle,
-                leftAction = customIcon ?: icon?.let { image ->
-                    { Icon(imageVector = image, contentDescription = null, tint = iconBg, modifier = Modifier.size(24.dp)) }
-                },
-                rightActions = {
-                    if (trailing != null) trailing()
-                    else Row(
-                        modifier = Modifier.widthIn(max = trailingMaxWidth),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        if (!value.isNullOrBlank()) {
-                            Text(value, color = LoonTextSecondary, fontSize = 13.sp,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f))
-                        }
-                        if (showChevron) {
-                            if (!value.isNullOrBlank()) Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.ChevronRight, null, tint = LoonChevronTint)
-                        }
-                    }
-                },
-                enabled = enabled,
-                onClick = onClick?.let { { haptic.selection(); it() } }
-            )
-        }
-        return
-    }
+    val miuix = LocalUiStyle.current == com.github.mihomo.android.data.UiStyle.MIUIX
+    val textMeasurer = rememberTextMeasurer()
 
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .then(
                 if (onClick != null && enabled) {
-                    Modifier.iosPressable(enabled = true) {
+                    Modifier.iosPressable {
                         haptic.selection()
                         onClick()
                     }
                 } else Modifier
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
-        ) {
-            // Optional Squircle Icon Badge
-            if (customIcon != null) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(RoundedCornerShape(7.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    customIcon()
-                }
-                Spacer(modifier = Modifier.width(13.dp))
-            } else if (icon != null) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(iconBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(17.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(13.dp))
-            }
-
-            // Title & optional Subtitle
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = if (enabled) LoonTextPrimary else LoonTextMuted,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Normal,
-                    letterSpacing = (-0.2).sp
+        if (customIcon != null || icon != null) {
+            Box(
+                modifier = Modifier.size(30.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(if (miuix || customIcon != null) Color.Transparent else iconBg),
+                contentAlignment = Alignment.Center
+            ) {
+                if (customIcon != null) customIcon()
+                else if (icon != null) Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (miuix) iconBg else Color.White,
+                    modifier = Modifier.size(if (miuix) 24.dp else 17.dp)
                 )
-                if (!subtitle.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = subtitle,
-                        color = LoonTextSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 15.sp
-                    )
-                }
             }
+            Spacer(Modifier.width(13.dp))
         }
 
-        // Trailing Content (Value / Chevron / Switch / Custom)
-        Row(
-            modifier = if (hasTrailing) Modifier.weight(0.65f, fill = false) else Modifier,
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
-        ) {
-            if (trailing != null) {
-                trailing()
-            } else {
-                if (!value.isNullOrBlank()) {
-                    Text(
-                        text = value,
-                        color = LoonTextSecondary,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Normal,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+        // Allocate only the natural trailing width. If title and value cannot both fit,
+        // put the value on its own line rather than squeezing the title into a narrow column.
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val density = LocalDensity.current
+            val availableWidth = with(density) { maxWidth.toPx() }
+            val titleWidth = textMeasurer.measure(title, SettingsTypography.RowTitle, softWrap = false).size.width
+            val valueWidth = if (value.isNullOrBlank()) 0 else
+                textMeasurer.measure(value, SettingsTypography.Value, softWrap = false).size.width
+            val accessoryWidth = with(density) { (if (showChevron) 22.dp else 0.dp).toPx() }
+            val gap = with(density) { 12.dp.toPx() }
+            val stackedValue = trailing == null && !value.isNullOrBlank() &&
+                titleWidth + valueWidth + accessoryWidth + gap > availableWidth
+
+            Column(Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            color = if (enabled) LoonTextPrimary else LoonTextMuted,
+                            style = SettingsTypography.RowTitle
+                        )
+                        if (stackedValue) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(text = value.orEmpty(), color = LoonTextSecondary, style = SettingsTypography.Value)
+                        }
+                    }
+                    if (trailing != null) {
+                        Spacer(Modifier.width(12.dp))
+                        trailing()
+                    } else {
+                        if (!stackedValue && !value.isNullOrBlank()) {
+                            Spacer(Modifier.width(12.dp))
+                            Text(text = value, color = LoonTextSecondary, style = SettingsTypography.Value)
+                        }
+                        if (showChevron) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.ChevronRight, null, tint = LoonChevronTint, modifier = Modifier.size(16.dp))
+                        }
+                    }
                 }
-                if (showChevron) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = LoonChevronTint,
-                        modifier = Modifier.size(16.dp)
-                    )
+                // Descriptions get the whole text column, not the space left beside a switch.
+                if (!subtitle.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(text = subtitle, color = LoonTextSecondary, style = SettingsTypography.Description)
                 }
             }
         }
@@ -500,7 +443,7 @@ fun CupertinoNavBar(
                                 Text(
                                     text = backLabel,
                                     color = IosBlue,
-                                    fontSize = 15.5.sp,
+                                    style = SettingsTypography.RowTitle,
                                     fontWeight = FontWeight.Normal
                                 )
                             }
@@ -516,18 +459,13 @@ fun CupertinoNavBar(
                     Text(
                         text = title,
                         color = LoonTextPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.3).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        style = SettingsTypography.NavigationTitle
                     )
                     if (!subtitle.isNullOrBlank()) {
                         Text(
                             text = subtitle,
                             color = LoonTextSecondary,
-                            fontSize = 11.sp,
-                            maxLines = 1
+                            style = SettingsTypography.Description
                         )
                     }
                 }

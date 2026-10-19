@@ -67,7 +67,7 @@ class CompactTypographyTest {
                     val valueBounds = valueNode.boundsInRoot
                     assertTrue("$uiStyle width=$screenWidth fontScale=$scale: title has no layout", titleBounds.width > 0f)
                     assertTrue("$uiStyle width=$screenWidth fontScale=$scale: value has no layout", valueBounds.width > 0f)
-                    assertTrue("$uiStyle width=$screenWidth fontScale=$scale: title overlaps value: $titleBounds / $valueBounds", titleBounds.right <= valueBounds.left + 1f)
+                    assertTrue("$uiStyle width=$screenWidth fontScale=$scale: title overlaps value: $titleBounds / $valueBounds", titleBounds.right <= valueBounds.left + 1f || titleBounds.bottom <= valueBounds.top + 1f)
 
                     val layouts = mutableListOf<TextLayoutResult>()
                     val hasLayoutAction = titleNode.config.getOrNull(SemanticsActions.GetTextLayoutResult)

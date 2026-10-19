@@ -32,7 +32,9 @@ fun AppearanceScreen(
     uiStyle: com.github.mihomo.android.data.UiStyle = com.github.mihomo.android.data.UiStyle.CUPERTINO,
     onUiStyleChanged: (com.github.mihomo.android.data.UiStyle) -> Unit = {},
     glassIntensity: Float = 0.5f,
-    onGlassIntensityChanged: (Float) -> Unit = {}
+    onGlassIntensityChanged: (Float) -> Unit = {},
+    glassEnabled: Boolean = true,
+    onGlassEnabledChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -76,7 +78,7 @@ fun AppearanceScreen(
                     if (index == 0) CupertinoIndentedDivider(startIndent = 16.dp)
                 }
             }
-            GlassThemeSection(value = glassIntensity, onValueChange = onGlassIntensityChanged)
+            GlassThemeSection(value = glassIntensity, onValueChange = onGlassIntensityChanged, enabled = glassEnabled, onEnabledChange = onGlassEnabledChanged)
             // Section 1: 主题模式
             val themes = listOf(
                 ThemeMode.SYSTEM to AppStrings.get("theme_system", lang),

@@ -5,6 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,6 +25,28 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class GlassThemeSectionTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun switchDisablesSliderAndReenablesItWithoutChangingIntensity() {
+        val value = mutableFloatStateOf(0.73f)
+        val enabled = mutableStateOf(true)
+        compose.setContent {
+            MihomoTheme(glassIntensity = value.floatValue, glassEnabled = enabled.value) {
+                GlassThemeSection(
+                    value = value.floatValue,
+                    onValueChange = { value.floatValue = it },
+                    enabled = enabled.value,
+                    onEnabledChange = { enabled.value = it }
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("玻璃强度").assertIsEnabled()
+        compose.onNodeWithContentDescription("玻璃效果").performClick()
+        compose.onNodeWithContentDescription("玻璃强度").assertIsNotEnabled()
+        compose.onNodeWithText("73%").assertExists()
+        compose.runOnIdle { assertEquals(0.73f, value.floatValue, 0.001f) }
+        compose.onNodeWithContentDescription("玻璃效果").performClick()
+        compose.onNodeWithContentDescription("玻璃强度").assertIsEnabled()
+    }
 
     @Test fun sliderUpdatesLivePercentageAndPersistsInBothStyles() {
         val settings = SettingsManager(RuntimeEnvironment.getApplication())

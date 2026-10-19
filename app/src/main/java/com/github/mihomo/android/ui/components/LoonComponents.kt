@@ -1032,9 +1032,7 @@ private fun BottomNavItem(
         Text(
             text = label,
             color = tint,
-            fontSize = 10.sp,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            style = SettingsTypography.NavigationLabel,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }

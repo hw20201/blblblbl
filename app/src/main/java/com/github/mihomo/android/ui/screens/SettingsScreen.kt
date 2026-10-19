@@ -29,6 +29,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -98,6 +100,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .padding(bottom = LocalMainBottomBarInset.current)
             .background(LoonBg)
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
@@ -113,7 +116,7 @@ fun SettingsScreen(
                 .weight(1f)
                 .bounceOverscroll()
                 .verticalScroll(scrollState)
-                .padding(bottom = 110.dp)
+                .padding(bottom = 16.dp)
         ) {
             // Section 1: 基础网络与 TUN
             LoonSectionHeader(title = AppStrings.get("settings_core_service", lang))
@@ -185,6 +188,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Security,
                 iconBg = Color(0xFFF59E0B),
                 title = AppStrings.get("settings_always_on_vpn", lang),
+                subtitle = AppStrings.get("settings_always_on_vpn_desc", lang),
                 value = "",
                 showChevron = true,
                 onClick = {
@@ -552,8 +556,7 @@ private fun LoonSectionHeader(title: String) {
     Text(
         text = title,
         color = LoonTextSecondary,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
+        style = SettingsTypography.SectionHeader,
         modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
     )
 }
@@ -564,11 +567,12 @@ private fun LoonSettingsItem(
     iconBg: Color,
     title: String,
     value: String = "",
+    subtitle: String? = null,
     showChevron: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
     CupertinoCell(
-        title = title, icon = icon, iconBg = iconBg,
+        title = title, subtitle = subtitle, icon = icon, iconBg = iconBg,
         value = value, showChevron = showChevron, onClick = onClick
     )
 }
@@ -584,7 +588,13 @@ private fun LoonSettingsSwitchItem(
 ) {
     CupertinoCell(
         title = title, subtitle = subtitle, icon = icon, iconBg = iconBg,
-        trailing = { CupertinoSwitch(checked = checked, onCheckedChange = onCheckedChange) }
+        trailing = {
+            CupertinoSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.semantics { contentDescription = title }
+            )
+        }
     )
 }
 

@@ -79,12 +79,14 @@ val DarkLoonThemeColors = LoonThemeColors(
 val LocalLoonColors = staticCompositionLocalOf { LightLoonThemeColors }
 val LocalUiStyle = staticCompositionLocalOf { UiStyle.CUPERTINO }
 val LocalGlassIntensity = staticCompositionLocalOf { 0.5f }
+val LocalGlassEnabled = staticCompositionLocalOf { true }
 
 @Composable
 fun MihomoTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     uiStyle: UiStyle = UiStyle.CUPERTINO,
     glassIntensity: Float = 0.5f,
+    glassEnabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -151,6 +153,7 @@ fun MihomoTheme(
         LocalLoonColors provides uiColors,
         LocalUiStyle provides uiStyle,
         LocalGlassIntensity provides com.github.mihomo.android.data.GlassEffect.normalize(glassIntensity),
+        LocalGlassEnabled provides glassEnabled,
         androidx.compose.foundation.LocalOverscrollConfiguration provides null
     ) {
         MaterialTheme(

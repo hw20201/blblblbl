@@ -15,12 +15,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.theme.LocalLoonColors
 import com.github.mihomo.android.ui.theme.LocalGlassIntensity
+import com.github.mihomo.android.ui.theme.LocalGlassEnabled
 
 /** Selected dashboard surfaces only; settings groups deliberately remain opaque. */
 @Composable
 internal fun Modifier.glassCardFinish(tint: Color, radius: Dp): Modifier {
     val shape = RoundedCornerShape(radius)
     val intensity = LocalGlassIntensity.current
+    if (!LocalGlassEnabled.current) return clip(shape).background(tint.copy(alpha = 1f))
     return clip(shape)
         .background(Brush.verticalGradient(listOf(
             tint.copy(alpha = 1f - 0.04f * intensity),
@@ -31,6 +33,7 @@ internal fun Modifier.glassCardFinish(tint: Color, radius: Dp): Modifier {
 
 @Composable
 internal fun glassCardRim(): Brush {
+    if (!LocalGlassEnabled.current) return Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
     val intensity = LocalGlassIntensity.current
     return Brush.verticalGradient(listOf(
         Color.White.copy(alpha = 0.85f * intensity),
@@ -53,15 +56,16 @@ internal fun GlassNavigationSurface(
 ) {
     val dark = LocalLoonColors.current.isDark
     val intensity = LocalGlassIntensity.current
+    val enabled = LocalGlassEnabled.current
     val shape = RoundedCornerShape(radius)
     val tint = if (dark) Color(0xFF202329) else Color(0xFFF9FBFF)
-    val fill = Brush.verticalGradient(
+    val fill = if (!enabled) Brush.verticalGradient(listOf(tint, tint)) else Brush.verticalGradient(
         listOf(
             tint.copy(alpha = 1f - 0.06f * intensity),
             tint.copy(alpha = 1f - (if (dark) 0.12f else 0.16f) * intensity)
         )
     )
-    val rim = Brush.verticalGradient(
+    val rim = if (!enabled) Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)) else Brush.verticalGradient(
         listOf(
             Color.White.copy(alpha = (if (dark) 0.38f else 0.96f) * intensity),
             Color.White.copy(alpha = (if (dark) 0.12f else 0.52f) * intensity),
@@ -70,7 +74,7 @@ internal fun GlassNavigationSurface(
     )
     Box(
         modifier = modifier
-            .shadow(6.dp, shape, spotColor = Color.Black.copy(alpha = 0.08f))
+            .then(if (enabled) Modifier.shadow(6.dp, shape, spotColor = Color.Black.copy(alpha = 0.08f)) else Modifier)
             .clip(shape)
             .background(fill)
             .border(0.75.dp, rim, shape),

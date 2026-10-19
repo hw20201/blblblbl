@@ -20,6 +20,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.github.mihomo.android.ui.theme.LocalAppLanguage
@@ -39,6 +41,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
+import com.github.mihomo.android.ui.components.LocalMainBottomBarInset
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.mihomo.android.ui.screens.*
 import com.github.mihomo.android.ui.theme.LoonBg
@@ -108,9 +111,15 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(settingsManager.themeMode) }
             var uiStyle by remember { mutableStateOf(settingsManager.uiStyle) }
             var glassIntensity by remember { mutableFloatStateOf(settingsManager.glassIntensity) }
-            MihomoTheme(themeMode = themeMode, uiStyle = uiStyle, glassIntensity = glassIntensity) {
+            var glassEnabled by remember { mutableStateOf(settingsManager.glassEnabled) }
+            MihomoTheme(themeMode = themeMode, uiStyle = uiStyle, glassIntensity = glassIntensity, glassEnabled = glassEnabled) {
                 MainAppScreen(
                     glassIntensity = glassIntensity,
+                    glassEnabled = glassEnabled,
+                    onGlassEnabledChanged = { enabled ->
+                        settingsManager.glassEnabled = enabled
+                        glassEnabled = enabled
+                    },
                     onGlassIntensityChanged = { value ->
                         settingsManager.glassIntensity = value
                         glassIntensity = settingsManager.glassIntensity
@@ -152,6 +161,8 @@ class MainActivity : ComponentActivity() {
         currentThemeMode: ThemeMode,
         onThemeModeChanged: (ThemeMode) -> Unit,
         glassIntensity: Float,
+        glassEnabled: Boolean,
+        onGlassEnabledChanged: (Boolean) -> Unit,
         onGlassIntensityChanged: (Float) -> Unit
     ) {
         // Primary Tabs: 0: 仪表, 1: 策略, 2: 配置
@@ -708,6 +719,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        var mainBottomBarHeightPx by remember { mutableIntStateOf(0) }
+        val mainBottomBarInset = with(LocalDensity.current) { mainBottomBarHeightPx.toDp() }
         CompositionLocalProvider(
             LocalAppLanguage provides appLanguage,
             // Read synchronously after each action, including the preference switch itself.
@@ -719,6 +732,7 @@ class MainActivity : ComponentActivity() {
                 .background(LoonBg)
         ) {
             // 1. Primary main tabs: HorizontalPager keeps all 3 tabs persistently composed!
+            CompositionLocalProvider(LocalMainBottomBarInset provides mainBottomBarInset) {
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = false,
@@ -916,6 +930,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToDns = { currentSubScreen = SubScreen.DNS }
                     )
                 }
+            }
             }
 
             var lastActiveSubScreen by remember { mutableStateOf<SubScreen?>(null) }
@@ -1156,6 +1171,8 @@ class MainActivity : ComponentActivity() {
                                     uiStyle = currentUiStyle,
                                     onUiStyleChanged = onUiStyleChanged,
                                     glassIntensity = glassIntensity,
+                                    glassEnabled = glassEnabled,
+                                    onGlassEnabledChanged = onGlassEnabledChanged,
                                     onGlassIntensityChanged = onGlassIntensityChanged,
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
@@ -1197,6 +1214,7 @@ class MainActivity : ComponentActivity() {
                 Box(
                     modifier = Modifier
                         .wrapContentSize(Alignment.BottomCenter)
+                        .onSizeChanged { mainBottomBarHeightPx = it.height }
                         .navigationBarsPadding()
                         .padding(bottom = 16.dp)
                 ) {

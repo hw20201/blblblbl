@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
@@ -25,6 +25,8 @@ import com.github.mihomo.android.data.GlassEffect
 import com.github.mihomo.android.ui.components.CupertinoGroupedSection
 import com.github.mihomo.android.ui.components.GlassNavigationSurface
 import com.github.mihomo.android.ui.theme.LocalGlassIntensity
+import com.github.mihomo.android.ui.theme.LocalGlassEnabled
+import com.github.mihomo.android.ui.theme.SettingsTypography
 import com.github.mihomo.android.ui.theme.LoonBg
 import com.github.mihomo.android.ui.theme.LoonTextPrimary
 import com.github.mihomo.android.ui.theme.LoonTextSecondary
@@ -33,10 +35,23 @@ import com.github.mihomo.android.ui.theme.LoonTextSecondary
 fun GlassThemeSection(
     value: Float,
     onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onEnabledChange: (Boolean) -> Unit = {}
 ) {
     val normalizedValue = GlassEffect.normalize(value)
     CupertinoGroupedSection(title = "玻璃主题", modifier = modifier) {
+        com.github.mihomo.android.ui.components.CupertinoCell(
+            title = "玻璃效果",
+            trailing = {
+                com.github.mihomo.android.ui.components.CupertinoSwitch(
+                    checked = enabled,
+                    onCheckedChange = { onEnabledChange(it) },
+                    modifier = Modifier.semantics { contentDescription = "玻璃效果" }
+                )
+            }
+        )
+        com.github.mihomo.android.ui.components.CupertinoIndentedDivider(startIndent = 16.dp)
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -44,9 +59,9 @@ fun GlassThemeSection(
             Text(
                 text = "仅改变底栏与首页玻璃表面；文字和设置列表保持清晰。",
                 color = LoonTextSecondary,
-                fontSize = 13.sp
+                style = SettingsTypography.Description
             )
-            CompositionLocalProvider(LocalGlassIntensity provides normalizedValue) {
+            CompositionLocalProvider(LocalGlassIntensity provides normalizedValue, LocalGlassEnabled provides enabled) {
                 Box(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
                         .background(LoonBg).padding(vertical = 8.dp),
@@ -54,24 +69,25 @@ fun GlassThemeSection(
                 ) {
                     GlassNavigationSurface(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("首页", color = LoonTextPrimary, fontSize = 14.sp)
-                            Text("代理　设置", color = LoonTextSecondary, fontSize = 13.sp)
+                            Text("首页", color = LoonTextPrimary, style = SettingsTypography.NavigationLabel)
+                            Text("代理　设置", color = LoonTextSecondary, style = SettingsTypography.NavigationLabel)
                         }
                     }
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("清淡", color = LoonTextSecondary, fontSize = 12.sp)
-                Text("${(normalizedValue * 100).toInt()}%", color = LoonTextPrimary, fontSize = 13.sp)
-                Text("浓郁", color = LoonTextSecondary, fontSize = 12.sp)
+                Text("清淡", color = LoonTextSecondary, style = SettingsTypography.Description)
+                Text("${(normalizedValue * 100).toInt()}%", color = LoonTextPrimary, style = SettingsTypography.Description)
+                Text("浓郁", color = LoonTextSecondary, style = SettingsTypography.Description)
             }
             Slider(
                 value = normalizedValue,
-                onValueChange = { onValueChange(GlassEffect.normalize(it)) },
+                onValueChange = { if (enabled) onValueChange(GlassEffect.normalize(it)) },
+                enabled = enabled,
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = "玻璃强度" }
             )

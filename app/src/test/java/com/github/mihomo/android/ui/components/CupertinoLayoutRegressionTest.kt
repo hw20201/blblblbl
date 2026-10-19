@@ -67,7 +67,7 @@ class CupertinoLayoutRegressionTest {
         val value = compose.onNodeWithText(version, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue("title=$title value=$value", title.width > 0f)
         assertTrue(value.width > 0f)
-        assertTrue(title.right <= value.left + 1f)
+        assertTrue(title.right <= value.left + 1f || title.bottom <= value.top + 1f)
     }
 
     @Test fun switchingAppLanguageThenSystemDoesNotOverwriteTheSystemLocale() {

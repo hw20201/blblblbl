@@ -148,6 +148,11 @@ class SettingsManager(context: Context) {
         }
         set(value) = prefs.edit().putString("theme_mode", value.name).apply()
 
+    /** Master switch for glass styling, independent of UI style and saved intensity. */
+    var glassEnabled: Boolean
+        get() = prefs.getBoolean("glass_enabled", true)
+        set(value) = prefs.edit().putBoolean("glass_enabled", value).apply()
+
     var glassIntensity: Float
         get() = GlassEffect.normalize(prefs.getFloat("glass_intensity", GlassEffect.DEFAULT_INTENSITY))
         set(value) = prefs.edit().putFloat("glass_intensity", GlassEffect.normalize(value)).apply()
