@@ -11,6 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.theme.LocalLoonColors
@@ -25,10 +26,17 @@ internal fun Modifier.glassCardFinish(tint: Color, radius: Dp): Modifier {
     if (!LocalGlassEnabled.current) return clip(shape).background(tint.copy(alpha = 1f))
     // Keep the tint genuinely translucent; the underlying screen remains visible.
     val base = tint.copy(alpha = 0.62f + 0.16f * intensity)
+    val dark = LocalLoonColors.current.isDark
+    // Adapt the source preview's diagonal specular/cool tint, not its fixed
+    // light palette, larger geometry or decorative (non-live) traffic waveform.
+    val highlight = lerp(base, Color.White.copy(alpha = base.alpha), (if (dark) 0.025f else 0.06f) * intensity)
+    val coolTint = if (dark) Color(0xFF35445B) else Color(0xFFBBD9FF)
+    val coolEdge = lerp(base, coolTint.copy(alpha = base.alpha), 0.08f * intensity)
     return clip(shape)
-        .background(Brush.verticalGradient(listOf(
-            base.copy(alpha = base.alpha + 0.08f * intensity),
-            base.copy(alpha = base.alpha)
+        .background(Brush.linearGradient(listOf(
+            highlight.copy(alpha = base.alpha + 0.08f * intensity),
+            base,
+            coolEdge
         )))
         .border(0.8.dp, glassCardRim(), shape)
 }
