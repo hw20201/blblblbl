@@ -53,6 +53,7 @@ import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NavigationLens
 import com.github.mihomo.android.ui.glass.NavigationGlassSurface
 import com.github.mihomo.android.ui.glass.glassTextSecondary
+import com.github.mihomo.android.ui.glass.navigationLensDrag
 import com.github.mihomo.android.ui.theme.*
 @Composable
 fun LoonTrafficCard(
@@ -969,6 +970,7 @@ fun LoonFloatingBottomBar(
 ) {
     if (GlassDefaults.enabled) {
         var selectionPulse by remember { mutableIntStateOf(0) }
+        var dragPosition by remember { mutableStateOf<Float?>(null) }
         // Capsule, travelling lens, then stationary icons/labels. Only the lens samples the scene, so three tabs
         // still use one refracting backdrop layer rather than one per tab.
         Box(
@@ -977,6 +979,10 @@ fun LoonFloatingBottomBar(
                 .wrapContentSize(Alignment.BottomCenter)
                 .height(BOTTOM_BAR_HEIGHT)
                 .testTag("navigation-dock")
+                .navigationLensDrag(BOTTOM_BAR_SLOTS, { dragPosition = it }, { tab ->
+                    selectionPulse++
+                    onTabSelected(tab)
+                })
                 // Resting glass is inset; clicked glass grows symmetrically over the selected option.
                 .graphicsLayer { clip = false }
         ) {
@@ -990,7 +996,8 @@ fun LoonFloatingBottomBar(
                 slotCount = BOTTOM_BAR_SLOTS,
                 lens = lens,
                 modifier = Modifier.matchParentSize(),
-                selectionPulse = selectionPulse
+                selectionPulse = selectionPulse,
+                dragPosition = dragPosition
             )
             BottomBarItems(selectedTab, { tab ->
                 selectionPulse++

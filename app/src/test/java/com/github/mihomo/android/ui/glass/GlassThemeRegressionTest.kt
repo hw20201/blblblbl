@@ -13,6 +13,7 @@ import com.github.mihomo.android.ui.theme.LoonThemeColors
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,7 +35,13 @@ class GlassThemeRegressionTest {
         GlassPalettes.all.forEach { selected ->
             val expected = if (selected.isDark) GlassPalettes.CREAM else selected
             assertEquals("${selected.key} in light mode", expected, resolveGlassPalette(selected, false))
-            assertEquals("${selected.key} in dark mode", GlassPalettes.MIDNIGHT, resolveGlassPalette(selected, true))
+            val dark = resolveGlassPalette(selected, true)
+            assertEquals("${selected.key} keeps its identity in dark mode", selected.key, dark.key)
+            assertEquals("${selected.key} dark flag", true, dark.isDark)
+            if (!selected.isDark) {
+                assertNotEquals("${selected.key} has a distinct dark appearance", selected, dark)
+                assertEquals("${selected.key} remains readable", Color(0xFFF5F6F8), dark.textPrimary)
+            }
         }
     }
 
@@ -59,7 +66,7 @@ class GlassThemeRegressionTest {
 
     @Test
     fun darkModeResolvesCreamToReadableMidnight() = assertTheme(
-        ThemeMode.DARK, GlassPalettes.CREAM, GlassPalettes.MIDNIGHT
+        ThemeMode.DARK, GlassPalettes.CREAM, resolveGlassPalette(GlassPalettes.CREAM, true)
     )
 
     @Test
@@ -70,7 +77,7 @@ class GlassThemeRegressionTest {
     @Test
     @Config(sdk = [35], qualifiers = "night")
     fun systemNightUsesMidnightWithoutOverwritingSavedBlue() {
-        assertTheme(ThemeMode.SYSTEM, GlassPalettes.BLUE, GlassPalettes.MIDNIGHT)
+        assertTheme(ThemeMode.SYSTEM, GlassPalettes.BLUE, resolveGlassPalette(GlassPalettes.BLUE, true))
         assertEquals(GlassPalettes.BLUE, GlassDefaults.palette)
     }
 
@@ -87,7 +94,7 @@ class GlassThemeRegressionTest {
 
     @Test
     fun disabledGlassPreservesOriginalDarkTheme() = assertTheme(
-        ThemeMode.DARK, GlassPalettes.BLUE, GlassPalettes.MIDNIGHT, false
+        ThemeMode.DARK, GlassPalettes.BLUE, resolveGlassPalette(GlassPalettes.BLUE, true), false
     )
 
     private fun assertTheme(

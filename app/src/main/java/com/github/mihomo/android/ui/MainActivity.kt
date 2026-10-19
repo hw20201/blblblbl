@@ -1224,17 +1224,8 @@ class MainActivity : ComponentActivity() {
                                     onThemeModeChanged = onThemeModeChanged,
                                     palette = activePalette,
                                     onPaletteChanged = { spec ->
-                                        // Midnight is the dark-mode surface, not a replacement
-                                        // for the saved light palette used when daylight returns.
-                                        if (!spec.isDark) {
-                                            GlassDefaults.palette = spec
-                                            settingsManager.glassPaletteKey = spec.key
-                                        }
-                                        // Cross-brightness swatches explicitly select a theme mode.
-                                        // Same-brightness changes retain SYSTEM and its day/night cycle.
-                                        if (spec.isDark != activePalette.isDark) {
-                                            onThemeModeChanged(if (spec.isDark) ThemeMode.DARK else ThemeMode.LIGHT)
-                                        }
+                                        GlassDefaults.palette = spec
+                                        settingsManager.glassPaletteKey = spec.key
                                     },
                                     onLanguageChanged = { code -> appLanguage = code },
                                     nodeColumns = nodeColumns,

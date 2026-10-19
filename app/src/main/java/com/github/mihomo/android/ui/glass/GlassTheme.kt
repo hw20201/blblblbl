@@ -27,9 +27,37 @@ object GlassDefaults {
 
 val LocalGlassPalette = staticCompositionLocalOf { GlassPalettes.CREAM }
 
-/** Theme mode remains authoritative; keep the saved light palette for the next light session. */
-fun resolveGlassPalette(selected: GlassPaletteSpec, isDark: Boolean): GlassPaletteSpec =
-    if (isDark) GlassPalettes.MIDNIGHT else selected.takeUnless { it.isDark } ?: GlassPalettes.CREAM
+/** Theme mode remains authoritative; a preset keeps its identity as brightness changes. */
+fun resolveGlassPalette(selected: GlassPaletteSpec, isDark: Boolean): GlassPaletteSpec {
+    if (!isDark) return selected.takeUnless { it.isDark } ?: GlassPalettes.CREAM
+    if (selected.isDark) return selected
+
+    val darkBase = when (selected.key) {
+        "white" -> Color(0xFF171A21)
+        "blue" -> Color(0xFF101A2B)
+        "cream" -> Color(0xFF211A17)
+        "mint" -> Color(0xFF10211F)
+        "lavender" -> Color(0xFF1B1728)
+        else -> Color(0xFF171A21)
+    }
+    return selected.copy(
+        isDark = true,
+        base = darkBase,
+        veil = Color(0x66000000),
+        blobs = selected.blobs.map { it.copy(color = it.color.copy(alpha = it.color.alpha * 0.58f)) },
+        panelStart = Color(0xD022252D),
+        panelEnd = Color(0xB0181B23),
+        panelAccent = Color(0xC0252932),
+        edge = Color(0x55FFFFFF),
+        rimTop = Color(0x88FFFFFF),
+        rimBottom = selected.accent.copy(alpha = 0.35f),
+        sheen = 0.10f,
+        textPrimary = Color(0xFFF5F6F8),
+        textSecondary = Color(0xFFD0D4DD),
+        textMuted = Color(0xFFAEB4C0),
+        swatch = listOf(darkBase, selected.accent.copy(alpha = 0.8f), selected.accent)
+    )
+}
 
 /** Legacy Cupertino text and opaque dialogs must agree with the glass backdrop. */
 fun GlassPaletteSpec.toLoonColors(): LoonThemeColors =

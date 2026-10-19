@@ -134,6 +134,13 @@ internal class LensSpring(
         startNanos = now
     }
 
+    fun snapTo(next: Float) {
+        value = next
+        target = next
+        velocity = 0f
+        animation = null
+    }
+
     fun tick(now: Long) {
         val current = animation ?: return
         val elapsed = (now - startNanos).coerceAtLeast(0L)
@@ -163,7 +170,8 @@ fun NavigationLens(
     slotCount: Int,
     lens: NavigationLensState?,
     modifier: Modifier = Modifier,
-    selectionPulse: Int = 0
+    selectionPulse: Int = 0,
+    dragPosition: Float? = null
 ) {
     if (lens == null || slotCount <= 0) return
     val destination = selectedSlot.coerceIn(0, slotCount - 1).toFloat()
@@ -171,19 +179,28 @@ fun NavigationLens(
     val jelly = remember { LensSpring(0f, LensMotion.jellyStiffness, LensMotion.jellyDamping) }
     val expansion = remember { LensSpring(0f, LensMotion.expansionStiffness, 1f) }
     var frame by remember { mutableStateOf(LensFrame(destination, 0f)) }
-    LaunchedEffect(destination, selectionPulse) {
+    LaunchedEffect(destination, selectionPulse, dragPosition) {
         withFrameNanos { now ->
-            if (destination != travel.target || selectionPulse != 0) {
+            expansion.tick(now)
+            if (dragPosition != null) {
+                travel.snapTo(dragPosition.coerceIn(0f, (slotCount - 1).toFloat()))
+                jelly.snapTo(0f)
+                expansion.springTo(1f, now)
+            } else if (destination != travel.target || selectionPulse != 0) {
                 travel.springTo(destination, now)
                 expansion.springTo(1f, now)
             }
+            if (dragPosition == null && lensReadyToContract(expansion, travel)) {
+                expansion.springTo(0f, now)
+            }
+            frame = LensFrame(travel.value, lensVisibleStretch(jelly.value, travel.velocity), expansion.value)
         }
         while (travel.running || jelly.running || expansion.running) {
             withFrameNanos { now ->
                 travel.tick(now)
                 expansion.tick(now)
                 // Hold whole-shell expansion until its peak and horizontal arrival, then settle.
-                if (lensReadyToContract(expansion, travel)) {
+                if (dragPosition == null && lensReadyToContract(expansion, travel)) {
                     expansion.springTo(0f, now)
                 }
                 // Advance the OLD jelly leg before retargeting at this same timestamp.
@@ -212,7 +229,8 @@ fun NavigationLens(
         val barHeight = constraints.maxHeight
         val pitch = barWidth.toFloat() / slotCount
         // Read frame-rate state only in measurement, not in the whole dock's composition.
-        val rect = insetLensRect(frame.position, frame.stretch, frame.expansion, pitch,
+        val position = dragPosition?.coerceIn(0f, (slotCount - 1).toFloat()) ?: frame.position
+        val rect = insetLensRect(position, frame.stretch, frame.expansion, pitch,
             barWidth.toFloat(), barHeight.toFloat(), density.density)
         val child = measurables.single().measure(Constraints.fixed(
             rect.width.roundToInt().coerceAtLeast(1), rect.height.roundToInt().coerceAtLeast(1)
