@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -373,6 +374,8 @@ fun LoonShortcutCard(
     icon: @Composable () -> Unit,
     isEditing: Boolean = false,
     onDelete: (() -> Unit)? = null,
+    /** Background-only scene; never includes this card or navigation content. */
+    lens: NavigationLensState? = null,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
@@ -387,7 +390,8 @@ fun LoonShortcutCard(
     if (GlassDefaults.enabled) {
         GlassSurface(
             modifier = pressModifier,
-            shape = RoundedCornerShape(GlassRadius.card)
+            shape = RoundedCornerShape(GlassRadius.card),
+            lens = lens
         ) {
             ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
         }
@@ -964,16 +968,16 @@ fun LoonFloatingBottomBar(
     lens: NavigationLensState? = null
 ) {
     if (GlassDefaults.enabled) {
-        // Capsule first, travelling lens on top. Only the lens samples the scene, so three tabs
-        // still cost one shader pass rather than one per tab.
+        var selectionPulse by remember { mutableIntStateOf(0) }
+        // Capsule, travelling lens, then stationary icons/labels. Only the lens samples the scene, so three tabs
+        // still use one refracting backdrop layer rather than one per tab.
         Box(
             modifier = modifier
-                // Composed by Content() below, so this Box takes its size from the capsule rather
-                // than collapsing to zero — the lens measures its own width, it cannot do that
-                // inside a matchParentSize child.
+                // The original items determine the width; both material layers match the dock.
                 .wrapContentSize(Alignment.BottomCenter)
                 .height(BOTTOM_BAR_HEIGHT)
-                // The lens overhangs the capsule on purpose; never crop it.
+                .testTag("navigation-dock")
+                // Resting glass is inset; clicked glass grows symmetrically over the selected option.
                 .graphicsLayer { clip = false }
         ) {
             // Capsule keeps the cheap static material: no scene sampling, no shader pass.
@@ -981,14 +985,17 @@ fun LoonFloatingBottomBar(
                 modifier = Modifier.matchParentSize(),
                 shape = RoundedCornerShape(GlassRadius.bar)
             ) {}
-            BottomBarItems(selectedTab, onTabSelected, glassMode = true, hideSelectedIcon = lens != null)
             NavigationLens(
                 selectedSlot = selectedTab.coerceIn(0, BOTTOM_BAR_SLOTS - 1),
                 slotCount = BOTTOM_BAR_SLOTS,
                 lens = lens,
                 modifier = Modifier.matchParentSize(),
-                icon = { BottomBarLensIcon(selectedTab) }
+                selectionPulse = selectionPulse
             )
+            BottomBarItems(selectedTab, { tab ->
+                selectionPulse++
+                onTabSelected(tab)
+            }, glassMode = true)
         }
         return
     }
@@ -1007,20 +1014,9 @@ fun LoonFloatingBottomBar(
 /** Number of slots in the bottom bar; the lens travels between their centres. */
 private const val BOTTOM_BAR_SLOTS = 3
 
-/** Capsule height. Fixed so the lens can overhang it without changing the layout. */
+/** Fixed capsule height: liquid motion never changes the navigation layout. */
 private val BOTTOM_BAR_HEIGHT = 64.dp
 private val BOTTOM_BAR_WIDTH = 304.dp
-
-/** Icon shown inside the travelling lens for the selected slot. */
-@Composable
-private fun BottomBarLensIcon(selectedTab: Int) {
-    val tint = glassPalette.accent
-    when (selectedTab) {
-        0 -> Icon(Icons.Default.Speed, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
-        1 -> StandardCubeIcon(tint = tint, modifier = Modifier.size(24.dp))
-        else -> Icon(Icons.Outlined.Settings, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
-    }
-}
 
 @Composable
 private fun BottomBarItems(

@@ -56,7 +56,7 @@ class NavigationLensRenderingTest {
     }
 
     private fun save(bitmap: Bitmap, name: String) {
-        val file = File("build/reports/navigation-lens/$name.png")
+        val file = File("build/reports/navigation-lens-polished/$name.png")
         file.parentFile!!.mkdirs()
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -69,10 +69,10 @@ class NavigationLensRenderingTest {
         return values.max() - values.min()
     }
 
-    @Test fun api35LensBlursAndTracksSceneDrawWithoutSurfaceRecomposition() = verifyLiveLens("api35")
+    @Test fun api35LensRefractsAndTracksSceneDrawWithoutSurfaceRecomposition() = verifyLiveLens("api35")
 
     @Test @Config(sdk = [31], qualifiers = "w400dp-h800dp-mdpi")
-    fun api31UsesBlurWithoutRuntimeShader() = verifyLiveLens("api31")
+    fun api31FallsBackToSharpSceneWithoutClaimingRefraction() = verifyLiveLens("api31")
 
     private fun verifyLiveLens(name: String) {
         val colorful = mutableStateOf(false)
@@ -109,8 +109,8 @@ class NavigationLensRenderingTest {
         val outside = contrast(first, center, 90)
         println("$name stripe contrast: lens=$inside clear=$outside")
         assertTrue("clear stripes are present", outside > 180)
-        assertTrue("blur must reduce contrast well beyond the 46% tint alone: lens=$inside clear=$outside", inside < outside * .25)
-        save(first, "$name-blur")
+        assertTrue("no Gaussian blur: centre stripes remain sharp: lens=$inside clear=$outside", inside > outside * .65)
+        save(first, "$name-sharp-scene")
         val compositionsBefore = surfaceCompositions
         compose.runOnIdle { colorful.value = true }
         compose.waitForIdle()

@@ -1,5 +1,6 @@
 package com.github.mihomo.android.ui.glass
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -22,10 +23,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Panel material for one palette.
  *
- * No per-panel blur is used. `Modifier.blur` requires API 31 while `minSdk` is 26, and each blurred
- * panel costs a full-size `saveLayer` — on the dashboard that is a dozen layers redrawn every time
- * the traffic counters tick. The material is expressed as *tint + rim + sheen* over the colour
- * field in [NexusGlassBackground], which is what actually sells the effect at a fraction of the cost.
+ * The default material uses tint, rim and sheen. Only shortcut cards with a separate backdrop
+ * opt into per-card Gaussian filtering on supported hardware; navigation keeps its AGSL optics.
  */
 @Immutable
 data class GlassTokens(
@@ -108,6 +107,7 @@ fun GlassSurface(
     shape: Shape = RoundedCornerShape(GlassRadius.card),
     accent: Color? = null,
     tokens: GlassTokens = LocalGlassTokens.current,
+    lens: NavigationLensState? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val fill = if (accent == null) {
@@ -125,13 +125,21 @@ fun GlassSurface(
         )
     }
 
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(fill)
-            .glassSurface(tokens),
-        content = content
-    )
+    if (lens == null || Build.VERSION.SDK_INT < 31) {
+        // Preserve the established painted material for every non-card surface.
+        Box(modifier = modifier.clip(shape).background(fill).glassSurface(tokens), content = content)
+    } else {
+        val translucentFill = Brush.linearGradient(
+            listOf(tokens.tint.copy(alpha = tokens.tint.alpha * 0.34f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.34f)),
+            start = Offset.Zero,
+            end = Offset.Infinite
+        )
+        Box(modifier = modifier.clip(shape)) {
+            CardBackdrop(lens = lens, fallback = fill)
+            Box(Modifier.matchParentSize().background(translucentFill, shape).glassSurface(tokens))
+            Box(Modifier.matchParentSize(), content = content)
+        }
+    }
 }
 
 /** Convenience for the "row inside a section" case. */

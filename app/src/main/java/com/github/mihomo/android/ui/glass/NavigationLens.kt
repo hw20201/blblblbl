@@ -2,7 +2,6 @@ package com.github.mihomo.android.ui.glass
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
-import android.graphics.Shader
 import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -17,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
@@ -75,6 +73,7 @@ enum class LensStrength(
     internal val displacementDp: Float,
     internal val bevelDp: Float,
     internal val saturation: Float,
+    /** Source-patch metadata only; the navigation renderer never creates a blur effect. */
     internal val blurDp: Float,
     internal val aberrationDp: Float,
     internal val rimGain: Float
@@ -93,8 +92,8 @@ enum class LensStrength(
 
     /** For small decorative surfaces only; body text behind it starts to swim. */
     STRONG(
-        displacementDp = 3.6f, bevelDp = 12.0f, saturation = 1.10f,
-        blurDp = 11f, aberrationDp = 1.10f, rimGain = 0.060f
+        displacementDp = 4.0f, bevelDp = 12.0f, saturation = 1.10f,
+        blurDp = 11f, aberrationDp = 1.15f, rimGain = 0.060f
     )
 }
 
@@ -102,8 +101,8 @@ enum class LensStrength(
  * Independently implemented capsule lens.
  *
  * A rounded-rectangle distance field confines all bending to the curved bevel, so the centre of the
- * surface stays optically flat — text passing under the middle of the dock is only blurred, never
- * smeared. Three things make it read as glass rather than frosted plastic:
+ * surface stays optically flat — text passing under the middle of the dock is neither blurred nor
+ * smeared. This adaptation removes Gaussian blur entirely. Three optical cues remain:
  *
  *  1. **Dispersion** — the red and blue channels are sampled at slightly different offsets along
  *     the edge normal. Real glass has a different refractive index per wavelength; without this the
@@ -113,6 +112,7 @@ enum class LensStrength(
  *  3. **Confinement** — `edge*edge` keeps displacement out of the flat centre; a linear falloff
  *     makes the whole surface look bulged.
  */
+// Copied verbatim from the supplied patch 0003, not the scale/blur replacement in 0005.
 internal const val NAVIGATION_LENS_SHADER = """
     uniform shader scene;
     uniform float2 viewport;
@@ -160,6 +160,9 @@ internal const val NAVIGATION_LENS_SHADER = """
     }
 """
 
+/** The shell expansion strengthens edge refraction; the scene is never globally scaled. */
+internal fun lensRefractionScale(expansion: Float): Float = 1f + 0.2f * expansion.coerceIn(0f, 1f)
+
 /**
  * A floating surface that samples the recorded scene through the lens.
  *
@@ -174,6 +177,8 @@ fun NavigationGlassSurface(
     shape: Shape = RoundedCornerShape(32.dp),
     cornerRadius: Dp = 32.dp,
     strength: LensStrength = LensStrength.STANDARD,
+    expansionProgress: () -> Float = { 0f },
+    refractionAmount: () -> Float = { 1f },
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = glassPalette
@@ -182,33 +187,23 @@ fun NavigationGlassSurface(
     val shader = remember {
         if (Build.VERSION.SDK_INT >= 33) RuntimeShader(NAVIGATION_LENS_SHADER) else null
     }
-    val effect = remember(shader, density, strength) {
-        if (Build.VERSION.SDK_INT >= 31) {
-            val blur = RenderEffect.createBlurEffect(
-                strength.blurDp * density,
-                strength.blurDp * density,
-                Shader.TileMode.CLAMP
-            )
-            if (Build.VERSION.SDK_INT >= 33 && shader != null) {
-                RenderEffect.createChainEffect(RenderEffect.createRuntimeShaderEffect(shader, "scene"), blur)
-                    .asComposeRenderEffect()
-            } else blur.asComposeRenderEffect()
-        } else null
-    }
+    // Shader-only refraction on API 33+. API 31/32 replay a clear translucent scene;
+    // no Gaussian blur or global scene scaling is substituted for unsupported AGSL.
     // A faint palette tint over the sampled backdrop; the material is carried by the rim, not by an
     // opaque fill, so this stays low enough that the scene still shows through.
-    val fill = if (palette.isDark) Color(0xFF252830).copy(alpha = 0.34f)
-        else Color(0xFFF4F4F4).copy(alpha = 0.30f)
+    val fill = Color.White.copy(alpha = if (palette.isDark) 0.10f else 0.18f)
 
     Box(
-        modifier.shadow(
-            8.dp, shape, clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.05f),
-            spotColor = Color.Black.copy(alpha = 0.09f)
-        ).clip(shape)
+        modifier.graphicsLayer {
+            this.shape = shape
+            clip = false
+            shadowElevation = (8f + 6f * expansionProgress().coerceIn(0f, 1f)) * density
+            ambientShadowColor = Color.Black.copy(alpha = 0.05f)
+            spotShadowColor = Color.Black.copy(alpha = 0.09f)
+        }.clip(shape)
     ) {
         if (lens != null && Build.VERSION.SDK_INT >= 31) {
-            // This empty child alone receives the effect. Neither tint/rim nor icons/text are blurred.
+            // Only this scene child receives refraction. Tint/rim and stationary icons stay untouched.
             Box(Modifier.matchParentSize()
                 .onGloballyPositioned { origin = it.positionInRoot() }
                 .graphicsLayer {
@@ -216,15 +211,19 @@ fun NavigationGlassSurface(
                         if (size.width > 0f && size.height > 0f) {
                             shader.setFloatUniform("viewport", size.width, size.height)
                             shader.setFloatUniform("density", density)
-                            shader.setFloatUniform("displacement", strength.displacementDp)
+                            val opticalScale = lensRefractionScale(expansionProgress()) * refractionAmount().coerceIn(0f, 1f)
+                            shader.setFloatUniform("displacement", strength.displacementDp * opticalScale)
                             shader.setFloatUniform("bevel", strength.bevelDp)
                             shader.setFloatUniform("saturation", strength.saturation)
-                            shader.setFloatUniform("aberration", strength.aberrationDp)
+                            shader.setFloatUniform("aberration", strength.aberrationDp * opticalScale)
                             shader.setFloatUniform("rimGain", strength.rimGain)
                             shader.setFloatUniform("cornerRadius", cornerRadius.value)
+                            // RenderEffect snapshots shader uniforms: create it AFTER setting them.
+                            // Only this small lens layer invalidates, not the dock's icons or labels.
+                            renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "scene")
+                                .asComposeRenderEffect()
                         }
                     }
-                    renderEffect = effect
                 }
                 .drawWithContent {
                     if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) {

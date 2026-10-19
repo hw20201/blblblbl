@@ -43,6 +43,7 @@ import com.github.mihomo.android.data.DashboardData
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlin.math.roundToInt
@@ -82,7 +83,8 @@ fun DashboardScreen(
     onNavigateToRequests: () -> Unit = {},
     onNavigateToNetworkShare: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
-    onUpdateShortcutOrder: (List<String>) -> Unit
+    onUpdateShortcutOrder: (List<String>) -> Unit,
+    glassScene: NavigationLensState? = null
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
@@ -492,6 +494,7 @@ fun DashboardScreen(
                                 subtitle = item.subtitle,
                                 icon = item.icon,
                                 isEditing = isEditingShortcuts,
+                                lens = glassScene,
                                 onDelete = {
                                     if (draggedId == null) { // Prevent delete during drag
                                         onUpdateVisibleShortcuts(visibleShortcuts - item.id)

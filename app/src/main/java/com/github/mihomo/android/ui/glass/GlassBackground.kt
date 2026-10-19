@@ -28,16 +28,16 @@ import com.github.mihomo.android.ui.theme.LoonBg
 fun NexusGlassBackground(
     modifier: Modifier = Modifier,
     palette: GlassPaletteSpec = LocalGlassPalette.current,
+    backdropRecorder: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     if (!GlassDefaults.enabled) {
         Box(modifier = modifier.fillMaxSize().background(LoonBg), content = content)
         return
     }
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clipToBounds()
+    Box(modifier = modifier.fillMaxSize().clipToBounds()) {
+      Box(
+        modifier = Modifier.fillMaxSize().then(backdropRecorder)
             .background(palette.base)
             .drawBehind {
                 val w = size.width
@@ -73,7 +73,8 @@ fun NexusGlassBackground(
                         radius = diag * 0.70f
                     )
                 )
-            },
-        content = content
-    )
+            }
+      )
+      content()
+    }
 }

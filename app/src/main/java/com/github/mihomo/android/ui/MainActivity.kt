@@ -704,11 +704,13 @@ class MainActivity : ComponentActivity() {
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
         ) {
         ProvideGlassTheme {
+        val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
         Box(Modifier.fillMaxSize()) {
         NexusGlassBackground(
             modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
-            palette = glassPalette
+            palette = glassPalette,
+            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier
         ) {
         Box(
             modifier = Modifier
@@ -769,7 +771,8 @@ class MainActivity : ComponentActivity() {
                             onUpdateShortcutOrder = { updated ->
                                 shortcutOrder = updated
                                 settingsManager.shortcutOrder = updated
-                            }
+                            },
+                            glassScene = cardScene
                         )
                     }
                     1 -> {
