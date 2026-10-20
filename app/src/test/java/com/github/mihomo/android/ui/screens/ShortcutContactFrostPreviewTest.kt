@@ -70,7 +70,7 @@ class ShortcutContactFrostPreviewTest {
             "{\"left\":${bounds.left},\"top\":${bounds.top},\"right\":${bounds.right},\"bottom\":${bounds.bottom}}\n")
 
         val idle = ShortcutTouchPose()
-        val full = shortcutTouchTarget(variant, 0f, 0f)
+        val full = shortcutTouchTarget(variant, 0f, 0f, tuned = false)
         val half = ShortcutTouchPose(
             scale = (idle.scale + full.scale) / 2f,
             offsetXDp = (idle.offsetXDp + full.offsetXDp) / 2f,
@@ -132,7 +132,8 @@ class ShortcutContactFrostPreviewTest {
                     LocalSoftMeshSeed provides 734921L,
                     LocalShortcutTouchVariant provides variant,
                     LocalShortcutTouchPreview provides preview.value,
-                    LocalShortcutBlurEnabled provides blur.value
+                    LocalShortcutBlurEnabled provides blur.value,
+                    LocalShortcutTunedMaterialEnabled provides false
                 ) {
                     ProvideGlassTheme {
                         val cardScene = rememberNavigationLens()

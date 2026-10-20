@@ -21,6 +21,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.glass.ShortcutRefraction
+import com.github.mihomo.android.ui.glass.LocalShortcutTunedMaterialEnabled
+import com.github.mihomo.android.ui.glass.ShortcutTunedCardShape
+import kotlin.math.abs
 
 /** Persisted comparison choices; names are stable preference values. */
 enum class ShortcutTouchVariant { GentleFloat, FingerTilt, BuoyantSpring }
@@ -37,13 +40,17 @@ data class ShortcutTouchPreview(val title: String, val pose: ShortcutTouchPose)
 val LocalShortcutTouchVariant = staticCompositionLocalOf<ShortcutTouchVariant?> { null }
 val LocalShortcutTouchPreview = staticCompositionLocalOf<ShortcutTouchPreview?> { null }
 
-fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float): ShortcutTouchPose {
+fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned: Boolean = true): ShortcutTouchPose {
     val nx = x.coerceIn(-1f, 1f)
     val ny = y.coerceIn(-1f, 1f)
     return when (variant) {
         ShortcutTouchVariant.GentleFloat -> ShortcutTouchPose(
             scale = 0.985f, offsetYDp = -3f, rotationX = -ny * 1.5f, rotationY = nx * 1.5f)
-        ShortcutTouchVariant.FingerTilt -> ShortcutTouchPose(
+        ShortcutTouchVariant.FingerTilt -> if (tuned) ShortcutTouchPose(
+            // Lab B lengths use the 118dp / 190 CSS-px card-height ratio.
+            scale = 1.004f, offsetYDp = -2f * (118f / 190f),
+            rotationX = -ny * 9f, rotationY = nx * 9f
+        ) else ShortcutTouchPose(
             scale = 0.975f, offsetXDp = nx * 2f, offsetYDp = -4f + ny * 2f,
             rotationX = -ny * 4f, rotationY = nx * 4f)
         ShortcutTouchVariant.BuoyantSpring -> ShortcutTouchPose(
@@ -86,17 +93,19 @@ internal fun rememberShortcutTouchMotion(
     enabled: Boolean,
     frozenPose: ShortcutTouchPose? = null
 ): ShortcutTouchMotion {
-    val input = remember(variant, enabled) { TouchInput() }
+    val tuned = LocalShortcutTunedMaterialEnabled.current
+    val input = remember(variant, enabled, tuned) { TouchInput() }
+    fun currentTarget(x: Float, y: Float) = shortcutTouchTarget(variant, x, y, tuned)
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 0.88f
-        ShortcutTouchVariant.FingerTilt -> 0.76f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.78f else 0.76f
         ShortcutTouchVariant.BuoyantSpring -> 0.55f
     }
     val target = when {
         !animate -> ShortcutTouchPose()
         frozenPose != null -> frozenPose
-        input.pressed -> shortcutTouchTarget(variant, input.x, input.y)
+        input.pressed -> currentTarget(input.x, input.y)
         else -> ShortcutTouchPose()
     }
     // Compose's animation clock applies the system duration scale, including slow scales.
@@ -108,14 +117,14 @@ internal fun rememberShortcutTouchMotion(
     val ry = animateFloatAsState(target.rotationY, spec, label = "shortcut_ry")
     val liftTarget = when {
         !animate -> 0f
-        frozenPose != null -> ((1f - frozenPose.scale) / (1f - shortcutTouchTarget(variant, 0f, 0f).scale)).coerceIn(0f, 1f)
+        frozenPose != null -> (abs(1f - frozenPose.scale) / abs(1f - currentTarget(0f, 0f).scale).coerceAtLeast(.0001f)).coerceIn(0f, 1f)
         input.pressed -> 1f
         else -> 0f
     }
     val lift = animateFloatAsState(liftTarget, spec, label = "shortcut_lift")
     val maximumLift = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 3f
-        ShortcutTouchVariant.FingerTilt -> 4f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 2f * (118f / 190f) else 4f
         ShortcutTouchVariant.BuoyantSpring -> 5f
     }
     fun visibleLift(): Float = when {
@@ -151,16 +160,22 @@ internal fun rememberShortcutTouchMotion(
         } finally { input.reset() }
     }.graphicsLayer {
         val immediate = animate && input.pressed && frozenPose == null
-        val kickScale = 1f - (1f - shortcutTouchTarget(variant, 0f, 0f).scale) * .18f
-        val visibleScale = when { !animate -> 1f; immediate -> scale.value.coerceAtMost(kickScale); else -> scale.value }
+        val targetScale = currentTarget(0f, 0f).scale
+        val kickScale = 1f + (targetScale - 1f) * .18f
+        val visibleScale = when {
+            !animate -> 1f
+            immediate && targetScale < 1f -> scale.value.coerceAtMost(kickScale)
+            immediate -> scale.value.coerceAtLeast(kickScale)
+            else -> scale.value
+        }
         scaleX = visibleScale; scaleY = visibleScale
         translationX = (if (animate) dx.value else 0f).dp.toPx()
         translationY = (when { !animate -> 0f; immediate -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx()
         rotationX = if (animate) rx.value else 0f
         rotationY = if (animate) ry.value else 0f
-        cameraDistance = 16.dp.toPx()
-        shadowElevation = (visibleLift() * maximumLift).dp.toPx()
-        shape = RoundedCornerShape(18.dp)
+        cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
+        shadowElevation = (visibleLift() * if (tuned && variant == ShortcutTouchVariant.FingerTilt) 12f * (118f / 190f) else maximumLift).dp.toPx()
+        shape = if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
         clip = false
     }
     return ShortcutTouchMotion(modifier) {

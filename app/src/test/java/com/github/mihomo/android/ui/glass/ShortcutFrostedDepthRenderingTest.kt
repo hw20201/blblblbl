@@ -58,7 +58,11 @@ class ShortcutFrostedDepthRenderingTest {
     @Config(sdk = [31], qualifiers = "w400dp-h800dp-mdpi")
     fun api31DashboardFallback() = verify(false)
 
-    private fun verify(dark: Boolean) {
+    @Test fun tunedLightDashboard() = verify(false, tuned = true)
+
+    @Test fun tunedDarkDashboard() = verify(true, tuned = true)
+
+    private fun verify(dark: Boolean, tuned: Boolean = false) {
         val seconds = mutableFloatStateOf(0f)
         var compositions = 0
         var foreground = 0
@@ -67,7 +71,7 @@ class ShortcutFrostedDepthRenderingTest {
         compose.setContent {
             MihomoTheme(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) {
                 CompositionLocalProvider(LocalAppLanguage provides "en", LocalSoftMeshTime provides seconds,
-                    LocalSoftMeshSeed provides 734921L) {
+                    LocalSoftMeshSeed provides 734921L, LocalShortcutTunedMaterialEnabled provides tuned) {
                     ProvideGlassTheme {
                         val cardScene = rememberNavigationLens()
                         val dockScene = rememberNavigationLens()
@@ -105,9 +109,12 @@ class ShortcutFrostedDepthRenderingTest {
         val first = screenshot()
         val label = System.getenv("SHORTCUT_DEPTH_LABEL")?.takeIf { it.isNotBlank() }
             ?.replace(Regex("[^A-Za-z0-9._-]"), "-") ?: "current"
-        val name = "api${android.os.Build.VERSION.SDK_INT}-${if (dark) "dark" else "light"}-$label"
+        val name = "api${android.os.Build.VERSION.SDK_INT}-${if (dark) "dark" else "light"}-${if (tuned) "tuned" else "legacy"}-$label"
         save(first, "$name-t00.png")
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
+        // Only the accepted legacy material promises a double bright bevel. The tuned
+        // profile bends the backdrop instead; both profiles must pass the glyph and
+        // draw-only animated-scene checks below.
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !tuned) {
             var bevel = 0L
             var samples = 0
             for (x in (card.left + 32).toInt() until (card.right - 32).toInt()) {

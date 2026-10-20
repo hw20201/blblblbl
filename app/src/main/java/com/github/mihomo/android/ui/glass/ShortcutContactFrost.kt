@@ -9,10 +9,10 @@ import kotlin.math.roundToInt
 /** Contact is optically clear; separation diffuses only the sampled backdrop, up to 8dp.
  * Half-dp steps bound effect churn during the existing finite gesture animation.
  */
-internal fun shortcutFrostRadiusDp(lift: Float): Float {
+internal fun shortcutFrostRadiusDp(lift: Float, maximumDp: Float = 8f): Float {
     val bounded = if (lift.isFinite()) lift.coerceIn(0f, 1f) else 0f
     val eased = bounded * bounded * (3f - 2f * bounded)
-    return (eased * 16f).roundToInt() * .5f
+    return (eased * maximumDp.coerceIn(0f, 8f) * 2f).roundToInt() * .5f
 }
 
 /** One-entry per-card cache. No captures, bitmap allocations, timers or idle filtering.
@@ -25,8 +25,8 @@ internal class ShortcutContactFrost {
     private var lastOptics: RenderEffect? = null
     private var result: androidx.compose.ui.graphics.RenderEffect? = null
 
-    fun update(lift: Float, density: Float, optics: RenderEffect?): androidx.compose.ui.graphics.RenderEffect? {
-        val nextRadius = shortcutFrostRadiusDp(lift) * density
+    fun update(lift: Float, density: Float, optics: RenderEffect?, maximumDp: Float = 8f): androidx.compose.ui.graphics.RenderEffect? {
+        val nextRadius = shortcutFrostRadiusDp(lift, maximumDp) * density
         if (nextRadius == radiusPx && optics === lastOptics) return result
         if (nextRadius != radiusPx) {
             blur = if (nextRadius > 0f) RenderEffect.createBlurEffect(nextRadius, nextRadius, Shader.TileMode.CLAMP) else null

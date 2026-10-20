@@ -133,6 +133,8 @@ fun GlassSurface(
         )
     }
 
+    val tunedMaterial = shortcutContactFrost && LocalShortcutTunedMaterialEnabled.current
+    val effectiveShape = if (tunedMaterial) ShortcutTunedCardShape else shape
     val hybrid = lens != null && LocalShortcutGlassDesign.current == ShortcutGlassDesign.Hybrid
     val quality = if (hybrid) rememberShortcutGlassQuality() else null
     if (lens == null || Build.VERSION.SDK_INT < 31 || quality == ShortcutGlassQuality.Flat) {
@@ -140,13 +142,13 @@ fun GlassSurface(
         // Low-RAM hybrid shortcuts also skip card replay, shader and card effect layer.
         // The existing screen/dock source recorders are deliberately not changed here.
         if (hybrid) {
-            Box(modifier = modifier.clip(shape)) {
+            Box(modifier = modifier.clip(effectiveShape)) {
                 // Never paint the fallback sheen over shortcut labels or illustrations.
                 Box(Modifier.matchParentSize().background(fill).glassSurface(tokens))
                 Box(Modifier.matchParentSize(), content = content)
             }
         } else {
-            Box(modifier = modifier.clip(shape).background(fill).glassSurface(tokens), content = content)
+            Box(modifier = modifier.clip(effectiveShape).background(fill).glassSurface(tokens), content = content)
         }
     } else {
         val translucentFill = Brush.linearGradient(
@@ -156,15 +158,19 @@ fun GlassSurface(
         )
         // The source is already diffuse. Keep all optical work behind the content and never
         // paint a fixed white outline over the live sampled bevel.
-        Box(modifier = modifier.clip(shape)) {
+        Box(modifier = modifier.clip(effectiveShape)) {
             CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled,
                 softMeshRim = true, isDark = tokens.isDark,
                 hybrid = hybrid, shaderEnabled = quality != ShortcutGlassQuality.Shared,
-                contactFrost = shortcutContactFrost,
+                contactFrost = shortcutContactFrost, tunedMaterial = tunedMaterial,
                 shortcutRefraction = shortcutRefraction)
-            Box(Modifier.matchParentSize().background(translucentFill, shape).shortcutCardPolish()
-                .then(if (Build.VERSION.SDK_INT < 33 || quality == ShortcutGlassQuality.Shared)
-                    Modifier.restrainedCardRim(shape) else Modifier))
+            // Tuned AGSL owns its 0.04 tint, saturation and grain; do not double-coat it
+            // with the legacy polish. Unsupported/shared paths keep the established fallback.
+            if (!tunedMaterial || Build.VERSION.SDK_INT < 33 || quality == ShortcutGlassQuality.Shared) {
+                Box(Modifier.matchParentSize().background(translucentFill, effectiveShape).shortcutCardPolish()
+                    .then(if (Build.VERSION.SDK_INT < 33 || quality == ShortcutGlassQuality.Shared)
+                        Modifier.restrainedCardRim(effectiveShape) else Modifier))
+            }
             Box(Modifier.matchParentSize(), content = content)
         }
     }

@@ -55,6 +55,8 @@ class ShortcutContactFrostRenderingTest {
         val titleColor = if (dark) Color.White else Color(0xFF101820)
         var sceneDraws = 0
         compose.setContent {
+            // Keep the accepted 8dp prototype as an explicit legacy regression baseline.
+            CompositionLocalProvider(LocalShortcutTunedMaterialEnabled provides false) {
             MihomoTheme(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) {
                 ProvideGlassTheme {
                     val scene = rememberNavigationLens()
@@ -94,6 +96,7 @@ class ShortcutContactFrostRenderingTest {
                         }
                     }
                 }
+            }
             }
         }
         compose.waitForIdle()

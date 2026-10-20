@@ -43,12 +43,17 @@ internal fun BoxScope.CardBackdrop(
     hybrid: Boolean = false,
     shaderEnabled: Boolean = true,
     contactFrost: Boolean = false,
+    tunedMaterial: Boolean = false,
     shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() }
 ) {
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val rim = remember(softMeshRim, shaderEnabled) {
-        if (softMeshRim && shaderEnabled && Build.VERSION.SDK_INT >= 33) ShortcutMeshOptics() else null
+    val opticalReplay = softMeshRim && shaderEnabled
+    val rim = remember(opticalReplay, tunedMaterial) {
+        if (opticalReplay && !tunedMaterial && Build.VERSION.SDK_INT >= 33) ShortcutMeshOptics() else null
+    }
+    val tuned = remember(opticalReplay, tunedMaterial, blurEnabled) {
+        if (opticalReplay && tunedMaterial && Build.VERSION.SDK_INT >= 33) ShortcutTunedOptics() else null
     }
     val frost = remember(contactFrost, blurEnabled) {
         if (contactFrost && blurEnabled && Build.VERSION.SDK_INT >= 31) ShortcutContactFrost() else null
@@ -64,11 +69,18 @@ internal fun BoxScope.CardBackdrop(
         .graphicsLayer {
             // Read here, not during composition, so animated snapshot state invalidates the layer.
             val refraction = shortcutRefraction()
-            if (Build.VERSION.SDK_INT >= 33 && rim != null) {
+            if (Build.VERSION.SDK_INT >= 33 && tuned != null) {
+                // One backdrop-only native effect. The scene and foreground never get filtered together.
+                tuned.update(size.width, size.height, density, isDark,
+                    if (blurEnabled) refraction else refraction.copy(frostLift = 0f))
+                renderEffect = tuned.effect
+            } else if (Build.VERSION.SDK_INT >= 33 && rim != null) {
                 rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark, hybrid, refraction)
                 renderEffect = frost?.update(refraction.frostLift, density, rim.nativeEffect) ?: rim.effect
             } else {
-                renderEffect = if (Build.VERSION.SDK_INT >= 31) frost?.update(refraction.frostLift, density, null) ?: blur else null
+                // API 31/32's native blur-radius convention differs from our AGSL sigma.
+                // 6dp radius is visually calibrated against the 3dp finite-kernel path.
+                renderEffect = if (Build.VERSION.SDK_INT >= 31) frost?.update(refraction.frostLift, density, null, if (tunedMaterial) 6f else 8f) ?: blur else null
             }
         }
         .drawWithContent {
