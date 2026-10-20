@@ -60,6 +60,9 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     uniform float2 touch;
     uniform float contact;
     uniform float contactMode;
+    uniform float pitch;
+    uniform float roll;
+    uniform float slabMode;
     float2 bounded(float2 p) { return clamp(p, float2(0.5), inputViewport - float2(0.5)); }
     half4 sampleBlur(float2 p, float sigma) {
         if (sigma < 0.01) return backdrop.eval(bounded(p));
@@ -92,6 +95,8 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     }
     half4 main(float2 p) {
         float2 dp = (p - inputOrigin) / density;
+        // replayCardScene already maps the actual graphicsLayer perspective into this
+        // local input. Do not apply a second approximate inverse projection here.
         float depth = max(-sdf(dp), 0.0);
         float contactRadius = clamp(min(viewport.x, viewport.y) / density * 0.42, 12.0, 64.0);
         float2 contactPoint = (touch * 0.5 + 0.5) * viewport / density;
@@ -119,8 +124,10 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         dispDp += rimLimit * (1.0 - exp(-rimRaw / max(rimLimit, 0.001))) * rim;
         float2 normal = sdfNormal(dp);
         // Android/Compose and this backdrop both use downward +Y. No second Y inversion.
-        float tx = -touch.y * motionLift * 0.15707963;
-        float ty = touch.x * motionLift * 0.15707963;
+        // Only tuned B uses its real animated slab normal (degrees -> radians).
+        // A/C and legacy materials retain their existing touch-driven optical response.
+        float tx = mix(-touch.y * motionLift * 0.15707963, -pitch * 0.01745329, slabMode);
+        float ty = mix(touch.x * motionLift * 0.15707963, roll * 0.01745329, slabMode);
         float3 surface = normalize(float3(sin(ty), -sin(tx) * cos(ty), cos(tx) * cos(ty)));
         float3 transmitted = refract(float3(0.0, 0.0, -1.0), surface, 1.0 / max(ior, 1.001));
         float2 tiltOffset = transmitted.xy / max(-transmitted.z, 0.15) * (thick + distortion * 80.0 * 0.62105263) * density;
@@ -169,7 +176,9 @@ internal class ShortcutRefractiveOptics {
         val margin = marginPx.takeIf { it.isFinite() }?.coerceIn(0f, 64f * d) ?: 0f
         fun bounded(v: Float, min: Float = 0f) = if (v.isFinite()) v.coerceIn(min, 1f) else 0f
         val r = refraction.copy(lift = bounded(refraction.lift), x = bounded(refraction.x, -1f),
-            y = bounded(refraction.y, -1f), frostLift = bounded(refraction.frostLift), contact = bounded(refraction.contact))
+            y = bounded(refraction.y, -1f), frostLift = bounded(refraction.frostLift), contact = bounded(refraction.contact),
+            pitch = if (refraction.pitch.isFinite()) refraction.pitch.coerceIn(-45f, 45f) else 0f,
+            roll = if (refraction.roll.isFinite()) refraction.roll.coerceIn(-45f, 45f) else 0f)
         val next = Cache(w, h, d, margin, dark, bend, r)
         if (next == cache) return effect
         val params = ShortcutFollowupParameters.resolve(w / d, h / d, d)
@@ -196,6 +205,9 @@ internal class ShortcutRefractiveOptics {
         shader.setFloatUniform("touch", r.x, r.y)
         shader.setFloatUniform("contact", r.contact)
         shader.setFloatUniform("contactMode", if (r.contactFollow) 1f else 0f)
+        shader.setFloatUniform("pitch", r.pitch)
+        shader.setFloatUniform("roll", r.roll)
+        shader.setFloatUniform("slabMode", if (r.slabFollow) 1f else 0f)
         effect = RenderEffect.createRuntimeShaderEffect(shader, "backdrop").asComposeRenderEffect()
         cache = next
         return effect

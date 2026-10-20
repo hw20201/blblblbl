@@ -54,8 +54,11 @@ fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned
         ShortcutTouchVariant.GentleFloat -> ShortcutTouchPose(
             scale = 0.997f, rotationX = -ny * 0.75f, rotationY = nx * 0.75f)
         ShortcutTouchVariant.FingerTilt -> if (tuned) ShortcutTouchPose(
-            // Preserve the named Lab B choice and damping while making its visual response subtle.
-            scale = 1.003f, rotationX = -ny * 1.25f, rotationY = nx * 1.25f
+            // Slab follow: the card pivots as one rigid board around its centre, so a press
+            // on the left sinks that edge and lifts the right. Horizontal direction carries
+            // the full throw; vertical direction is deliberately damped to ~60% so a press
+            // near the top/bottom stays quiet and vertical swipes do not yaw the slab.
+            scale = 1.003f, rotationX = -ny * 0.75f, rotationY = nx * 1.25f
         ) else ShortcutTouchPose(
             scale = 0.975f, offsetXDp = nx * 2f, offsetYDp = -4f + ny * 2f,
             rotationX = -ny * 4f, rotationY = nx * 4f)
@@ -131,7 +134,8 @@ internal fun rememberShortcutTouchMotion(
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 0.88f
-        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.78f else 0.76f
+        // A more damped rebound keeps B restrained without changing the other variants.
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.86f else 0.76f
         ShortcutTouchVariant.BuoyantSpring -> 0.55f
     }
     val target = when {
@@ -145,8 +149,12 @@ internal fun rememberShortcutTouchMotion(
     val scale = animateFloatAsState(target.scale, spec, label = "shortcut_scale")
     val dx = animateFloatAsState(target.offsetXDp, spec, label = "shortcut_x")
     val dy = animateFloatAsState(target.offsetYDp, spec, label = "shortcut_y")
-    val rx = animateFloatAsState(target.rotationX, spec, label = "shortcut_rx")
-    val ry = animateFloatAsState(target.rotationY, spec, label = "shortcut_ry")
+    // Keep one animation state per axis across press, retarget and release.
+    // animateFloatAsState already follows changing targets; only B uses the faster clock.
+    val slabFollow = tuned && variant == ShortcutTouchVariant.FingerTilt
+    val rotationSpec = if (slabFollow && input.pressed && frozenPose == null) tween<Float>(60) else spec
+    val rx = animateFloatAsState(target.rotationX, rotationSpec, label = "shortcut_rx")
+    val ry = animateFloatAsState(target.rotationY, rotationSpec, label = "shortcut_ry")
     val liftTarget = when {
         !animate -> 0f
         frozenPose != null -> (abs(1f - frozenPose.scale) / abs(1f - currentTarget(0f, 0f).scale).coerceAtLeast(.0001f)).coerceIn(0f, 1f)
@@ -194,6 +202,8 @@ internal fun rememberShortcutTouchMotion(
                     val local = position - Offset(if (input.dragging) input.dragX else dragX.value,
                         if (input.dragging) input.dragY else dragY.value)
                     input.x = ((local.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    // Keep the true contact for every material/variant. B's vertical damping
+                    // belongs only to shortcutTouchTarget's visual rotation, never this input.
                     input.y = ((local.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
                 }
                 update(down.position)
@@ -293,6 +303,10 @@ internal fun rememberShortcutTouchMotion(
             // Contact starts clear: unlike the bevel kick, frost follows actual separation.
             frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
             contact = if (contactFollow) contactValue() else 0f,
-            contactFollow = contactFollow)
+            contactFollow = contactFollow,
+            // B's optical normal follows the same animated pose as its graphicsLayer.
+            // The actual perspective mapping is already handled by replayCardScene.
+            pitch = if (animate) -rx.value else 0f, roll = if (animate) ry.value else 0f,
+            slabFollow = slabFollow)
     }
 }

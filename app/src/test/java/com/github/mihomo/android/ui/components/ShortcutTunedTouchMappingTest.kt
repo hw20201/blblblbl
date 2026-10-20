@@ -44,9 +44,11 @@ class ShortcutTunedTouchMappingTest {
             assertEquals(0f, pose.rotationX, 0f)
             assertEquals(1.25f * x, pose.rotationY, 0f)
         }
+        // Slab follow damps the vertical throw to 60% of the horizontal one so vertical
+        // swipes do not pitch the card while left/right presses keep their full sink/lift.
         listOf(-1f, 1f).forEach { y ->
             val pose = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, 0f, y, tuned = true)
-            assertEquals(-1.25f * y, pose.rotationX, 0f)
+            assertEquals(-0.75f * y, pose.rotationX, 0f)
             assertEquals(0f, pose.rotationY, 0f)
         }
     }

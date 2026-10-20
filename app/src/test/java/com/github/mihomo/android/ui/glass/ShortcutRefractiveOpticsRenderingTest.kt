@@ -193,6 +193,40 @@ class ShortcutRefractiveOpticsRenderingTest {
         reference.recycle(); anchored.recycle(); legacy.recycle(); source.recycle()
     }
 
+    @Test fun slabPoseDoesNotApplyASecondProjectionToTheWorldAnchoredScene() {
+        bend.value = false
+        pose.value = Pose(18f, 12f, .90f, -9f, 9f)
+        content()
+        val original = screenshot("slab-projection-reference.png")
+        compose.runOnIdle { refraction.value = ShortcutRefraction(pitch = 9f, roll = 9f, slabFollow = true) }
+        compose.waitForIdle()
+        val slab = screenshot("slab-projection-no-double-transform.png")
+        assertTrue("B must not remap an already perspective-correct backdrop when bend is off", original.sameAs(slab))
+        original.recycle(); slab.recycle()
+    }
+
+    @Test fun slabNormalUsesAnimatedPoseAndKeepsRawContactOutOfItsTilt() {
+        refraction.value = ShortcutRefraction(lift = 1f, frostLift = 0f, x = -.8f, roll = 9f, slabFollow = true)
+        content()
+        val o = origin()
+        val positive = screenshot("slab-normal-positive-roll.png")
+        compose.runOnIdle { refraction.value = refraction.value.copy(x = .8f) }; compose.waitForIdle()
+        val samePose = screenshot("slab-normal-same-pose-other-contact.png")
+        assertTrue("without a contact mask, B's tilt depends on its actual pose, not a second touch-derived angle", positive.sameAs(samePose))
+        compose.runOnIdle { refraction.value = refraction.value.copy(roll = -9f) }; compose.waitForIdle()
+        val negative = screenshot("slab-normal-negative-roll.png")
+        val right = darkCentroid(positive, o.x + 156f * d, o.y + 60f * d, -14f * d, 14f * d, true)
+        val left = darkCentroid(negative, o.x + 156f * d, o.y + 60f * d, -14f * d, 14f * d, true)
+        assertTrue("positive roll gathers toward negative source x, moving the stripe right: $right vs $left", right > left + .5f * d)
+        compose.runOnIdle { refraction.value = refraction.value.copy(slabFollow = false, x = -.8f) }; compose.waitForIdle()
+        val legacyLeft = screenshot("slab-isolation-legacy-left.png")
+        compose.runOnIdle { refraction.value = refraction.value.copy(x = .8f) }; compose.waitForIdle()
+        val legacyRight = screenshot("slab-isolation-legacy-right.png")
+        assertFalse("A/C retain the pre-existing touch-driven optical normal", legacyLeft.sameAs(legacyRight))
+        metric("slab-normal", "positiveRollCentroid=$right negativeRollCentroid=$left")
+        positive.recycle(); samePose.recycle(); negative.recycle(); legacyLeft.recycle(); legacyRight.recycle()
+    }
+
     private fun pixel(image: Bitmap, o: Offset, xDp: Int, yDp: Int) = image.getPixel((o.x + xDp * d).roundToInt(), (o.y + yDp * d).roundToInt())
     private fun darkCentroid(b: Bitmap, x: Float, y: Float, from: Float, to: Float, horizontal: Boolean): Float {
         var total = 0f; var moment = 0f

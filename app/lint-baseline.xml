@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 9.0.1">
+    <!-- Existing in 76b5907. API 34+ uses PendingIntent; this Intent call is only in the older-API branch. -->
+    <issue
+        id="StartActivityAndCollapseDeprecated"
+        message="TileService#startActivityAndCollapse(Intent) is deprecated. Use TileService#startActivityAndCollapse(PendingIntent) instead."
+        errorLine1="                    startActivityAndCollapse(vpnIntent)"
+        errorLine2="                                             ~~~~~~~~~">
+        <location
+            file="src/main/java/com/github/mihomo/android/service/MihomoTileService.kt"
+            line="63"
+            column="46" />
+    </issue>
+</issues>

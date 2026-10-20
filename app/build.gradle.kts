@@ -61,12 +61,18 @@ android {
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
+    lint {
+        // One existing API-guarded TileService issue, explicitly accepted for this draft.
+        // All other errors remain fatal; do not regenerate this file with unrelated findings.
+        baseline = file("lint-baseline.xml")
+    }
+
     defaultConfig {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.0.27"
+        versionCode = 32
+        versionName = "1.0.28"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
