@@ -47,6 +47,9 @@ class ShortcutDashboardPickupGestureTest {
     @Test fun aPickupKeepsScrollStationaryAndRestoresTap() = heldPickup(ShortcutTouchVariant.GentleFloat, "A")
     @Test fun bPickupKeepsScrollStationaryAndRestoresTap() = heldPickup(ShortcutTouchVariant.FingerTilt, "B")
     @Test fun cPickupKeepsScrollStationaryAndRestoresTap() = heldPickup(ShortcutTouchVariant.BuoyantSpring, "C")
+    @Test fun aCardVerticalDragScrollsWithoutNavigation() = verticalCardDrag(ShortcutTouchVariant.GentleFloat, "A")
+    @Test fun bCardVerticalDragScrollsWithoutNavigation() = verticalCardDrag(ShortcutTouchVariant.FingerTilt, "B")
+    @Test fun cCardVerticalDragScrollsWithoutNavigation() = verticalCardDrag(ShortcutTouchVariant.BuoyantSpring, "C")
 
     private fun heldPickup(variant: ShortcutTouchVariant, name: String) {
         val fixture = render(variant)
@@ -63,8 +66,10 @@ class ShortcutDashboardPickupGestureTest {
         save(screenshot(), dir, "$name-held.png")
         compose.runOnIdle {
             assertEquals("down must not navigate", 0, fixture.profilesClicks)
-            assertEquals("pickup disables parent scroll", initial, fixture.scroll.value)
+            assertEquals("stationary press does not itself move the viewport", initial, fixture.scroll.value)
         }
+        // Establish clear horizontal intent before the diagonal continuation locks pickup.
+        card.performTouchInput { moveTo(center + Offset(100f, 0f), delayMillis = 120) }
         card.performTouchInput { moveTo(center + Offset(140f, 140f), delayMillis = 120) }
         compose.mainClock.advanceTimeBy(150); compose.waitForIdle()
         save(screenshot(), dir, "$name-moved-held.png")
@@ -81,6 +86,28 @@ class ShortcutDashboardPickupGestureTest {
         compose.runOnIdle {
             assertEquals("normal tap after release", 1, fixture.profilesClicks)
             assertEquals("only profile navigation fires", 0, fixture.vpnToggles)
+        }
+    }
+
+    private fun verticalCardDrag(variant: ShortcutTouchVariant, name: String) {
+        val fixture = render(variant)
+        val card = compose.onNodeWithTag("shortcut-card-Profiles")
+        val before = fixture.scroll.value
+        assertTrue("fixture really has scrollable content", fixture.scroll.maxValue > 0)
+        val dir = File("build/outputs/refractive-followup-gesture").also { it.mkdirs() }
+        if (name == "B") save(screenshot(), dir, "B-before-vertical-card-scroll.png")
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(0f, -40f), delayMillis = 80)
+            moveTo(center + Offset(0f, -100f), delayMillis = 100)
+            up()
+        }
+        compose.waitForIdle()
+        if (name == "B") save(screenshot(), dir, "B-vertical-card-scroll.png")
+        compose.runOnIdle {
+            assertTrue("vertical gesture from inside card scrolls Dashboard", fixture.scroll.value > before)
+            assertEquals("vertical gesture must not navigate", 0, fixture.profilesClicks)
+            assertEquals("vertical gesture must not toggle VPN", 0, fixture.vpnToggles)
         }
     }
 

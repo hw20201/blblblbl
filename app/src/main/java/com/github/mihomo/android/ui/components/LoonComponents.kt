@@ -407,6 +407,7 @@ fun LoonShortcutCard(
         }
     } else {
         basePressModifier
+            .then(touchMotion.gestureModifier)
             .clickable(
                 interactionSource = experimentalInteractions,
                 indication = null,
@@ -415,7 +416,7 @@ fun LoonShortcutCard(
                 haptic.lightTick()
                 onClick()
             }
-            .then(touchMotion.modifier)
+            .then(touchMotion.visualModifier)
     }
 
     // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.

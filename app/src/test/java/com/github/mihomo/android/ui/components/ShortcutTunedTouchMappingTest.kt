@@ -33,34 +33,38 @@ import kotlin.math.abs
 class ShortcutTunedTouchMappingTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun tunedFingerTiltUsesSmallLabBPoseAndDirectionalRotations() {
+    @Test fun tunedFingerTiltUsesSubtleLabBPoseAndDirectionalRotations() {
         val center = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, 0f, 0f, tuned = true)
-        assertEquals(1.004f, center.scale, 0f)
+        assertEquals(1.003f, center.scale, 0f)
         assertEquals(0f, center.offsetXDp, 0f)
-        assertEquals(-2f * (118f / 190f), center.offsetYDp, 0f)
+        assertEquals(0f, center.offsetYDp, 0f)
         listOf(-1f, 1f).forEach { x ->
             val pose = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, x, 0f, tuned = true)
             assertEquals(0f, pose.rotationX, 0f)
-            assertEquals(9f * x, pose.rotationY, 0f)
+            assertEquals(1.25f * x, pose.rotationY, 0f)
         }
         listOf(-1f, 1f).forEach { y ->
             val pose = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, 0f, y, tuned = true)
-            assertEquals(-9f * y, pose.rotationX, 0f)
+            assertEquals(-1.25f * y, pose.rotationX, 0f)
             assertEquals(0f, pose.rotationY, 0f)
         }
     }
 
-    @Test fun gentleAndBuoyantMappingsStayAtTheirEstablishedValues() {
+    @Test fun allDefaultVariantsHaveSmallVisualMotionAndLegacyMaterialMappingRemains() {
         val gentle = shortcutTouchTarget(ShortcutTouchVariant.GentleFloat, .5f, -.5f, tuned = true)
-        assertEquals(.985f, gentle.scale, 0f)
-        assertEquals(-3f, gentle.offsetYDp, 0f)
-        assertEquals(.75f, gentle.rotationX, 0f)
-        assertEquals(.75f, gentle.rotationY, 0f)
+        assertEquals(.997f, gentle.scale, 0f)
+        assertEquals(0f, gentle.offsetYDp, 0f)
+        assertEquals(.375f, gentle.rotationX, 0f)
+        assertEquals(.375f, gentle.rotationY, 0f)
         val buoyant = shortcutTouchTarget(ShortcutTouchVariant.BuoyantSpring, -.5f, .5f, tuned = true)
-        assertEquals(.965f, buoyant.scale, 0f)
-        assertEquals(-5f, buoyant.offsetYDp, 0f)
-        assertEquals(-1f, buoyant.rotationX, 0f)
-        assertEquals(-1f, buoyant.rotationY, 0f)
+        assertEquals(.996f, buoyant.scale, 0f)
+        assertEquals(0f, buoyant.offsetYDp, 0f)
+        assertEquals(-.5f, buoyant.rotationX, 0f)
+        assertEquals(-.5f, buoyant.rotationY, 0f)
+        val legacy = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, 1f, 1f, tuned = false)
+        assertEquals(.975f, legacy.scale, 0f)
+        assertEquals(-2f, legacy.offsetYDp, 0f)
+        assertEquals(4f, legacy.rotationY, 0f)
     }
 
     @Test fun actualPointerSamplesFourCornersCenterAndKeepsPointThroughRelease() {

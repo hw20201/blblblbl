@@ -27,6 +27,7 @@ import com.github.mihomo.android.ui.glass.ShortcutTunedCardShape
 import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
 import com.github.mihomo.android.ui.glass.LocalShortcutOpticalFollowupEnabled
 import kotlin.math.abs
+import kotlin.math.max
 
 /** Persisted comparison choices; names are stable preference values. */
 enum class ShortcutTouchVariant { GentleFloat, FingerTilt, BuoyantSpring }
@@ -48,16 +49,15 @@ fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned
     val ny = y.coerceIn(-1f, 1f)
     return when (variant) {
         ShortcutTouchVariant.GentleFloat -> ShortcutTouchPose(
-            scale = 0.985f, offsetYDp = -3f, rotationX = -ny * 1.5f, rotationY = nx * 1.5f)
+            scale = 0.997f, rotationX = -ny * 0.75f, rotationY = nx * 0.75f)
         ShortcutTouchVariant.FingerTilt -> if (tuned) ShortcutTouchPose(
-            // Lab B lengths use the 118dp / 190 CSS-px card-height ratio.
-            scale = 1.004f, offsetYDp = -2f * (118f / 190f),
-            rotationX = -ny * 9f, rotationY = nx * 9f
+            // Preserve the named Lab B choice and damping while making its visual response subtle.
+            scale = 1.003f, rotationX = -ny * 1.25f, rotationY = nx * 1.25f
         ) else ShortcutTouchPose(
             scale = 0.975f, offsetXDp = nx * 2f, offsetYDp = -4f + ny * 2f,
             rotationX = -ny * 4f, rotationY = nx * 4f)
         ShortcutTouchVariant.BuoyantSpring -> ShortcutTouchPose(
-            scale = 0.965f, offsetYDp = -5f, rotationX = -ny * 2f, rotationY = nx * 2f)
+            scale = 0.996f, rotationX = -ny * 1f, rotationY = nx * 1f)
     }
 }
 
@@ -90,7 +90,17 @@ private class TouchInput {
     fun reset() { pressed = false; dragging = false; dragX = 0f; dragY = 0f }
 }
 
-internal class ShortcutTouchMotion(val modifier: Modifier, val refraction: () -> ShortcutRefraction)
+internal class ShortcutTouchMotion(
+    val gestureModifier: Modifier,
+    val visualModifier: Modifier,
+    val refraction: () -> ShortcutRefraction
+) {
+    val modifier: Modifier = gestureModifier.then(visualModifier)
+}
+
+/** Directional slop arbitration: ambiguous diagonals are deliberately left to the parent. */
+internal fun shortcutHorizontalIntent(dx: Float, dy: Float, touchSlop: Float): Boolean =
+    abs(dx) > max(0f, touchSlop) * 1.25f && abs(dx) > abs(dy) * 1.5f
 
 /** One finite gesture animation drives slab and backdrop optics; no idle clock or capture. */
 @Composable
@@ -133,9 +143,9 @@ internal fun rememberShortcutTouchMotion(
     }
     val lift = animateFloatAsState(liftTarget, spec, label = "shortcut_lift")
     val maximumLift = when (variant) {
-        ShortcutTouchVariant.GentleFloat -> 3f
-        ShortcutTouchVariant.FingerTilt -> if (tuned) 2f * (118f / 190f) else 4f
-        ShortcutTouchVariant.BuoyantSpring -> 5f
+        ShortcutTouchVariant.GentleFloat -> 1.5f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 1.5f else 4f
+        ShortcutTouchVariant.BuoyantSpring -> 1.5f
     }
     fun visibleLift(): Float = when {
         !animate -> 0f
@@ -148,14 +158,14 @@ internal fun rememberShortcutTouchMotion(
     val dragSpec = if (input.dragging || !animate) snap<Float>() else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
     val dragX = animateFloatAsState(if (input.dragging) input.dragX else 0f, dragSpec, label = "shortcut_drag_x")
     val dragY = animateFloatAsState(if (input.dragging) input.dragY else 0f, dragSpec, label = "shortcut_drag_y")
-    val modifier = Modifier.pointerInput(input, enabled) {
+    val gestureModifier = Modifier.pointerInput(input, enabled) {
         if (!enabled) return@pointerInput
         try {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 if (down.isConsumed) return@awaitEachGesture
                 input.pressed = true
-                pickupCallback(true)
+                var horizontallyLocked = false
                 fun update(position: Offset) {
                     // The gesture anchor stays in the original slot, but the optical contact
                     // belongs to the translated plane, not that stationary slot.
@@ -166,8 +176,7 @@ internal fun rememberShortcutTouchMotion(
                 }
                 update(down.position)
                 try {
-                    val maxDragX = 24.dp.toPx()
-                    val maxDragY = 18.dp.toPx()
+                    val maxDragX = 4.dp.toPx()
                     // Initial pass wins before verticalScroll's Main-pass slop detector.
                     // A normal tap stays unconsumed; the first slop-crossing move cancels click.
                     while (true) {
@@ -178,25 +187,48 @@ internal fun rememberShortcutTouchMotion(
                             break
                         }
                         if (!change.pressed) {
-                            if (input.dragging) change.consume()
+                            if (horizontallyLocked) change.consume()
                             break
                         }
-                        if (change.isConsumed) break
+                        if (change.isConsumed) {
+                            // A parent won the Main-pass gesture; this contact must not be
+                            // reacquired by another iteration of this same awaitEachGesture.
+                            break
+                        }
                         val delta = change.position - down.position
-                        if (!input.dragging && delta.getDistance() > viewConfiguration.touchSlop) input.dragging = true
-                        if (input.dragging) {
+                        if (!horizontallyLocked && shortcutHorizontalIntent(delta.x, delta.y, viewConfiguration.touchSlop)) {
+                            horizontallyLocked = true
+                            input.dragging = true
+                            pickupCallback(true)
+                        } else if (!horizontallyLocked && abs(delta.y) > viewConfiguration.touchSlop &&
+                            abs(delta.y) > abs(delta.x) / 1.5f) {
+                            // Let the parent's Main-pass scroll detector process this move first.
+                            // Then cancel any still-waiting clickable at Final: without a scroll
+                            // parent (or at a boundary), a vertical drag must not become a tap.
+                            input.pressed = false
+                            awaitPointerEvent(PointerEventPass.Final).changes
+                                .firstOrNull { it.id == down.id }?.consume()
+                            break
+                        }
+                        if (horizontallyLocked) {
                             // This pointer node is outside the visual graphicsLayer: stable anchor,
                             // no feedback from the moved card, no exit when the finger leaves it.
-                            input.dragX = delta.x.coerceIn(-maxDragX, maxDragX)
-                            input.dragY = delta.y.coerceIn(-maxDragY, maxDragY)
+                            // Keep direct manipulation perceptible but restrained; vertical motion
+                            // remains gesture-only so it cannot pull the dashboard card.
+                            input.dragX = (delta.x * 0.09f).coerceIn(-maxDragX, maxDragX)
+                            input.dragY = 0f
                             change.consume()
                         }
                         update(change.position)
                     }
-                } finally { input.reset(); pickupCallback(false) }
+                } finally {
+                    input.reset()
+                    if (horizontallyLocked) pickupCallback(false)
+                }
             }
-        } finally { input.reset(); pickupCallback(false) }
-    }.graphicsLayer {
+        } finally { input.reset() }
+    }
+    val visualModifier = Modifier.graphicsLayer {
         val immediate = animate && input.pressed && frozenPose == null
         val targetScale = currentTarget(0f, 0f).scale
         val kickScale = 1f + (targetScale - 1f) * .18f
@@ -208,13 +240,13 @@ internal fun rememberShortcutTouchMotion(
         }
         scaleX = visibleScale; scaleY = visibleScale
         translationX = (if (animate) dx.value else 0f).dp.toPx() + if (input.dragging) input.dragX else dragX.value
-        translationY = (when { !animate -> 0f; immediate -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx() + if (input.dragging) input.dragY else dragY.value
+        translationY = (when { !animate -> 0f; immediate && target.offsetYDp != 0f -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx() + if (input.dragging) input.dragY else dragY.value
         rotationX = if (animate && !splitShadow) rx.value else 0f
         rotationY = if (animate && !splitShadow) ry.value else 0f
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         // Keep the ground shadow flat. Native round-rect outlines otherwise use
         // tilted vertex Z as extra caster height, producing very long penumbrae.
-        shadowElevation = (visibleLift() * if (tuned && variant == ShortcutTouchVariant.FingerTilt) 12f * (118f / 190f) else maximumLift).dp.toPx()
+        shadowElevation = ((if (animate) 0.45f else 0f) + visibleLift() * 1.1f).dp.toPx()
         shape = if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
         clip = false
     }.graphicsLayer {
@@ -223,7 +255,7 @@ internal fun rememberShortcutTouchMotion(
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         clip = false
     }
-    return ShortcutTouchMotion(modifier) {
+    return ShortcutTouchMotion(gestureModifier, visualModifier) {
         // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
         // Feed the actual finger position so every press location produces a consistent lens.
         // Keep that point through release while lift animates down; reset() only clears pressed.

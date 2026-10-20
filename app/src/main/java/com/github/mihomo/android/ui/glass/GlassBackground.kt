@@ -51,13 +51,25 @@ fun NexusGlassBackground(
     val seconds = rememberSoftMeshTime()
     val seed = LocalSoftMeshSeed.current
     val motion = remember(seed) { SoftMeshMotion(seed ?: Random.nextLong()) }
-    val blobs = if (palette.isDark || palette.key.startsWith("custom:")) palette.blobs else IceLavenderMesh
+    val structured = LocalStructuredMeshEnabled.current
+    val baseBlobs = if (palette.isDark || palette.key.startsWith("custom:")) palette.blobs else IceLavenderMesh
+    val blobs = remember(palette, structured) {
+        if (structured) structuredMeshCells(palette, baseBlobs) else baseBlobs
+    }
     val base = if (palette.isDark || palette.key.startsWith("custom:")) palette.base else Color(0xFFECF3FF)
-    val veil = if (palette.isDark) palette.veil.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.10f)
+    val veil = if (palette.isDark) palette.veil.copy(alpha = if (structured) .08f else .16f)
+        else Color.White.copy(alpha = if (structured) .035f else .10f)
     // Unit-space brushes stay cached across frames. Transform the canvas, not the foreground.
-    val brushes = remember(blobs) {
+    val brushes = remember(blobs, structured) {
         blobs.map { blob ->
-            Brush.radialGradient(
+            if (structured) Brush.radialGradient(
+                0f to blob.color,
+                .36f to blob.color.copy(alpha = blob.color.alpha * .86f),
+                .63f to blob.color.copy(alpha = blob.color.alpha * .46f),
+                .84f to blob.color.copy(alpha = blob.color.alpha * .10f),
+                1f to Color.Transparent,
+                center = Offset.Zero, radius = 1f
+            ) else Brush.radialGradient(
                 0f to blob.color,
                 0.38f to blob.color.copy(alpha = blob.color.alpha * 0.66f),
                 0.72f to blob.color.copy(alpha = blob.color.alpha * 0.20f),
@@ -76,8 +88,10 @@ fun NexusGlassBackground(
                     val diag = kotlin.math.hypot(size.width, size.height)
                     blobs.forEachIndexed { index, blob ->
                         val pose = motion.sample(index, time)
-                        val radius = diag * blob.radius
-                        translate(size.width * pose.x, size.height * pose.y) {
+                        val radius = (if (structured) size.minDimension else diag) * blob.radius
+                        val x = if (structured) blob.x + (pose.x - .5f) * .16f else pose.x
+                        val y = if (structured) blob.y + (pose.y - .5f) * .08f else pose.y
+                        translate(size.width * x, size.height * y) {
                             rotate(pose.rotation, Offset.Zero) {
                                 scale(radius * pose.scaleX, radius * pose.scaleY, Offset.Zero) {
                                     drawCircle(brushes[index], radius = 1f, center = Offset.Zero)

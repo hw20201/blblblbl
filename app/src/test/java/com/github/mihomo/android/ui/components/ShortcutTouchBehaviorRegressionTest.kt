@@ -146,7 +146,7 @@ class ShortcutTouchBehaviorRegressionTest {
         compose.runOnIdle { assertEquals("ordinary tap remains active", 1, clicks) }
     }
 
-    @Test fun cardDragCapturesAcrossOriginalBoundsWithoutScrollingOrActivatingAndReturnsToRest() {
+    @Test fun verticalCardGestureScrollsParentWhileHorizontalIntentLocksAndReturnsToRest() {
         var clicks = 0
         var neighborClicks = 0
         lateinit var scrollState: androidx.compose.foundation.ScrollState
@@ -180,23 +180,44 @@ class ShortcutTouchBehaviorRegressionTest {
         }
         val restVisualCenter = visualCenter()
         val restSemanticsBounds = card.fetchSemanticsNode().boundsInRoot
+        // A vertical-origin gesture must be yielded before the parent's Main-pass slop.
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(3f, -18f), delayMillis = 60)
+            moveTo(center + Offset(5f, -65f), delayMillis = 60)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("vertical card-origin gesture scrolls its parent", scrollState.value > 0)
+            assertEquals("vertical scroll does not click card", 0, clicks)
+        }
+        // Reset the viewport so the same card can verify horizontal pickup.
+        compose.runOnIdle { scrollState.dispatchRawDelta(-scrollState.value.toFloat()) }
+        compose.waitForIdle()
         compose.mainClock.autoAdvance = false
         card.performTouchInput {
             down(center)
-            moveTo(center + Offset(5f, 28f), delayMillis = 60)
-            moveTo(center + Offset(72f, 132f), delayMillis = 80) // across the original card edge and into another quadrant
+            moveTo(center + Offset(8f, 1f), delayMillis = 60) // below 1.25x touchSlop: no lock
+            moveTo(center + Offset(72f, 3f), delayMillis = 80)
         }
         compose.mainClock.advanceTimeBy(120)
         compose.waitForIdle()
         val draggedVisualCenter = visualCenter()
         compose.runOnIdle {
-            assertEquals("card-owned drag leaves parent vertical ScrollState unchanged", 0, scrollState.value)
-            assertTrue("graphicsLayer translation is observable through localToRoot", (draggedVisualCenter - restVisualCenter).getDistance() > 20f)
-            assertTrue("drag translation remains bounded by the implementation's 24dp/18dp caps", kotlin.math.abs(draggedVisualCenter.x - restVisualCenter.x) <= 25f && kotlin.math.abs(draggedVisualCenter.y - restVisualCenter.y) <= 19f)
+            assertEquals("horizontal lock leaves parent scroll unchanged", 0, scrollState.value)
+            assertTrue("deliberate horizontal movement tracks perceptibly", draggedVisualCenter.x > restVisualCenter.x)
+            assertTrue("horizontal gain is capped at 4dp", kotlin.math.abs(draggedVisualCenter.x - restVisualCenter.x) <= 4.5f)
+            assertTrue("vertical component never translates card", kotlin.math.abs(draggedVisualCenter.y - restVisualCenter.y) <= .5f)
             assertEquals("gesture does not change layout semantics bounds", restSemanticsBounds, card.fetchSemanticsNode().boundsInRoot)
             assertEquals("drag does not activate original card", 0, clicks)
             assertEquals("drag does not activate adjacent card", 0, neighborClicks)
         }
+        // Once acquired, substantial vertical motion cannot transfer ownership.
+        card.performTouchInput { moveTo(center + Offset(72f, 90f), delayMillis = 80) }
+        compose.mainClock.advanceTimeBy(100)
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("locked horizontal gesture keeps parent still", 0, scrollState.value) }
         card.performTouchInput { up() }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
@@ -208,6 +229,35 @@ class ShortcutTouchBehaviorRegressionTest {
         compose.mainClock.autoAdvance = true
         card.performTouchInput { click(center) }
         compose.runOnIdle { assertEquals("next ordinary tap still activates", 1, clicks) }
+    }
+
+    @Test fun downAndSmallJitterDoNotLockUntilHorizontalIntentIsClear() {
+        val pickups = mutableListOf<Boolean>()
+        compose.setContent {
+            val motion = rememberShortcutTouchMotion(ShortcutTouchVariant.FingerTilt, enabled = true,
+                onPickupChanged = { pickups += it })
+            Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                Box(motion.modifier.size(174.dp, 118.dp).testTag("intent-probe"))
+            }
+        }
+        val card = compose.onNodeWithTag("intent-probe")
+        card.performTouchInput { down(center) }
+        compose.runOnIdle { assertTrue("down must not announce pickup", pickups.isEmpty()) }
+        card.performTouchInput { moveTo(center + Offset(4f, 1f), delayMillis = 40) }
+        compose.runOnIdle { assertTrue("small jitter must not lock parent", pickups.isEmpty()) }
+        card.performTouchInput { moveTo(center + Offset(70f, 1f), delayMillis = 80) }
+        compose.runOnIdle { assertEquals(listOf(true), pickups) }
+        card.performTouchInput { moveTo(center + Offset(70f, 80f), delayMillis = 80) }
+        compose.runOnIdle { assertEquals("horizontal owner survives vertical drift", listOf(true), pickups) }
+        card.performTouchInput { up() }
+        compose.runOnIdle { assertEquals("release clears the horizontal owner", listOf(true, false), pickups) }
+    }
+
+    @Test fun horizontalIntentThresholdRejectsSmallAndAmbiguousMoves() {
+        assertTrue(shortcutHorizontalIntent(15f, 0f, 10f))
+        assertTrue(!shortcutHorizontalIntent(12f, 0f, 10f))
+        assertTrue(!shortcutHorizontalIntent(20f, 15f, 10f))
+        assertTrue(!shortcutHorizontalIntent(8f, 30f, 10f))
     }
 
     @Test fun blankAreaOfSameVerticalScrollParentStillScrolls() {
@@ -234,6 +284,24 @@ class ShortcutTouchBehaviorRegressionTest {
         }
         compose.waitForIdle()
         compose.runOnIdle { assertTrue("blank-origin gesture remains available to parent scrolling", scrollState.value > 0) }
+    }
+
+    @Test fun verticalSwipeInsideCardWithoutScrollParentCannotBecomeTap() {
+        var clicks = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalShortcutTouchVariant provides ShortcutTouchVariant.FingerTilt) {
+                LoonShortcutCard(Modifier.size(174.dp, 118.dp), "NoScrollParent", "", {}, onClick = { clicks++ })
+            }
+        }
+        val card = compose.onNodeWithTag("shortcut-card-NoScrollParent")
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(2f, 32f), delayMillis = 100)
+            up()
+        }
+        compose.runOnIdle { assertEquals("vertical motion inside bounds is not a tap", 0, clicks) }
+        card.performTouchInput { click(center) }
+        compose.runOnIdle { assertEquals("next intentional tap still activates", 1, clicks) }
     }
 
     @Test fun addingSecondPointerCancelsCardDragAndLeavesNextTapUsable() {
