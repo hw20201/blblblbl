@@ -15,7 +15,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -29,6 +34,8 @@ import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
 import com.github.mihomo.android.ui.glass.LocalShortcutOpticalFollowupEnabled
 import com.github.mihomo.android.ui.glass.LocalShortcutContactFollowEnabled
 import com.github.mihomo.android.ui.glass.SHORTCUT_CONTACT_REST_SOFTNESS
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -69,6 +76,27 @@ fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned
 
 /** Test override also verifies reduced motion without modifying global settings. */
 internal val LocalShortcutMotionEnabled = staticCompositionLocalOf<Boolean?> { null }
+
+/** Local comparison switch only; light mode and the accepted gesture/optical path stay intact. */
+internal val LocalShortcutDarkLiftEnabled = staticCompositionLocalOf { true }
+
+internal fun shortcutDarkSlabTarget(pose: ShortcutTouchPose): ShortcutTouchPose =
+    pose.copy(scale = 1.012f, rotationX = pose.rotationX * 2f, rotationY = pose.rotationY * 2f)
+
+/** A narrow directional reflection, never a face wash or a glow behind the text. */
+private fun Modifier.darkSlabLiftRim(lift: () -> Float): Modifier = drawWithCache {
+    val outline = ShortcutFollowupCardShape.createOutline(size, layoutDirection, this)
+    val reflection = Brush.linearGradient(
+        listOf(Color(0xFFDCEAFF).copy(alpha = .24f), Color(0xFFBCD4EF).copy(alpha = .08f),
+            Color(0xFF8AA6C8).copy(alpha = .025f)),
+        start = Offset.Zero, end = Offset(size.width * .4f, size.height))
+    val stroke = Stroke(1.dp.toPx())
+    onDrawWithContent {
+        drawContent()
+        val amount = lift()
+        if (amount > 0f) drawOutline(outline, reflection, alpha = amount, style = stroke)
+    }
+}
 
 @Composable
 internal fun rememberShortcutAnimationsEnabled(): Boolean {
@@ -120,11 +148,16 @@ internal fun rememberShortcutTouchMotion(
     val followup = LocalShortcutOpticalFollowupEnabled.current
     val splitShadow = tuned && followup
     val contactFollow = tuned && followup && LocalShortcutContactFollowEnabled.current && enabled && frozenPose == null
+    val darkSlabLift = GlassDefaults.enabled && LocalGlassTokens.current.isDark &&
+        LocalShortcutDarkLiftEnabled.current && contactFollow && variant == ShortcutTouchVariant.FingerTilt
     val input = remember(variant, enabled, tuned) { TouchInput() }
     val pickupCallback by rememberUpdatedState(onPickupChanged)
     fun currentTarget(x: Float, y: Float): ShortcutTouchPose {
         val legacy = shortcutTouchTarget(variant, x, y, tuned)
         if (!contactFollow) return legacy
+        // Lift the dark slab, not the finger coordinates. The animated pose still drives
+        // the same optical normal; no translation or second projection is introduced.
+        if (darkSlabLift) return shortcutDarkSlabTarget(legacy)
         return legacy.copy(scale = when (variant) {
             ShortcutTouchVariant.GentleFloat -> .997f
             ShortcutTouchVariant.FingerTilt -> .998f
@@ -280,7 +313,8 @@ internal fun rememberShortcutTouchMotion(
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         // Keep the ground shadow flat. Native round-rect outlines otherwise use
         // tilted vertex Z as extra caster height, producing very long penumbrae.
-        shadowElevation = if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
+        shadowElevation = if (darkSlabLift && animate) (.8f + 3.2f * visibleLift()).dp.toPx()
+            else if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
             else ((if (animate) 0.45f else 0f) + visibleLift() * 1.1f).dp.toPx()
         shape = if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
         clip = false
@@ -289,7 +323,7 @@ internal fun rememberShortcutTouchMotion(
         rotationY = if (animate && splitShadow) ry.value else 0f
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         clip = false
-    }
+    }.then(if (darkSlabLift) Modifier.darkSlabLiftRim(::visibleLift) else Modifier)
     return ShortcutTouchMotion(gestureModifier, visualModifier) {
         // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
         // Feed the actual finger position so every press location produces a consistent lens.
