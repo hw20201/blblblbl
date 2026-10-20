@@ -134,7 +134,8 @@ fun GlassSurface(
     }
 
     val tunedMaterial = shortcutContactFrost && LocalShortcutTunedMaterialEnabled.current
-    val effectiveShape = if (tunedMaterial) ShortcutTunedCardShape else shape
+    val effectiveShape = if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
+        else if (tunedMaterial) ShortcutTunedCardShape else shape
     val hybrid = lens != null && LocalShortcutGlassDesign.current == ShortcutGlassDesign.Hybrid
     val quality = if (hybrid) rememberShortcutGlassQuality() else null
     if (lens == null || Build.VERSION.SDK_INT < 31 || quality == ShortcutGlassQuality.Flat) {

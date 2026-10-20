@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -23,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.glass.ShortcutRefraction
 import com.github.mihomo.android.ui.glass.LocalShortcutTunedMaterialEnabled
 import com.github.mihomo.android.ui.glass.ShortcutTunedCardShape
+import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
+import com.github.mihomo.android.ui.glass.LocalShortcutOpticalFollowupEnabled
 import kotlin.math.abs
 
 /** Persisted comparison choices; names are stable preference values. */
@@ -79,9 +82,12 @@ private class TouchInput {
     var pressed by mutableStateOf(false)
     var x by mutableFloatStateOf(0f)
     var y by mutableFloatStateOf(0f)
+    var dragging by mutableStateOf(false)
+    var dragX by mutableFloatStateOf(0f)
+    var dragY by mutableFloatStateOf(0f)
     // Keep the last contact point while the lift springs back. Resetting x/y on release
     // would move the shader's lens target to the card centre in the very same frame.
-    fun reset() { pressed = false }
+    fun reset() { pressed = false; dragging = false; dragX = 0f; dragY = 0f }
 }
 
 internal class ShortcutTouchMotion(val modifier: Modifier, val refraction: () -> ShortcutRefraction)
@@ -91,10 +97,14 @@ internal class ShortcutTouchMotion(val modifier: Modifier, val refraction: () ->
 internal fun rememberShortcutTouchMotion(
     variant: ShortcutTouchVariant,
     enabled: Boolean,
-    frozenPose: ShortcutTouchPose? = null
+    frozenPose: ShortcutTouchPose? = null,
+    onPickupChanged: (Boolean) -> Unit = {}
 ): ShortcutTouchMotion {
     val tuned = LocalShortcutTunedMaterialEnabled.current
+    val followup = LocalShortcutOpticalFollowupEnabled.current
+    val splitShadow = tuned && followup
     val input = remember(variant, enabled, tuned) { TouchInput() }
+    val pickupCallback by rememberUpdatedState(onPickupChanged)
     fun currentTarget(x: Float, y: Float) = shortcutTouchTarget(variant, x, y, tuned)
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = when (variant) {
@@ -134,30 +144,58 @@ internal fun rememberShortcutTouchMotion(
         input.pressed && frozenPose == null -> lift.value.coerceAtLeast(.35f)
         else -> lift.value.coerceIn(0f, 1f)
     }
+    // Direct manipulation tracks immediately; only release uses the selected rebound.
+    val dragSpec = if (input.dragging || !animate) snap<Float>() else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
+    val dragX = animateFloatAsState(if (input.dragging) input.dragX else 0f, dragSpec, label = "shortcut_drag_x")
+    val dragY = animateFloatAsState(if (input.dragging) input.dragY else 0f, dragSpec, label = "shortcut_drag_y")
     val modifier = Modifier.pointerInput(input, enabled) {
         if (!enabled) return@pointerInput
         try {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                if (down.isConsumed) return@awaitEachGesture
                 input.pressed = true
+                pickupCallback(true)
                 fun update(position: Offset) {
-                    input.x = ((position.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
-                    input.y = ((position.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    // The gesture anchor stays in the original slot, but the optical contact
+                    // belongs to the translated plane, not that stationary slot.
+                    val local = position - Offset(if (input.dragging) input.dragX else dragX.value,
+                        if (input.dragging) input.dragY else dragY.value)
+                    input.x = ((local.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    input.y = ((local.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
                 }
                 update(down.position)
                 try {
+                    val maxDragX = 24.dp.toPx()
+                    val maxDragY = 18.dp.toPx()
+                    // Initial pass wins before verticalScroll's Main-pass slop detector.
+                    // A normal tap stays unconsumed; the first slop-crossing move cancels click.
                     while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (event.changes.count { it.pressed } > 1) break
-                        if (change.previousPressed && change.pressed && change.isConsumed) break
-                        if (change.position.x !in 0f..size.width.toFloat() || change.position.y !in 0f..size.height.toFloat()) break
-                        if (!change.pressed) break
+                        if (event.changes.count { it.pressed } > 1) {
+                            event.changes.forEach { it.consume() }
+                            break
+                        }
+                        if (!change.pressed) {
+                            if (input.dragging) change.consume()
+                            break
+                        }
+                        if (change.isConsumed) break
+                        val delta = change.position - down.position
+                        if (!input.dragging && delta.getDistance() > viewConfiguration.touchSlop) input.dragging = true
+                        if (input.dragging) {
+                            // This pointer node is outside the visual graphicsLayer: stable anchor,
+                            // no feedback from the moved card, no exit when the finger leaves it.
+                            input.dragX = delta.x.coerceIn(-maxDragX, maxDragX)
+                            input.dragY = delta.y.coerceIn(-maxDragY, maxDragY)
+                            change.consume()
+                        }
                         update(change.position)
                     }
-                } finally { input.reset() }
+                } finally { input.reset(); pickupCallback(false) }
             }
-        } finally { input.reset() }
+        } finally { input.reset(); pickupCallback(false) }
     }.graphicsLayer {
         val immediate = animate && input.pressed && frozenPose == null
         val targetScale = currentTarget(0f, 0f).scale
@@ -169,19 +207,30 @@ internal fun rememberShortcutTouchMotion(
             else -> scale.value
         }
         scaleX = visibleScale; scaleY = visibleScale
-        translationX = (if (animate) dx.value else 0f).dp.toPx()
-        translationY = (when { !animate -> 0f; immediate -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx()
-        rotationX = if (animate) rx.value else 0f
-        rotationY = if (animate) ry.value else 0f
+        translationX = (if (animate) dx.value else 0f).dp.toPx() + if (input.dragging) input.dragX else dragX.value
+        translationY = (when { !animate -> 0f; immediate -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx() + if (input.dragging) input.dragY else dragY.value
+        rotationX = if (animate && !splitShadow) rx.value else 0f
+        rotationY = if (animate && !splitShadow) ry.value else 0f
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
+        // Keep the ground shadow flat. Native round-rect outlines otherwise use
+        // tilted vertex Z as extra caster height, producing very long penumbrae.
         shadowElevation = (visibleLift() * if (tuned && variant == ShortcutTouchVariant.FingerTilt) 12f * (118f / 190f) else maximumLift).dp.toPx()
-        shape = if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
+        shape = if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
+        clip = false
+    }.graphicsLayer {
+        rotationX = if (animate && splitShadow) rx.value else 0f
+        rotationY = if (animate && splitShadow) ry.value else 0f
+        cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         clip = false
     }
     return ShortcutTouchMotion(modifier) {
         // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
         // Feed the actual finger position so every press location produces a consistent lens.
         // Keep that point through release while lift animates down; reset() only clears pressed.
+        // The backdrop draw observes the actual plane pose too, including when the finger
+        // is beyond +/-1 and touch uniforms stop changing. This invalidates world anchoring.
+        scale.value; dx.value; dy.value; rx.value; ry.value
+        input.dragX; input.dragY; dragX.value; dragY.value
         ShortcutRefraction(visibleLift(), if (animate) input.x else 0f, if (animate) input.y else 0f,
             // Contact starts clear: unlike the bevel kick, frost follows actual separation.
             frostLift = if (animate) lift.value.coerceIn(0f, 1f) else 0f)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -111,6 +112,11 @@ fun DashboardScreen(
     val addShortcutSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var draggedId by remember { mutableStateOf<String?>(null) }
+    var pickedUpShortcutId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(pickedUpShortcutId) {
+        // Also stop a fling already in progress; consuming future moves alone cannot do that.
+        if (pickedUpShortcutId != null) scrollState.stopScroll()
+    }
     var dragOffsetState by remember { mutableStateOf(Offset.Zero) }
     var initialSlotIndex by remember { mutableIntStateOf(-1) }
     var hoverSlotIndex by remember { mutableIntStateOf(-1) }
@@ -221,7 +227,7 @@ fun DashboardScreen(
                     .background(topBgBrush)
                     .statusBarsPadding()
                     .bounceOverscroll()
-                    .verticalScroll(state = scrollState, enabled = draggedId == null)
+                    .verticalScroll(state = scrollState, enabled = draggedId == null && pickedUpShortcutId == null)
                     .padding(horizontal = 20.dp)
                     .padding(top = 16.dp, bottom = 110.dp)
             ) {
@@ -414,7 +420,7 @@ fun DashboardScreen(
                                     .offset {
                                         IntOffset(currentPosX.roundToInt(), currentPosY.roundToInt())
                                     }
-                                    .zIndex(if (isBeingDragged) 100f else 1f)
+                                    .zIndex(if (isBeingDragged) 100f else if (pickedUpShortcutId == item.id) 50f else 1f)
                                     .graphicsLayer {
                                         val scale = if (isBeingDragged) 1.06f else 1f
                                         scaleX = scale
@@ -495,6 +501,10 @@ fun DashboardScreen(
                                 icon = item.icon,
                                 isEditing = isEditingShortcuts,
                                 lens = glassScene,
+                                onPickupChanged = { picked ->
+                                    if (picked) pickedUpShortcutId = item.id
+                                    else if (pickedUpShortcutId == item.id) pickedUpShortcutId = null
+                                },
                                 onDelete = {
                                     if (draggedId == null) { // Prevent delete during drag
                                         onUpdateVisibleShortcuts(visibleShortcuts - item.id)

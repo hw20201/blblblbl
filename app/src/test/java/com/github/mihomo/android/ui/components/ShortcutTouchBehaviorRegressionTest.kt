@@ -3,13 +3,19 @@ package com.github.mihomo.android.ui.components
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
@@ -84,6 +90,8 @@ class ShortcutTouchBehaviorRegressionTest {
             card.performTouchInput { down(Offset(2f, 2f)) }
             compose.mainClock.advanceTimeBy(120)
             compose.waitForIdle()
+            // Deliberately assert layout/hit-test bounds only: the revised contract permits a
+            // bounded graphicsLayer visual translation while the semantic/layout rectangle stays put.
             assertEquals("$variant semantic hit bounds stable", rest, card.fetchSemanticsNode().boundsInRoot)
             compose.runOnIdle { assertEquals("down is not activation", 0, clicks) }
             card.performTouchInput { up() }
@@ -119,6 +127,137 @@ class ShortcutTouchBehaviorRegressionTest {
         }
         target.performTouchInput { up() }
         compose.waitForIdle()
+    }
+
+    @Test fun heldDragCancelsCardClickAndOrdinaryTapStillActivates() {
+        var clicks = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalShortcutTouchVariant provides ShortcutTouchVariant.GentleFloat) {
+                LoonShortcutCard(
+                    modifier = Modifier.size(width = 174.dp, height = 118.dp), title = "Drag",
+                    subtitle = "", icon = {}, onClick = { clicks++ }
+                )
+            }
+        }
+        val card = compose.onNodeWithTag("shortcut-card-Drag")
+        card.performTouchInput { down(center); moveTo(center + Offset(70f, 40f), delayMillis = 80); up() }
+        compose.runOnIdle { assertEquals("drag must not activate card navigation", 0, clicks) }
+        card.performTouchInput { click(center) }
+        compose.runOnIdle { assertEquals("ordinary tap remains active", 1, clicks) }
+    }
+
+    @Test fun cardDragCapturesAcrossOriginalBoundsWithoutScrollingOrActivatingAndReturnsToRest() {
+        var clicks = 0
+        var neighborClicks = 0
+        lateinit var scrollState: androidx.compose.foundation.ScrollState
+        var cardCoordinates: LayoutCoordinates? = null
+        compose.setContent {
+            scrollState = rememberScrollState()
+            CompositionLocalProvider(LocalShortcutTouchVariant provides ShortcutTouchVariant.GentleFloat) {
+                Box(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().verticalScroll(scrollState)) {
+                        Box(Modifier.size(300.dp, 160.dp))
+                        LoonShortcutCard(
+                            modifier = Modifier.size(width = 174.dp, height = 118.dp),
+                            title = "DragCapture", subtitle = "", icon = {
+                                Box(Modifier.size(1.dp).onGloballyPositioned { cardCoordinates = it })
+                            }, onClick = { clicks++ }
+                        )
+                        LoonShortcutCard(
+                            modifier = Modifier.size(width = 174.dp, height = 118.dp),
+                            title = "Neighbor", subtitle = "", icon = {}, onClick = { neighborClicks++ }
+                        )
+                        Box(Modifier.size(300.dp, 900.dp))
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val card = compose.onNodeWithTag("shortcut-card-DragCapture")
+        fun visualCenter(): Offset {
+            val coords = requireNotNull(cardCoordinates)
+            return coords.localToRoot(Offset(coords.size.width / 2f, coords.size.height / 2f))
+        }
+        val restVisualCenter = visualCenter()
+        val restSemanticsBounds = card.fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(5f, 28f), delayMillis = 60)
+            moveTo(center + Offset(72f, 132f), delayMillis = 80) // across the original card edge and into another quadrant
+        }
+        compose.mainClock.advanceTimeBy(120)
+        compose.waitForIdle()
+        val draggedVisualCenter = visualCenter()
+        compose.runOnIdle {
+            assertEquals("card-owned drag leaves parent vertical ScrollState unchanged", 0, scrollState.value)
+            assertTrue("graphicsLayer translation is observable through localToRoot", (draggedVisualCenter - restVisualCenter).getDistance() > 20f)
+            assertTrue("drag translation remains bounded by the implementation's 24dp/18dp caps", kotlin.math.abs(draggedVisualCenter.x - restVisualCenter.x) <= 25f && kotlin.math.abs(draggedVisualCenter.y - restVisualCenter.y) <= 19f)
+            assertEquals("gesture does not change layout semantics bounds", restSemanticsBounds, card.fetchSemanticsNode().boundsInRoot)
+            assertEquals("drag does not activate original card", 0, clicks)
+            assertEquals("drag does not activate adjacent card", 0, neighborClicks)
+        }
+        card.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("released card springs back to visual rest", (visualCenter() - restVisualCenter).getDistance() < 1f)
+            assertEquals(0, clicks)
+            assertEquals(0, neighborClicks)
+        }
+        compose.mainClock.autoAdvance = true
+        card.performTouchInput { click(center) }
+        compose.runOnIdle { assertEquals("next ordinary tap still activates", 1, clicks) }
+    }
+
+    @Test fun blankAreaOfSameVerticalScrollParentStillScrolls() {
+        lateinit var scrollState: androidx.compose.foundation.ScrollState
+        compose.setContent {
+            val state = rememberScrollState()
+            scrollState = state
+            Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().verticalScroll(state)) {
+                    Box(Modifier.size(300.dp, 160.dp))
+                    LoonShortcutCard(Modifier.size(width = 174.dp, height = 118.dp), "ScrollCard", "", {}, onClick = {})
+                    Box(Modifier.size(300.dp, 1000.dp).testTag("scroll-blank"))
+                }
+            }
+        }
+        compose.onNodeWithTag("scroll-blank").performTouchInput {
+            // Start in the visible blank area near the viewport's lower edge, then move upward
+            // in stages so the gesture crosses slop while remaining within the hit target.
+            down(Offset(100f, 450f))
+            moveTo(Offset(100f, 400f), delayMillis = 80)
+            moveTo(Offset(100f, 350f), delayMillis = 80)
+            moveTo(Offset(100f, 300f), delayMillis = 80)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue("blank-origin gesture remains available to parent scrolling", scrollState.value > 0) }
+    }
+
+    @Test fun addingSecondPointerCancelsCardDragAndLeavesNextTapUsable() {
+        var clicks = 0
+        compose.setContent {
+            CompositionLocalProvider(LocalShortcutTouchVariant provides ShortcutTouchVariant.FingerTilt) {
+                LoonShortcutCard(
+                    modifier = Modifier.size(width = 174.dp, height = 118.dp),
+                    title = "MultiPointer", subtitle = "", icon = {}, onClick = { clicks++ }
+                )
+            }
+        }
+        val card = compose.onNodeWithTag("shortcut-card-MultiPointer")
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(0f, 32f), delayMillis = 60)
+            down(pointerId = 1, position = center + Offset(18f, 0f))
+            up(pointerId = 1)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("multi-pointer cancellation must not click", 0, clicks) }
+        card.performTouchInput { click(center) }
+        compose.runOnIdle { assertEquals("gesture state is cleaned up for subsequent tap", 1, clicks) }
     }
 
     @Test fun editModeRetainsDeleteAndDisablesCardActivation() {

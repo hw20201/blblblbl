@@ -384,6 +384,7 @@ fun LoonShortcutCard(
     lens: NavigationLensState? = null,
     /** Disable only the Gaussian filter for same-material visual comparisons. */
     blurEnabled: Boolean = LocalShortcutBlurEnabled.current,
+    onPickupChanged: (Boolean) -> Unit = {},
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
@@ -393,7 +394,8 @@ fun LoonShortcutCard(
     val touchMotion = rememberShortcutTouchMotion(
         touchVariant ?: ShortcutTouchVariant.GentleFloat,
         enabled = touchVariant != null && !isEditing,
-        frozenPose = previewPose
+        frozenPose = previewPose,
+        onPickupChanged = onPickupChanged
     )
     val basePressModifier = modifier
         .height(118.dp)
