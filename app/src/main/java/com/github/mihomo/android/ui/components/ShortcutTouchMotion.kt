@@ -22,10 +22,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.glass.ShortcutRefraction
+import com.github.mihomo.android.ui.glass.SHORTCUT_CONTACT_REBOUND
 import com.github.mihomo.android.ui.glass.LocalShortcutTunedMaterialEnabled
 import com.github.mihomo.android.ui.glass.ShortcutTunedCardShape
 import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
 import com.github.mihomo.android.ui.glass.LocalShortcutOpticalFollowupEnabled
+import com.github.mihomo.android.ui.glass.LocalShortcutContactFollowEnabled
+import com.github.mihomo.android.ui.glass.SHORTCUT_CONTACT_REST_SOFTNESS
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -113,9 +116,18 @@ internal fun rememberShortcutTouchMotion(
     val tuned = LocalShortcutTunedMaterialEnabled.current
     val followup = LocalShortcutOpticalFollowupEnabled.current
     val splitShadow = tuned && followup
+    val contactFollow = tuned && followup && LocalShortcutContactFollowEnabled.current && enabled && frozenPose == null
     val input = remember(variant, enabled, tuned) { TouchInput() }
     val pickupCallback by rememberUpdatedState(onPickupChanged)
-    fun currentTarget(x: Float, y: Float) = shortcutTouchTarget(variant, x, y, tuned)
+    fun currentTarget(x: Float, y: Float): ShortcutTouchPose {
+        val legacy = shortcutTouchTarget(variant, x, y, tuned)
+        if (!contactFollow) return legacy
+        return legacy.copy(scale = when (variant) {
+            ShortcutTouchVariant.GentleFloat -> .997f
+            ShortcutTouchVariant.FingerTilt -> .998f
+            ShortcutTouchVariant.BuoyantSpring -> .996f
+        })
+    }
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 0.88f
@@ -142,6 +154,16 @@ internal fun rememberShortcutTouchMotion(
         else -> 0f
     }
     val lift = animateFloatAsState(liftTarget, spec, label = "shortcut_lift")
+    val contactTarget = if (contactFollow && input.pressed) 1f else 0f
+    val contactSpec = when {
+        !animate -> snap<Float>()
+        contactTarget > 0f -> tween<Float>(85)
+        else -> spring(dampingRatio = SHORTCUT_CONTACT_REBOUND, stiffness = Spring.StiffnessMedium)
+    }
+    val animatedContact = animateFloatAsState(contactTarget, contactSpec, label = "shortcut_contact")
+    fun contactValue(): Float = if (!contactFollow) 0f else if (!animate) contactTarget
+        else if (input.pressed) animatedContact.value.coerceAtLeast(.35f)
+        else animatedContact.value.coerceIn(0f, 1f)
     val maximumLift = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 1.5f
         ShortcutTouchVariant.FingerTilt -> if (tuned) 1.5f else 4f
@@ -187,6 +209,7 @@ internal fun rememberShortcutTouchMotion(
                             break
                         }
                         if (!change.pressed) {
+                            update(change.position)
                             if (horizontallyLocked) change.consume()
                             break
                         }
@@ -205,6 +228,7 @@ internal fun rememberShortcutTouchMotion(
                             // Let the parent's Main-pass scroll detector process this move first.
                             // Then cancel any still-waiting clickable at Final: without a scroll
                             // parent (or at a boundary), a vertical drag must not become a tap.
+                            update(change.position)
                             input.pressed = false
                             awaitPointerEvent(PointerEventPass.Final).changes
                                 .firstOrNull { it.id == down.id }?.consume()
@@ -246,7 +270,8 @@ internal fun rememberShortcutTouchMotion(
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         // Keep the ground shadow flat. Native round-rect outlines otherwise use
         // tilted vertex Z as extra caster height, producing very long penumbrae.
-        shadowElevation = ((if (animate) 0.45f else 0f) + visibleLift() * 1.1f).dp.toPx()
+        shadowElevation = if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
+            else ((if (animate) 0.45f else 0f) + visibleLift() * 1.1f).dp.toPx()
         shape = if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
         clip = false
     }.graphicsLayer {
@@ -263,8 +288,11 @@ internal fun rememberShortcutTouchMotion(
         // is beyond +/-1 and touch uniforms stop changing. This invalidates world anchoring.
         scale.value; dx.value; dy.value; rx.value; ry.value
         input.dragX; input.dragY; dragX.value; dragY.value
-        ShortcutRefraction(visibleLift(), if (animate) input.x else 0f, if (animate) input.y else 0f,
+        ShortcutRefraction(visibleLift(),
+            if (animate || contactFollow) input.x else 0f, if (animate || contactFollow) input.y else 0f,
             // Contact starts clear: unlike the bevel kick, frost follows actual separation.
-            frostLift = if (animate) lift.value.coerceIn(0f, 1f) else 0f)
+            frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
+            contact = if (contactFollow) contactValue() else 0f,
+            contactFollow = contactFollow)
     }
 }

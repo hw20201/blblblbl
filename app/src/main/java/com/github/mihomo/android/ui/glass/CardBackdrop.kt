@@ -41,7 +41,7 @@ internal val LocalShortcutBlurEnabled = staticCompositionLocalOf { true }
 /** Map the untransformed scene into this plane, including inverse scale/perspective, not
  * merely a top-left translation. No capture/readback and no change to navigation's recorder.
  */
-private fun DrawScope.replayCardScene(lens: NavigationLensState, coordinates: LayoutCoordinates?, origin: Offset, anchored: Boolean) {
+internal fun DrawScope.replayCardScene(lens: NavigationLensState, coordinates: LayoutCoordinates?, origin: Offset, anchored: Boolean) {
     val plane = coordinates?.takeIf { anchored && it.isAttached }
     val hasScene = lens.scene.size.width > 0 && lens.scene.size.height > 0
     if (plane != null && hasScene) {
@@ -142,7 +142,7 @@ internal fun BoxScope.CardBackdrop(
                 if (softMeshRim) {
                     // The outer GlassSurface clips the rounded result AFTER filtering,
                     // not its sampling neighbourhood. Input has a finite explicit extent.
-                    clipRect { replayCardScene(lens, coordinates, origin, padded) }
+                    clipRect { replayCardScene(lens, coordinates, origin, anchored = followup) }
                 } else {
                     replayCardScene(lens, coordinates, origin, false)
                 }
@@ -150,4 +150,9 @@ internal fun BoxScope.CardBackdrop(
                 drawRect(fallback)
             }
         })
+    val contactFallback = followup && softMeshRim && contactFrost
+    val needsClarityFallback = refractive == null && Build.VERSION.SDK_INT >= 31
+    if (contactFallback && blurEnabled && needsClarityFallback) {
+        ShortcutContactFallback(lens, shortcutRefraction)
+    }
 }

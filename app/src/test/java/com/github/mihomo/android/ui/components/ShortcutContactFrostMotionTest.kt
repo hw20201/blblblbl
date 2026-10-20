@@ -4,6 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
+import com.github.mihomo.android.ui.glass.LocalShortcutContactFollowEnabled
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -30,10 +32,13 @@ class ShortcutContactFrostMotionTest {
         val style = mutableStateOf(ShortcutTouchVariant.GentleFloat)
         var readOptics: () -> ShortcutRefraction = { ShortcutRefraction() }
         var clicks = 0
+        // Explicit historical opt-out: the new default is local contact clarity, tested separately.
         compose.setContent {
+            CompositionLocalProvider(LocalShortcutContactFollowEnabled provides false) {
             val motion = rememberShortcutTouchMotion(style.value, enabled = true)
             SideEffect { readOptics = motion.refraction }
             Box(Modifier.clickable { clicks++ }.then(motion.modifier).size(120.dp).testTag("frost-motion"))
+            }
         }
         val node = compose.onNodeWithTag("frost-motion")
         ShortcutTouchVariant.entries.forEach { variant ->

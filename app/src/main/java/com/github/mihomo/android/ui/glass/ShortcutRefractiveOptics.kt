@@ -60,6 +60,8 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     uniform float lift;
     uniform float motionLift;
     uniform float2 touch;
+    uniform float contact;
+    uniform float contactMode;
     float2 bounded(float2 p) { return clamp(p, float2(0.5), inputViewport - float2(0.5)); }
     half4 sampleBlur(float2 p, float sigma) {
         if (sigma < 0.01) return backdrop.eval(bounded(p));
@@ -93,16 +95,20 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     half4 main(float2 p) {
         float2 dp = (p - inputOrigin) / density;
         float depth = max(-sdf(dp), 0.0);
-        float thick = max(thickness * (1.0 + motionLift * 0.55), 0.001);
+        float contactRadius = clamp(min(viewport.x, viewport.y) / density * 0.42, 12.0, 64.0);
+        float2 contactPoint = (touch * 0.5 + 0.5) * viewport / density;
+        float2 contactDelta = dp - contactPoint;
+        float contactMask = contactMode * contact * (1.0 - smoothstep(0.35, 1.0, length(contactDelta) / contactRadius));
+        float thick = max(thickness * (1.0 + motionLift * 0.55 * (1.0 - contactMode)) * (1.0 - contactMask * 0.18), 0.001);
         float rim = 1.0 - smoothstep(0.0, max(edgeWidth, 0.01), depth);
         float fade = clamp(lift, 0.0, 1.0);
         fade = fade * fade * (3.0 - 2.0 * fade);
-        float sigma = blurRadius * density * fade * (1.0 - clamp(edgeClarity, 0.0, 1.0) * rim);
+        float sigma = blurRadius * density * fade * (1.0 - clamp(edgeClarity, 0.0, 1.0) * rim) * (1.0 - contactMask);
         float ratio = clamp(1.0 - depth / thick, 0.0, 1.0);
         float thetaI = asin(clamp(ratio * ratio, 0.0, 1.0));
         float thetaT = asin(clamp(sin(thetaI) / max(ior, 1.001), 0.0, 1.0));
         float edgeFactor = depth < thick ? -tan(thetaT - thetaI) : 0.0;
-        float dispDp = min(edgeFactor * distortion * 80.0 * 0.62105263 * (1.0 + motionLift * 0.45), 14.5 * 0.62105263);
+        float dispDp = min(edgeFactor * distortion * 80.0 * 0.62105263 * (1.0 + motionLift * 0.45 * (1.0 - contactMode)), 14.5 * 0.62105263);
         float rimLimit = min(edgeWidth * 0.6, 18.0 * 0.62105263);
         float rimRaw = edgeStrength * distortion * 80.0 * 0.62105263 * (1.0 - 1.0 / max(ior, 1.001)) * 2.0;
         dispDp += rimLimit * (1.0 - exp(-rimRaw / max(rimLimit, 0.001))) * rim;
@@ -114,7 +120,10 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         float3 transmitted = refract(float3(0.0, 0.0, -1.0), surface, 1.0 / max(ior, 1.001));
         float2 tiltOffset = transmitted.xy / max(-transmitted.z, 0.15) * (thick + distortion * 80.0 * 0.62105263) * density;
         float2 off = -normal * dispDp * density;
-        float2 uv = p + tiltOffset * bend;
+        // Outward source gathering describes a shallow concave dent, not a raised lens.
+        // The footprint is compact and never paints an invented glow or texture.
+        float2 dentOffset = contactDelta / contactRadius * contactMask * 1.4 * density;
+        float2 uv = p + (tiltOffset * mix(1.0, 0.12, contactMode) + dentOffset) * bend;
         off *= bend;
         float chroma = clamp(dispersion * 0.02, 0.0, 0.35);
         half4 base = sampleBlur(uv + off * (1.0 - 0.2 * chroma), sigma);
@@ -128,14 +137,14 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
             base.rgb = clamp(base.rgb + relief * half(2.5 * rim), 0.0, base.a);
         }
         half lum = dot(base.rgb, half3(0.2126, 0.7152, 0.0722));
-        base.rgb = mix(half3(lum), base.rgb, saturation);
-        base.rgb = mix(base.rgb, half3(base.a), tint);
+        base.rgb = mix(half3(lum), base.rgb, mix(saturation, 1.0, contactMask * 0.75));
+        base.rgb = mix(base.rgb, half3(base.a), tint * (1.0 - contactMask * 0.75));
         float fres = pow(1.0 - clamp(depth / thick, 0.0, 1.0), 3.0) * fresnel;
-        base.rgb = mix(base.rgb, half3(base.a), fres * 0.42);
+        base.rgb = mix(base.rgb, half3(base.a), fres * 0.42 * (1.0 - contactMask * 0.5));
         // Microscopic roughness uses physical pixels, not one coarse visible tile per dp.
         // At contact it vanishes; on lift the new 0.010 setting replaces old 0.052.
         float noise = fract(sin(dot(floor(p) + dark * float2(17.0, 31.0), float2(127.1, 311.7))) * 43758.5453) - 0.5;
-        base.rgb = clamp(base.rgb + half(noise * grain * fade) * base.a, 0.0, base.a);
+        base.rgb = clamp(base.rgb + half(noise * grain * fade * (1.0 - contactMask)) * base.a, 0.0, base.a);
         return base;
     }
 """
@@ -157,7 +166,7 @@ internal class ShortcutRefractiveOptics {
         val margin = marginPx.takeIf { it.isFinite() }?.coerceIn(0f, 64f * d) ?: 0f
         fun bounded(v: Float, min: Float = 0f) = if (v.isFinite()) v.coerceIn(min, 1f) else 0f
         val r = refraction.copy(lift = bounded(refraction.lift), x = bounded(refraction.x, -1f),
-            y = bounded(refraction.y, -1f), frostLift = bounded(refraction.frostLift))
+            y = bounded(refraction.y, -1f), frostLift = bounded(refraction.frostLift), contact = bounded(refraction.contact))
         val next = Cache(w, h, d, margin, dark, bend, r)
         if (next == cache) return effect
         val params = ShortcutFollowupParameters.resolve(w / d, h / d, d)
@@ -184,6 +193,8 @@ internal class ShortcutRefractiveOptics {
         shader.setFloatUniform("lift", r.frostLift)
         shader.setFloatUniform("motionLift", r.lift)
         shader.setFloatUniform("touch", r.x, r.y)
+        shader.setFloatUniform("contact", r.contact)
+        shader.setFloatUniform("contactMode", if (r.contactFollow) 1f else 0f)
         effect = RenderEffect.createRuntimeShaderEffect(shader, "backdrop").asComposeRenderEffect()
         cache = next
         return effect

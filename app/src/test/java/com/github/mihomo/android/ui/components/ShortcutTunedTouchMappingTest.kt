@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.glass.LocalShortcutTunedMaterialEnabled
 import com.github.mihomo.android.ui.glass.ShortcutRefraction
+import com.github.mihomo.android.ui.glass.SHORTCUT_CONTACT_REST_SOFTNESS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -107,7 +108,8 @@ class ShortcutTunedTouchMappingTest {
             compose.runOnIdle {
                 assertEquals("release retains last x", expected.first, readOptics().x, .03f)
                 assertEquals("release retains last y", expected.second, readOptics().y, .03f)
-                assertEquals("release restores clear contact", 0f, readOptics().frostLift, .01f)
+                assertEquals("release restores subtle resting softness", SHORTCUT_CONTACT_REST_SOFTNESS, readOptics().frostLift, .01f)
+                assertEquals("release removes local contact", 0f, readOptics().contact, .01f)
                 assertEquals("release restores neutral optics", 0f, readOptics().lift, .01f)
             }
             compose.mainClock.autoAdvance = true
