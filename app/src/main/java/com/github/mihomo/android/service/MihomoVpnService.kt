@@ -11,6 +11,7 @@ import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.toBitmap
@@ -20,12 +21,15 @@ import com.github.mihomo.android.core.ClashCore
 import com.github.mihomo.android.data.ConfigManager
 import com.github.mihomo.android.data.PerAppProxyMode
 import com.github.mihomo.android.data.SettingsManager
+import com.github.mihomo.android.data.TunStack
+import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -57,6 +61,7 @@ class MihomoVpnService : VpnService() {
         private const val TAG = "MihomoVpnService"
         const val ACTION_START = "com.github.mihomo.android.service.START"
         const val ACTION_STOP = "com.github.mihomo.android.service.STOP"
+        const val ACTION_RESTART = "com.github.mihomo.android.service.RESTART"
         private const val NOTIFICATION_CHANNEL_ID = "mihomo_vpn_service"
         private const val NOTIFICATION_ID = 1001
 
@@ -85,13 +90,28 @@ class MihomoVpnService : VpnService() {
             runCatching { context.startService(intent) }
                 .onFailure { Log.w(TAG, "Failed to deliver stop command to VPN service", it) }
         }
+
+        /** Rebuilds the TUN with the current settings without leaving the service foreground gap. */
+        fun restart(context: Context) {
+            val intent = Intent(context, MihomoVpnService::class.java).apply {
+                action = ACTION_RESTART
+            }
+            runCatching { context.startService(intent) }
+                .onFailure { Log.w(TAG, "Failed to deliver restart command to VPN service", it) }
+        }
     }
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Serialize service control (including restart continuations) on Android's main thread.
+    // Blocking native/configuration work stays on Dispatchers.Default below.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val lifecycleMutex = Mutex()
     private var trafficMonitorJob: Job? = null
     private var startJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
+
+    /** A queued restart must not resurrect a tunnel after the user asked to stop. */
+    @Volatile
+    private var stopRequested = false
     // Preserve the existing notification N artwork independently of the launcher icon.
     private val notificationLargeIcon by lazy {
         requireNotNull(getDrawable(R.drawable.ic_notification_brand)).toBitmap(
@@ -107,34 +127,52 @@ class MihomoVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startVpn()
+            ACTION_START -> {
+                stopRequested = false
+                startVpn()
+            }
             ACTION_STOP -> stopVpn()
+            ACTION_RESTART -> restartVpn()
         }
         return START_NOT_STICKY
     }
 
     private fun startVpn() {
         val status = _vpnState.value.status
-        if (startJob?.isActive == true || status != VpnState.Status.STOPPED) {
+        if (stopRequested || startJob?.isActive == true || status != VpnState.Status.STOPPED) {
             return
         }
 
         _vpnState.value = _vpnState.value.copy(status = VpnState.Status.STARTING, error = null)
         startForegroundServiceNotification("启动 Nexus 核心")
 
-        startJob = serviceScope.launch {
+        startJob = serviceScope.launch(Dispatchers.Default) {
             lifecycleMutex.withLock {
             try {
+                currentCoroutineContext().ensureActive()
                 // 1. Initialize native core
                 ClashCore.init(this@MihomoVpnService)
                 val coreVer = ClashCore.getCoreVersion()
 
                 // 2. Select and prepare configuration
                 val settings = SettingsManager(this@MihomoVpnService)
+                val ipv6 = settings.ipv6Enabled
+                val nativeTunOptions = ClashCore.supportsTunOptions()
+                val mtu = if (nativeTunOptions) settings.tunMtu else TunTuning.DEFAULT_MTU
+                val congestion = if (nativeTunOptions && settings.tunStack == TunStack.MIPS) {
+                    settings.mipsCongestionController
+                } else {
+                    ""
+                }
+                if (!nativeTunOptions) {
+                    Log.w(TAG, "Native bridge has no TUN options contract; MTU/pacing settings stay at defaults")
+                }
                 val profiles = ConfigManager.getProfiles(this@MihomoVpnService)
                 val activeProfile = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
 
-                val configFile = ConfigManager.prepareConfig(this@MihomoVpnService, activeProfile?.file)
+                val configFile = ConfigManager.prepareConfig(
+                    this@MihomoVpnService, activeProfile?.file, ipv6Enabled = ipv6
+                )
 
                 // 3. Load config into core
                 val loadRes = ClashCore.load(configFile)
@@ -175,20 +213,27 @@ class MihomoVpnService : VpnService() {
                     })
                 }
 
+                currentCoroutineContext().ensureActive()
                 // 4. Establish Android VpnService TUN
                 val builder = Builder().apply {
                     setSession("Nexus")
-                    setMtu(9000)
+                    setMtu(mtu)
                     addAddress("172.19.0.1", 30)
                     addRoute("0.0.0.0", 0)
                     addRoute("198.18.0.0", 16) // Explicit route for Fake-IP range!
                     addDnsServer("172.19.0.2")
 
-                    // Route IPv6 to prevent IPv6 traffic bypassing VPN on cellular / Wi-Fi
-                    runCatching {
+                    // IPv6 capture follows one switch so the routes and the core config cannot drift.
+                    if (ipv6) {
+                        // Fail the whole startup if any IPv6 operation fails: never report a
+                        // partially configured IPv4-only tunnel while the core has IPv6 enabled.
                         addAddress("fdfe:dcba:9876::1", 126)
                         addRoute("::", 0)
                         addDnsServer("fdfe:dcba:9876::2")
+                    } else {
+                        // Android blocks an unconfigured family by default. Explicitly allow it
+                        // outside the VPN to match the switch's documented bypass semantics.
+                        allowFamily(OsConstants.AF_INET6)
                     }
 
                     // Per-App routing
@@ -217,12 +262,16 @@ class MihomoVpnService : VpnService() {
                 // 5. Borrow the app-owned FD; the native listener owns a separate duplicate.
                 // Do not adopt/close a descriptor that may already have been reused by native code.
                 val selectedStack = settings.tunStack.key
+                val gateway = if (ipv6) "172.19.0.1/30,fdfe:dcba:9876::1/126" else "172.19.0.1/30"
+                val portal = if (ipv6) "172.19.0.2,fdfe:dcba:9876::2" else "172.19.0.2"
                 ClashCore.startTun(
                     fd = pfd.fd,
                     stack = selectedStack,
-                    gateway = "172.19.0.1/30,fdfe:dcba:9876::1/126",
-                    portal = "172.19.0.2,fdfe:dcba:9876::2",
-                    dns = "172.19.0.2,fdfe:dcba:9876::2",
+                    gateway = gateway,
+                    portal = portal,
+                    dns = portal,
+                    mtu = mtu,
+                    congestionController = congestion,
                     vpnService = this@MihomoVpnService
                 )
                 currentCoroutineContext().ensureActive()
@@ -235,8 +284,11 @@ class MihomoVpnService : VpnService() {
                 )
 
                 startTrafficMonitor()
-                Log.i(TAG, "Nexus VPN successfully started! Core: $coreVer")
-                com.github.mihomo.android.data.LogRepository.addLog("info", "Nexus VPN 已建立；TUN 栈: $selectedStack；核心版本: $coreVer")
+                Log.i(TAG, "Nexus VPN successfully started! Core: $coreVer, ipv6=$ipv6, mtu=$mtu, cc=$congestion")
+                com.github.mihomo.android.data.LogRepository.addLog(
+                    "info",
+                    "Nexus VPN 已建立；TUN 栈: $selectedStack；IPv6: $ipv6；MTU: $mtu；核心版本: $coreVer"
+                )
 
             } catch (e: kotlinx.coroutines.CancellationException) {
                 ClashCore.stopTun()
@@ -261,7 +313,7 @@ class MihomoVpnService : VpnService() {
 
     private fun startTrafficMonitor() {
         trafficMonitorJob?.cancel()
-        trafficMonitorJob = serviceScope.launch {
+        trafficMonitorJob = serviceScope.launch(Dispatchers.Default) {
             while (isActive && _vpnState.value.status == VpnState.Status.RUNNING) {
                 delay(1000)
                 val now = ClashCore.queryTrafficNow()
@@ -285,6 +337,7 @@ class MihomoVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        stopRequested = true
         if (_vpnState.value.status == VpnState.Status.STOPPED) {
             stopSelf()
             return
@@ -299,19 +352,46 @@ class MihomoVpnService : VpnService() {
         serviceScope.launch { closeTunnel() }
     }
 
-    private suspend fun closeTunnel() = lifecycleMutex.withLock {
+    /**
+     * Rebuilds the tunnel with the current settings. The start job holds the lifecycle lock, so it
+     * is cancelled and joined before waiting for that lock; otherwise this would deadlock.
+     */
+    private fun restartVpn() {
+        // A settings restart is not an explicit START request. Never revive a stopped tunnel.
+        if (stopRequested || _vpnState.value.status == VpnState.Status.STOPPED ||
+            _vpnState.value.status == VpnState.Status.STOPPING) return
+        serviceScope.launch {
+            startJob?.cancelAndJoin()
+            lifecycleMutex.withLock {
+                if (stopRequested) return@withLock
+                // A queued start may have been launched while this coroutine waited for the lock.
+                startJob?.cancel()
+                startJob = null
+                trafficMonitorJob?.cancel()
+                closeTunnelLocked()
+                startVpn()
+            }
+        }
+    }
+
+    private fun closeTunnelLocked() {
         try {
             ClashCore.stopTun()
             vpnInterface?.close()
-            vpnInterface = null
         } catch (e: Throwable) {
             Log.w(TAG, "Error closing VPN", e)
         } finally {
+            vpnInterface = null
             _vpnState.value = VpnState(status = VpnState.Status.STOPPED)
-            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-            stopSelf()
-            Log.i(TAG, "Nexus VPN stopped.")
         }
+    }
+
+    private suspend fun closeTunnel() = lifecycleMutex.withLock {
+        startJob?.cancel()
+        closeTunnelLocked()
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        stopSelf()
+        Log.i(TAG, "Nexus VPN stopped.")
     }
 
     private fun createNotificationChannel() {
@@ -375,6 +455,7 @@ class MihomoVpnService : VpnService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopRequested = true
         // The service can be destroyed without ACTION_STOP (process death, low memory), so the
         // native tunnel and the shared state are cleaned up here as well.
         trafficMonitorJob?.cancel()

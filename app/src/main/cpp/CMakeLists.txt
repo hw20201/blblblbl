@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(qjsguard C)
+add_library(qjsguard SHARED qjs_guard.c)
+set_property(TARGET qjsguard PROPERTY C_STANDARD 11)
+target_compile_options(qjsguard PRIVATE -Wall -Wextra -Werror -O2)
+target_link_options(qjsguard PRIVATE -Wl,-z,max-page-size=16384)
+target_link_libraries(qjsguard dl)

@@ -107,4 +107,19 @@ class ConfigScriptEngineTest {
             assertTrue(e is org.mozilla.javascript.EcmaError || e is org.mozilla.javascript.EvaluatorException)
         }
     }
+    @Test(timeout = 15_000)
+    fun `Rhino fallback cannot swallow the host deadline inside script try catch`() {
+        val start = System.nanoTime()
+        try {
+            ConfigScriptEngine.executeWithRhino(
+                "function main(c) { while(true) { try { while(true) {} } catch(e) {} } }",
+                "{}", "catch-loop.js", gson
+            )
+            fail("Expected host deadline")
+        } catch (e: Error) {
+            assertTrue(e.message.orEmpty().contains("超时"))
+            assertTrue(System.nanoTime() - start < 10_000_000_000L)
+        }
+    }
+
 }

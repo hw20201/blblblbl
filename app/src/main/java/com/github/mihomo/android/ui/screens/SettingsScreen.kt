@@ -2,23 +2,18 @@ package com.github.mihomo.android.ui.screens
 
 import android.content.Intent
 import android.os.Build
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.AltRoute
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,590 +21,533 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.core.ClashCore
-import com.github.mihomo.android.data.ScriptItem
-import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
-import com.github.mihomo.android.ui.components.bounceOverscroll
+import com.github.mihomo.android.data.TunTuning
+import com.github.mihomo.android.data.TunStack
+import com.github.mihomo.android.ui.components.ShortcutTouchVariant
+import com.github.mihomo.android.ui.components.*
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.github.mihomo.android.ui.components.rememberHapticAction
-import com.github.mihomo.android.ui.components.rememberHapticValueAction
-import com.github.mihomo.android.ui.components.hapticClickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     scrollState: ScrollState,
-    tunStack: String,
+    tunStack: TunStack,
     bootOnStartup: Boolean,
     allowLan: Boolean,
     fakeIpEnabled: Boolean,
-    hapticEnabled: Boolean,
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    onTunStackChanged: (String) -> Unit,
+    ipv6Enabled: Boolean = false,
+    tunMtu: Int = 9000,
+    mipsCongestionController: String = "cubic",
+    hapticEnabled: Boolean = true,
+    shortcutTouchVariant: ShortcutTouchVariant = ShortcutTouchVariant.GentleFloat,
+    onShortcutTouchVariantChanged: (ShortcutTouchVariant) -> Unit = {},
+    onIpv6EnabledChanged: (Boolean) -> Unit = {},
+    onTunMtuChanged: (Int) -> Unit = {},
+    onMipsCongestionControllerChanged: (String) -> Unit = {},
+    onHapticEnabledChanged: (Boolean) -> Unit = {},
+    onTunStackChanged: (TunStack) -> Unit,
     onBootOnStartupChanged: (Boolean) -> Unit,
     onAllowLanChanged: (Boolean) -> Unit,
-    onFakeIpEnabledChanged: (Boolean) -> Unit,
-    onHapticEnabledChanged: (Boolean) -> Unit,
-    onScriptsChanged: () -> Unit = {},
-    onNavigateToScripts: () -> Unit,
-    onNavigateToProfiles: () -> Unit,
-    onNavigateToAppRouting: () -> Unit,
+    onNavigateToConfigurationCenter: () -> Unit,
     onNavigateToLogs: () -> Unit,
-    onNavigateToAppearance: () -> Unit,
-    onNavigateToDns: () -> Unit
+    onNavigateToAppearance: () -> Unit = {},
+    onNavigateToDns: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
-    val appVersion = remember(context) { getInstalledAppVersion(context) }
+    var showShortcutTouchDialog by remember { mutableStateOf(false) }
+    var showMtuDialog by remember { mutableStateOf(false) }
+    var showCongestionDialog by remember { mutableStateOf(false) }
+    var mtuDraft by remember { mutableStateOf(tunMtu.toString()) }
 
     var showTunDialog by remember { mutableStateOf(false) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var currentLogLevel by remember { mutableStateOf(settingsManager.logLevel) }
 
-    var scripts by remember { mutableStateOf(emptyList<ScriptItem>()) }
     var coreVersion by remember { mutableStateOf("") }
 
-    // SharedPreferences + JSON decoding and the native version query are not composition work.
-    LaunchedEffect(Unit) {
-        scripts = withContext(Dispatchers.IO) { ScriptManager.getScripts(context) }
-        coreVersion = withContext(Dispatchers.IO) { ClashCore.getCoreVersion() }
-    }
+    val installedVersion = remember(context) { getInstalledAppVersion(context) }
 
-    fun refreshScripts() {
-        scripts = ScriptManager.getScripts(context)
-        onScriptsChanged()
+    LaunchedEffect(Unit) {
+        coreVersion = withContext(Dispatchers.IO) { ClashCore.getCoreVersion() }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LoonBg)
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .statusBarsPadding()
-            .padding(horizontal = 20.dp)
-            .padding(top = 16.dp)
+            .padding(top = 10.dp)
     ) {
-        // Top Title
-        Row(
+        // iOS Large Title Header
+        Text(
+            text = AppStrings.get("settings_title", lang),
+            color = LoonTextPrimary,
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.6).sp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = AppStrings.get("settings_title", lang),
-                color = LoonTextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
 
-        // Scrollable content area below Top Title
+        // Scrollable content area
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .bounceOverscroll()
                 .verticalScroll(scrollState)
-                .padding(bottom = 110.dp)
+                .padding(bottom = 120.dp)
         ) {
-            // Section 1: 基础网络与 TUN
-            LoonSectionHeader(title = AppStrings.get("settings_core_service", lang))
-        LoonGroupCard {
-            LoonSettingsItem(
-                icon = Icons.Default.VpnKey,
-                iconBg = Color(0xFF3B82F6),
-                title = AppStrings.get("settings_tun_stack", lang),
-                value = when (tunStack) {
-                    "system" -> com.github.mihomo.android.data.TunStack.SYSTEM.displayName
-                    "mixed" -> com.github.mihomo.android.data.TunStack.MIXED.displayName
-                    "gvisor" -> com.github.mihomo.android.data.TunStack.GVISOR.displayName
-                    "mips" -> com.github.mihomo.android.data.TunStack.MIPS.displayName
-                    else -> tunStack
-                },
-                showChevron = true,
-                onClick = { showTunDialog = true }
-            )
-            LoonDivider()
-            LoonSettingsSwitchItem(
-                icon = Icons.Default.PowerSettingsNew,
-                iconBg = Color(0xFF10B981),
-                title = AppStrings.get("settings_boot_startup", lang),
-                checked = bootOnStartup,
-                onCheckedChange = onBootOnStartupChanged
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.Security,
-                iconBg = Color(0xFFF59E0B),
-                title = AppStrings.get("settings_always_on_vpn", lang),
-                value = "",
-                showChevron = true,
-                onClick = {
-                    runCatching {
-                        val intent = Intent(Settings.ACTION_VPN_SETTINGS)
-                        context.startActivity(intent)
+            // Section 1: 网络与核心 (Network & Core)
+            CupertinoGroupedSection(
+                header = "网络与核心"
+            ) {
+                CupertinoCell(
+                    title = "TUN 堆栈",
+                    value = when (tunStack.key) {
+                        "mixed" -> "Mixed"
+                        "gvisor" -> "gVisor"
+                        "mips" -> "MIPS"
+                        "system" -> "System"
+                        else -> "Mixed"
+                    },
+                    icon = Icons.Default.VpnKey,
+                    iconBg = IosBlue,
+                    showChevron = true,
+                    onClick = { showTunDialog = true }
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "开机自启动",
+                    icon = Icons.Default.PowerSettingsNew,
+                    iconBg = Color(0xFF34C759),
+                    trailing = {
+                        CupertinoSwitch(
+                            checked = bootOnStartup,
+                            onCheckedChange = onBootOnStartupChanged
+                        )
+                    },
+                    onClick = { onBootOnStartupChanged(!bootOnStartup) }
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "局域网共享",
+                    icon = Icons.Default.WifiTethering,
+                    iconBg = Color(0xFF32ADE6),
+                    trailing = {
+                        CupertinoSwitch(
+                            checked = allowLan,
+                            onCheckedChange = onAllowLanChanged
+                        )
+                    },
+                    onClick = { onAllowLanChanged(!allowLan) }
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "系统 VPN",
+                    value = "始终开启",
+                    icon = Icons.Default.Security,
+                    iconBg = Color(0xFFFF9500),
+                    showChevron = true,
+                    onClick = {
+                        runCatching {
+                            val intent = Intent(Settings.ACTION_VPN_SETTINGS)
+                            context.startActivity(intent)
+                        }
                     }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Section 2: 分流与服务 (Routing & Services)
+            CupertinoGroupedSection(
+                header = "网络与 TUN"
+            ) {
+                CupertinoCell(title = "IPv6", subtitle = AppStrings.get("settings_ipv6_desc", lang), trailing = {
+                    CupertinoSwitch(checked = ipv6Enabled, onCheckedChange = { enabled ->
+                        onIpv6EnabledChanged(enabled)
+                    })
+                })
+                CupertinoDivider()
+                CupertinoCell(title = "TUN MTU", value = tunMtu.toString(), showChevron = true,
+                    onClick = { mtuDraft = tunMtu.toString(); showMtuDialog = true })
+                if (tunStack == TunStack.MIPS) {
+                    CupertinoDivider()
+                    CupertinoCell(title = "MIPS 拥塞控制", value = mipsCongestionController, showChevron = true,
+                        onClick = { showCongestionDialog = true })
                 }
-            )
-        }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+            CupertinoGroupedSection(
+                header = "分流与服务"
+            ) {
+                CupertinoCell(
+                    title = "配置中心",
+                    subtitle = "配置文件、订阅、脚本与路由资源",
+                    icon = Icons.Default.FolderZip,
+                    iconBg = Color(0xFFAF52DE),
+                    showChevron = true,
+                    onClick = onNavigateToConfigurationCenter
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "DNS 设置",
+                    value = if (fakeIpEnabled) "Fake-IP" else "Redir-Host",
+                    icon = Icons.Default.Public,
+                    iconBg = Color(0xFF30B0C7),
+                    showChevron = true,
+                    onClick = onNavigateToDns
+                )
 
-        Spacer(modifier = Modifier.height(18.dp))
+            }
 
-        // Section: 外观与个性化
-        LoonSectionHeader(title = AppStrings.get("settings_general", lang))
-        LoonGroupCard {
-            LoonSettingsItem(
-                icon = Icons.Default.Palette,
-                iconBg = Color(0xFF8B5CF6),
-                title = AppStrings.get("settings_appearance", lang),
-                value = when (themeMode) {
-                    ThemeMode.SYSTEM -> AppStrings.get("theme_system", lang)
-                    ThemeMode.LIGHT -> AppStrings.get("theme_light", lang)
-                    ThemeMode.DARK -> AppStrings.get("theme_dark", lang)
-                },
-                showChevron = true,
-                onClick = onNavigateToAppearance
-            )
-            LoonDivider()
-            LoonSettingsSwitchItem(
-                icon = Icons.Default.Vibration,
-                iconBg = Color(0xFF14B8A6),
-                title = AppStrings.get("settings_haptic", lang),
-                checked = hapticEnabled,
-                onCheckedChange = onHapticEnabledChanged
-            )
-        }
+            Spacer(modifier = Modifier.height(20.dp))
 
-        Spacer(modifier = Modifier.height(18.dp))
+            // Section 3: 个性化与调试 (Preferences & Debugging)
+            CupertinoGroupedSection(
+                header = "个性化与调试"
+            ) {
+                CupertinoCell(
+                    title = "外观与显示",
+                    value = when (themeMode) {
+                        ThemeMode.SYSTEM -> "跟随系统"
+                        ThemeMode.LIGHT -> "浅色"
+                        ThemeMode.DARK -> "深色"
+                    },
+                    icon = Icons.Default.Palette,
+                    iconBg = Color(0xFFFF2D55),
+                    showChevron = true,
+                    onClick = onNavigateToAppearance
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "快捷卡片触感",
+                    subtitle = "A 轻按浮起｜B 跟手倾斜｜C 浮力回弹",
+                    value = when (shortcutTouchVariant) {
+                        ShortcutTouchVariant.GentleFloat -> "A"
+                        ShortcutTouchVariant.FingerTilt -> "B"
+                        ShortcutTouchVariant.BuoyantSpring -> "C"
+                    },
+                    icon = Icons.Default.TouchApp,
+                    iconBg = Color(0xFF007AFF),
+                    showChevron = true,
+                    onClick = { showShortcutTouchDialog = true }
+                )
+                CupertinoDivider()
+                CupertinoCell(title = "触感反馈", subtitle = "立即应用于界面交互", trailing = {
+                    CupertinoSwitch(checked = hapticEnabled, onCheckedChange = { enabled ->
+                        onHapticEnabledChanged(enabled)
+                    })
+                })
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "核心日志",
+                    icon = Icons.Default.Terminal,
+                    iconBg = Color(0xFF8E8E93),
+                    showChevron = true,
+                    onClick = onNavigateToLogs
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "日志级别",
+                    value = currentLogLevel.uppercase(),
+                    icon = Icons.Default.Tune,
+                    iconBg = Color(0xFF5856D6),
+                    showChevron = true,
+                    onClick = { showLogLevelDialog = true }
+                )
+            }
 
-        // Section 2: 脚本
-        LoonSectionHeader(title = AppStrings.get("settings_scripts", lang))
-        LoonGroupCard {
-            LoonSettingsItem(
-                icon = Icons.Default.Code,
-                iconBg = Color(0xFF3B82F6),
-                title = AppStrings.get("settings_scripts", lang),
-                value = "${scripts.size}",
-                showChevron = true,
-                onClick = onNavigateToScripts
-            )
-        }
+            Spacer(modifier = Modifier.height(20.dp))
 
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section 3: 分流与规则
-        LoonSectionHeader(title = AppStrings.get("settings_routing_section", lang))
-        LoonGroupCard {
-            LoonSettingsItem(
-                icon = Icons.Default.Apps,
-                iconBg = Color(0xFF8B5CF6),
-                title = AppStrings.get("settings_app_routing", lang),
-                value = "",
-                showChevron = true,
-                onClick = onNavigateToAppRouting
-            )
-            LoonDivider()
-            LoonSettingsSwitchItem(
-                icon = Icons.Default.Share,
-                iconBg = Color(0xFFEC4899),
-                title = AppStrings.get("settings_lan_share", lang),
-                checked = allowLan,
-                onCheckedChange = onAllowLanChanged
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.FolderOpen,
-                iconBg = Color(0xFF3B82F6),
-                title = AppStrings.get("settings_profiles_subs", lang),
-                value = "",
-                showChevron = true,
-                onClick = onNavigateToProfiles
-            )
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section 4: DNS 设置
-        LoonSectionHeader(title = AppStrings.get("settings_dns_section", lang))
-        LoonGroupCard {
-            LoonSettingsSwitchItem(
-                icon = Icons.Default.Dns,
-                iconBg = Color(0xFF0284C7),
-                title = AppStrings.get("settings_fakeip", lang),
-                checked = fakeIpEnabled,
-                onCheckedChange = onFakeIpEnabledChanged
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.Public,
-                iconBg = Color(0xFF0D9488),
-                title = AppStrings.get("dns_screen_title", lang),
-                value = "上游服务器与记录",
-                showChevron = true,
-                onClick = onNavigateToDns
-            )
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section 5: 内核与日志
-        LoonSectionHeader(title = AppStrings.get("settings_core_section", lang))
-        LoonGroupCard {
-            LoonSettingsItem(
-                icon = Icons.Default.Terminal,
-                iconBg = Color(0xFF6366F1),
-                title = AppStrings.get("settings_realtime_log", lang),
-                value = AppStrings.get("settings_view_stream", lang),
-                showChevron = true,
-                onClick = onNavigateToLogs
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.Tune,
-                iconBg = Color(0xFF8B5CF6),
-                title = AppStrings.get("settings_log_level", lang),
-                value = currentLogLevel.uppercase(),
-                showChevron = true,
-                onClick = { showLogLevelDialog = true }
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.Info,
-                iconBg = Color(0xFF4B5563),
-                title = AppStrings.get("settings_core_version", lang),
-                value = coreVersion.ifBlank { "v1.18.x" },
-                showChevron = false
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.Memory,
-                iconBg = Color(0xFF6B7280),
-                title = AppStrings.get("settings_arch", lang),
-                value = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a",
-                showChevron = false
-            )
-            LoonDivider()
-            LoonSettingsItem(
-                icon = Icons.Default.RestartAlt,
-                iconBg = Color(0xFFEF4444),
-                title = AppStrings.get("settings_reset_core", lang),
-                value = "",
-                showChevron = true,
-                onClick = { showResetDialog = true }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section: 关于
-        LoonSectionHeader(title = AppStrings.get("settings_about", lang))
-        LoonGroupCard {
-            LoonSettingsItem(
-                icon = Icons.Default.Info,
-                iconBg = LoonBlue,
-                title = "应用版本",
-                value = appVersion,
-                showChevron = false
-            )
+            // Section 4: 关于与维护 (About & Maintenance)
+            CupertinoGroupedSection(
+                header = "维护与关于"
+            ) {
+                CupertinoCell(
+                    title = "应用版本",
+                    value = "v$installedVersion",
+                    icon = Icons.Default.SystemUpdate,
+                    iconBg = Color(0xFF34C759)
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "核心版本",
+                    value = coreVersion.ifBlank { "v1.18.x" },
+                    icon = Icons.Default.Memory,
+                    iconBg = Color(0xFF8E8E93),
+                    showChevron = false
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "重置核心状态",
+                    icon = Icons.Default.RestartAlt,
+                    iconBg = Color(0xFFFF3B30),
+                    showChevron = true,
+                    onClick = { showResetDialog = true }
+                )
+            }
         }
     }
-}
 
-    // Core Reset Confirmation -- the native reset can block, so it runs off the main thread.
+    // TUN Stack Selection BottomSheet
+    if (showTunDialog) {
+        val stacks = listOf(
+            Triple("mixed", "Mixed", "兼顾性能与稳定性的混合模式"),
+            Triple("gvisor", "gVisor", "用户态网络协议栈隔离"),
+            Triple("system", "System", "操作系统原生网络栈"),
+            Triple("mips", "MIPS", AppStrings.get("tun_stack_mips_desc", lang))
+        )
+        ModalBottomSheet(
+            onDismissRequest = { showTunDialog = false },
+            containerColor = LoonCard,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    text = "TUN 协议栈",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LoonTextPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                stacks.forEachIndexed { index, (stackKey, label, desc) ->
+                    val isSelected = tunStack.key.equals(stackKey, ignoreCase = true)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                onTunStackChanged(TunStack.fromKey(stackKey) ?: TunStack.DEFAULT)
+                                showTunDialog = false
+                            }
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = label,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) IosBlue else LoonTextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = desc,
+                                fontSize = 12.sp,
+                                color = LoonTextSecondary
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = IosBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    if (index < stacks.size - 1) {
+                        HorizontalDivider(
+                            color = LoonCardBorder,
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Log Level Selection BottomSheet
+    if (showLogLevelDialog) {
+        val levels = listOf(
+            Triple("info", "INFO", "记录标准网络调度与运行输出"),
+            Triple("warning", "WARN", "仅记录警告告警与异常"),
+            Triple("error", "ERROR", "仅记录严重崩溃与错误"),
+            Triple("debug", "DEBUG", "输出底层全部调试报文")
+        )
+        ModalBottomSheet(
+            onDismissRequest = { showLogLevelDialog = false },
+            containerColor = LoonCard,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    text = "日志详细程度",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LoonTextPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                levels.forEachIndexed { index, (lvlKey, label, desc) ->
+                    val isSelected = currentLogLevel.equals(lvlKey, ignoreCase = true)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                currentLogLevel = lvlKey
+                                settingsManager.logLevel = lvlKey
+                                showLogLevelDialog = false
+                            }
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = label,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) IosBlue else LoonTextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = desc,
+                                fontSize = 12.sp,
+                                color = LoonTextSecondary
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = IosBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    if (index < levels.size - 1) {
+                        HorizontalDivider(
+                            color = LoonCardBorder,
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Core Reset Confirmation
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
-            title = { Text(AppStrings.get("settings_reset_core", lang)) },
-            text = { Text(AppStrings.get("settings_reset_core_confirm", lang)) },
+            title = { Text("重置核心状态", fontWeight = FontWeight.Bold, color = LoonTextPrimary) },
+            text = { Text("确定要重置底层核心状态吗？当前活动的网络连接将被断开并重新初始化。", color = LoonTextSecondary, fontSize = 14.sp) },
             confirmButton = {
-                TextButton(onClick = rememberHapticAction({
+                TextButton(onClick = {
                     showResetDialog = false
                     scope.launch {
                         withContext(Dispatchers.IO) { ClashCore.reset() }
+                        Toast.makeText(context, "核心已重置", Toast.LENGTH_SHORT).show()
                     }
-                })) {
-                    Text(AppStrings.get("confirm", lang))
+                }) {
+                    Text("重置", color = IosRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = rememberHapticAction({ showResetDialog = false })) {
-                    Text(AppStrings.get("cancel", lang))
-                }
-            }
-        )
-    }
-    // Log Level Selection Dialog
-    if (showLogLevelDialog) {
-        val levels = listOf(
-            "debug" to "Debug (详细调试)",
-            "info" to "Info (默认常规)",
-            "warning" to "Warning (仅警告)",
-            "error" to "Error (仅错误)",
-            "silent" to "Silent (静默不输出)"
-        )
-        AlertDialog(
-            onDismissRequest = { showLogLevelDialog = false },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = LoonCard,
-            title = {
-                Text(AppStrings.get("settings_log_level", lang), fontWeight = FontWeight.Bold, color = LoonTextPrimary)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    levels.forEach { (lvl, label) ->
-                        val isSelected = currentLogLevel == lvl
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) LoonBlue else LoonCardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .hapticClickable {
-                                    currentLogLevel = lvl
-                                    settingsManager.logLevel = lvl
-                                    showLogLevelDialog = false
-                                },
-                            color = LoonCard
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) LoonBlue else LoonTextPrimary,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 14.sp
-                                )
-                                if (isSelected) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(LoonBlue)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = rememberHapticAction({ showLogLevelDialog = false })) {
-                    Text(AppStrings.get("cancel", lang), color = LoonTextSecondary)
-                }
-            }
-        )
-    }
-
-    // TUN Stack Selection Dialog
-    if (showTunDialog) {
-        AlertDialog(
-            onDismissRequest = { showTunDialog = false },
-            title = { Text(AppStrings.get("settings_tun_stack", lang), fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text(AppStrings.get("settings_tun_stack_fallback", lang), fontSize = 13.sp, color = LoonTextSecondary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    com.github.mihomo.android.data.TunStack.entries.forEach { stack ->
-                        val key = stack.key
-                        val desc = AppStrings.get("tun_stack_${key}_desc", lang)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .hapticClickable {
-                                    onTunStackChanged(key)
-                                    showTunDialog = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = tunStack == key, onClick = rememberHapticAction({
-                                onTunStackChanged(key)
-                                showTunDialog = false
-                            }))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(desc, fontSize = 14.sp)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = rememberHapticAction({ showTunDialog = false })) {
-                    Text(AppStrings.get("confirm", lang))
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("取消", color = LoonTextSecondary)
                 }
             },
             containerColor = LoonCard,
             shape = RoundedCornerShape(20.dp)
         )
     }
-}
 
-// -----------------------------------------------------------------------------
-// Helper UI Components
-// -----------------------------------------------------------------------------
-@Composable
-private fun LoonSectionHeader(title: String) {
-    Text(
-        text = title,
-        color = LoonTextSecondary,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-    )
-}
-
-@Composable
-private fun LoonGroupCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(0.5.dp, LoonCardBorder.copy(alpha = 0.45f), RoundedCornerShape(16.dp)),
-        color = LoonCard,
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-            content = content
+    if (showShortcutTouchDialog) {
+        AlertDialog(
+            onDismissRequest = { showShortcutTouchDialog = false },
+            title = { Text("快捷卡片触感") },
+            text = {
+                Column {
+                    listOf(
+                        ShortcutTouchVariant.GentleFloat to ("A 轻按浮起" to "轻柔抬升，动作克制"),
+                        ShortcutTouchVariant.FingerTilt to ("B 跟手倾斜" to "随手指方向产生倾斜"),
+                        ShortcutTouchVariant.BuoyantSpring to ("C 浮力回弹" to "更明显的浮起与弹性回落")
+                    ).forEach { (variant, labels) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                onShortcutTouchVariantChanged(variant)
+                                showShortcutTouchDialog = false
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = shortcutTouchVariant == variant, onClick = {
+                                onShortcutTouchVariantChanged(variant)
+                                showShortcutTouchDialog = false
+                            })
+                            Column(Modifier.padding(start = 8.dp)) {
+                                Text(labels.first, fontWeight = FontWeight.Medium)
+                                Text(labels.second, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showShortcutTouchDialog = false }) { Text("完成") } }
         )
     }
-}
-
-@Composable
-private fun LoonSettingsItem(
-    icon: ImageVector,
-    iconBg: Color,
-    title: String,
-    value: String = "",
-    showChevron: Boolean = false,
-    onClick: (() -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .hapticClickable(onClick)
-            .padding(vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = title,
-                color = LoonTextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (value.isNotBlank()) {
-                Text(
-                    text = value,
-                    color = LoonTextSecondary,
-                    fontSize = 13.sp
-                )
-            }
-            if (showChevron) {
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = Color(0xFFBAC0CC),
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-        }
+    if (showMtuDialog) {
+        AlertDialog(onDismissRequest = { showMtuDialog = false }, title = { Text("TUN MTU") },
+            text = { OutlinedTextField(value = mtuDraft, onValueChange = { v -> if (v.length <= 5 && v.all(Char::isDigit)) mtuDraft = v }, singleLine = true) },
+            confirmButton = { TextButton(onClick = {
+                mtuDraft.toIntOrNull()?.let { value ->
+                    onTunMtuChanged(TunTuning.normalizeMtu(value))
+                }
+                showMtuDialog = false
+            }) { Text("保存") } },
+            dismissButton = { TextButton(onClick = { showMtuDialog = false }) { Text("取消") } })
     }
-}
-
-@Composable
-private fun LoonSettingsSwitchItem(
-    icon: ImageVector,
-    iconBg: Color,
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = title,
-                color = LoonTextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        Switch(
-            checked = checked,
-            onCheckedChange = rememberHapticValueAction(onCheckedChange),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = LoonGreen,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = Color(0xFFE2E4EB),
-                uncheckedBorderColor = Color.Transparent,
-                checkedBorderColor = Color.Transparent
-            )
-        )
+    if (showCongestionDialog) {
+        AlertDialog(onDismissRequest = { showCongestionDialog = false }, title = { Text("MIPS 拥塞控制") },
+            text = { Column { TunTuning.CONGESTION_CONTROLLERS.forEach { option ->
+                Row(Modifier.fillMaxWidth().clickable {
+                    onMipsCongestionControllerChanged(option)
+                    showCongestionDialog = false
+                }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = option == mipsCongestionController, onClick = {
+                        onMipsCongestionControllerChanged(option)
+                        showCongestionDialog = false
+                    })
+                    Text(option)
+                }
+            } } }, confirmButton = { TextButton(onClick = { showCongestionDialog = false }) { Text("关闭") } })
     }
-}
 
-@Composable
-private fun LoonDivider() {
-    val isDark = LocalLoonColors.current.isDark
-    HorizontalDivider(
-        color = if (isDark) Color(0xFF2B3244).copy(alpha = 0.35f) else Color(0xFFE5E7EB).copy(alpha = 0.4f),
-        thickness = 0.5.dp,
-        modifier = Modifier.padding(start = 44.dp)
-    )
 }

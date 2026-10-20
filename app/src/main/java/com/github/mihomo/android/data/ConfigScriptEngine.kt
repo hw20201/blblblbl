@@ -9,6 +9,9 @@ import org.yaml.snakeyaml.Yaml
 object ConfigScriptEngine {
     private const val TAG = "ConfigScriptEngine"
     private const val RHINO_TIMEOUT_MS = 5_000L
+    private class RhinoTimeout : Error("脚本执行超时（超过 5s）")
+    internal const val MAX_SCRIPT_BYTES = 256 * 1024
+    private const val SLOW_SCRIPT_WARN_MS = 2_000L
 
     fun executeScripts(
         context: Context,
@@ -36,7 +39,12 @@ object ConfigScriptEngine {
         for (script in scripts) {
             val code = ScriptManager.readScriptCode(context, script)
             if (code.isBlank()) continue
-
+            if (code.toByteArray(Charsets.UTF_8).size > MAX_SCRIPT_BYTES) {
+                Log.w(TAG, "Skipping script ${script.name}: exceeds $MAX_SCRIPT_BYTES UTF-8 bytes")
+                if (logToRepo) LogRepository.addLog("warning", "脚本 [${script.name}] 体积超过上限，已跳过")
+                continue
+            }
+            val startedAt = System.nanoTime()
             try {
                 if (code.contains("main") || code.contains("module.exports") || code.contains("export default")) {
                     val configMap: Any? = runCatching { yamlParser.load<Any>(currentYaml) }.getOrNull()
@@ -128,15 +136,27 @@ object ConfigScriptEngine {
                 if (logToRepo) {
                     LogRepository.addLog("warning", "执行脚本 [${script.name}] 失败: ${e.message}")
                 }
+            } finally {
+                val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
+                if (elapsedMs > SLOW_SCRIPT_WARN_MS) {
+                    Log.w(TAG, "Script ${script.name} took ${elapsedMs}ms")
+                    if (logToRepo) LogRepository.addLog("warning", "脚本 [${script.name}] 执行耗时 ${elapsedMs}ms")
+                }
             }
         }
         return currentYaml
     }
 
     private fun executeWithQuickJS(code: String, jsonStr: String, scriptName: String, gson: Gson): String? {
+        // createRuntime() is synchronous and thread-affine in the pinned 1.4.6 AAR.
+        // Do not switch this to createRuntimeWithEventQueue without moving the whole scope.
         val quickJS = com.quickjs.QuickJS.createRuntime()
-        val jsContext = quickJS.createContext()
+        var jsContext: com.quickjs.JSContext? = null
+        var guard: java.io.Closeable? = null
         try {
+            val context = quickJS.createContext()
+            jsContext = context
+            guard = QuickJsGuard.install(context)
             val envPolyfill = """
                 var console = {
                     log: function() {},
@@ -147,8 +167,8 @@ object ConfigScriptEngine {
                 var module = { exports: {} };
                 var exports = module.exports;
             """.trimIndent()
-            jsContext.executeVoidScript(envPolyfill, "polyfill.js")
-            jsContext.executeVoidScript(code, scriptName)
+            context.executeVoidScript(envPolyfill, "polyfill.js")
+            context.executeVoidScript(code, scriptName)
 
             val escapedJson = gson.toJson(jsonStr)
             val runnerCode = """
@@ -179,10 +199,15 @@ object ConfigScriptEngine {
                     return JSON.stringify(__res);
                 })();
             """.trimIndent()
-            return jsContext.executeStringScript(runnerCode, "runner.js")
+            return context.executeStringScript(runnerCode, "runner.js")
         } finally {
-            try { jsContext.close() } catch (_: Throwable) {}
-            try { quickJS.close() } catch (_: Throwable) {}
+            // Always detach while the native runtime is still alive, including on script failure.
+            try {
+                guard?.close()
+            } finally {
+                try { jsContext?.close() } catch (_: Throwable) {}
+                try { quickJS.close() } catch (_: Throwable) {}
+            }
         }
     }
 
@@ -194,11 +219,11 @@ object ConfigScriptEngine {
      * A ContextFactory-based instruction observer also bounds runaway scripts.
      */
     internal fun executeWithRhino(code: String, jsonStr: String, scriptName: String, gson: Gson): String? {
-        val deadline = System.currentTimeMillis() + RHINO_TIMEOUT_MS
+        val deadline = System.nanoTime() + RHINO_TIMEOUT_MS * 1_000_000L
         val factory = object : org.mozilla.javascript.ContextFactory() {
             override fun observeInstructionCount(cx: org.mozilla.javascript.Context, instructionCount: Int) {
-                if (System.currentTimeMillis() > deadline) {
-                    throw org.mozilla.javascript.EvaluatorException("脚本执行超时（超过 ${RHINO_TIMEOUT_MS / 1000}s）")
+                if (System.nanoTime() - deadline >= 0L) {
+                    throw RhinoTimeout()
                 }
             }
         }

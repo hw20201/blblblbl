@@ -38,6 +38,7 @@ object ConfigManager {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .addNetworkInterceptor(secureRemoteUrlInterceptor)
         .build()
 
     /** Top-level config keys that only the injected runtime header may set. */
@@ -393,101 +394,38 @@ object ConfigManager {
      * matching is trivially defeated by quoting a key (`"external-controller": 0.0.0.0:9090`).
      */
     internal fun sanitizeUserConfig(raw: String): String {
-        return try {
-            val yaml = org.yaml.snakeyaml.Yaml(org.yaml.snakeyaml.DumperOptions().apply {
-                defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK
-                isPrettyFlow = true
-                indent = 2
-            })
-            val parsed = yaml.load<Any?>(raw)
-            if (parsed !is Map<*, *>) return raw
-
-            val sanitized = LinkedHashMap<String, Any?>()
-            for ((key, value) in parsed) {
-                val keyStr = key?.toString() ?: continue
-                if (keyStr.lowercase() in PROTECTED_TOP_LEVEL_KEYS) continue
+        val yaml = org.yaml.snakeyaml.Yaml(org.yaml.snakeyaml.DumperOptions().apply {
+            defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK
+            isPrettyFlow = true
+            indent = 2
+        })
+        val parsed = try {
+            yaml.load<Any?>(raw)
+        } catch (e: org.yaml.snakeyaml.error.YAMLException) {
+            throw IllegalArgumentException("配置 YAML 无效，未应用；请检查订阅内容", e)
+        }
+        require(parsed is Map<*, *>) { "配置根节点必须为 YAML 映射，未应用" }
+        val sanitized = LinkedHashMap<String, Any?>()
+        for ((key, value) in parsed) {
+            val keyStr = key?.toString() ?: continue
+            if (keyStr.lowercase() in PROTECTED_TOP_LEVEL_KEYS) {
+                Log.d(TAG, "Ignoring runtime-owned profile key: $keyStr")
+            } else {
                 sanitized[keyStr] = value
             }
-            yaml.dump(sanitized)
-        } catch (e: Throwable) {
-            Log.w(TAG, "Structural config sanitization failed, falling back to text filter", e)
-            sanitizeUserConfigByText(raw)
         }
+        return if (sanitized.isEmpty()) "" else yaml.dump(sanitized)
     }
 
-    /** Last-resort filter for configs that are not valid YAML on their own. */
-    private fun sanitizeUserConfigByText(raw: String): String {
-        val builder = StringBuilder()
-        var skipBlock = false
-        raw.lineSequence().forEach { line ->
-            val isTopLevel = line.isNotEmpty() && !line.startsWith(" ") && !line.startsWith("\t") &&
-                !line.startsWith("#") && !line.startsWith("-") && line.contains(":")
-            if (isTopLevel) {
-                val key = line.substringBefore(":").trim().trim('"', '\'')
-                skipBlock = key.lowercase() in PROTECTED_TOP_LEVEL_KEYS
-            }
-            if (!skipBlock) {
-                builder.appendLine(line)
-            }
-        }
-        return builder.toString()
-    }
-
-    fun prepareConfig(context: Context, sourceFile: File?): File {
+    fun prepareConfig(
+        context: Context,
+        sourceFile: File?,
+        ipv6Enabled: Boolean = SettingsManager(context).ipv6Enabled
+    ): File {
         val targetFile = getConfigFile(context)
         val settings = SettingsManager(context)
 
-        val header = """
-            # Mihomo Android Injected Runtime Config
-            mode: ${settings.tunnelMode}
-            log-level: ${settings.logLevel}
-            ipv6: false
-            mixed-port: 7890
-            allow-lan: ${settings.allowLan}
-            geodata-mode: false
-            geo-auto-update: false
-            geox-url:
-              geoip: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
-              geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
-              mmdb: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
-            dns:
-              enable: true
-              listen: 127.0.0.1:1053
-              ipv6: false
-              enhanced-mode: ${if (settings.fakeIpEnabled) "fake-ip" else "redir-host"}
-              fake-ip-range: 198.18.0.1/16
-              default-nameserver:
-                - 223.5.5.5
-                - 119.29.29.29
-              nameserver:
-                - https://223.5.5.5/dns-query
-                - https://doh.pub/dns-query
-                - 223.5.5.5
-                - 119.29.29.29
-                - 180.76.76.76
-              fallback:
-                - https://1.1.1.1/dns-query
-                - https://8.8.8.8/dns-query
-                - 1.1.1.1
-                - 8.8.8.8
-              fake-ip-filter:
-                - "*.lan"
-                - "*.local"
-                - "localhost.ptlogin2.qq.com"
-                - "*.connectivitycheck.android.com"
-                - "*.connectivitycheck.gstatic.com"
-                - "connectivitycheck.gstatic.com"
-                - "connectivitycheck.android.com"
-                - "clients3.google.com"
-                - "www.google.com/generate_204"
-                - "+.msftconnecttest.com"
-                - "+.msftncsi.com"
-                - "+.qualcomm.com"
-                - "+.miui.com"
-                - "+.xiaomi.com"
-
-        """.trimIndent()
-
+        var userDns: Map<String, Any?>? = null
         if (sourceFile != null && sourceFile.exists()) {
             var rawContent = sourceFile.readText()
             val activeProfile = getProfiles(context).find {
@@ -504,11 +442,13 @@ object ConfigManager {
                     targetScriptIds = targetIds
                 )
             }
+            userDns = extractUserDns(rawContent)
             val userContent = sanitizeUserConfig(rawContent)
-            // Cleanly prepend runtime settings without mangling proxies, rules or formatting
+            val header = buildRuntimeHeader(settings, userDns, ipv6Enabled)
             targetFile.writeText("$header\n$userContent")
             Log.i(TAG, "Prepared synthesized config with user profile: ${sourceFile.name}")
         } else {
+            val header = buildRuntimeHeader(settings, userDns, ipv6Enabled)
             val defaultBody = """
                 proxies: []
                 proxy-groups:
@@ -531,4 +471,40 @@ object ConfigManager {
 
         return targetFile
     }
+    internal fun extractUserDns(raw: String): Map<String, Any?>? = runCatching {
+        val parsed = org.yaml.snakeyaml.Yaml().load<Any?>(raw) as? Map<*, *> ?: return null
+        val dns = parsed["dns"] as? Map<*, *> ?: return null
+        LinkedHashMap<String, Any?>().apply { dns.forEach { (k, v) -> if (k != null) put(k.toString(), v) } }
+    }.getOrNull()
+
+    private val runtimeOwnedDns = setOf("enable", "listen", "ipv6", "enhanced-mode", "fake-ip-range")
+    private val defaultFakeIpFilter = listOf("*.lan", "*.local", "localhost.ptlogin2.qq.com", "*.connectivitycheck.android.com", "*.connectivitycheck.gstatic.com", "connectivitycheck.gstatic.com", "connectivitycheck.android.com", "clients3.google.com", "www.google.com/generate_204", "+.msftconnecttest.com", "+.msftncsi.com", "+.qualcomm.com", "+.miui.com", "+.xiaomi.com")
+
+    internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
+        val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:1053", "ipv6" to ipv6Enabled,
+            "enhanced-mode" to if (fakeIp) "fake-ip" else "redir-host", "fake-ip-range" to "198.18.0.1/16",
+            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"), "nameserver" to listOf("https://223.5.5.5/dns-query", "https://doh.pub/dns-query", "223.5.5.5", "119.29.29.29", "180.76.76.76"),
+            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query", "1.1.1.1", "8.8.8.8"), "fake-ip-filter" to defaultFakeIpFilter)
+        userDns?.forEach { (key, value) ->
+            if (key.lowercase() !in runtimeOwnedDns) {
+                dns[key] = if (key == "fake-ip-filter") (defaultFakeIpFilter + ((value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList())).distinct() else value
+            }
+        }
+        return dns
+    }
+
+    internal fun buildRuntimeHeader(settings: SettingsManager, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): String {
+        val values = linkedMapOf<String, Any?>("mode" to settings.tunnelMode, "log-level" to settings.logLevel, "ipv6" to ipv6Enabled, "mixed-port" to 7890, "allow-lan" to settings.allowLan)
+        if (settings.allowLan) {
+            values["authentication"] = listOf(settings.lanCredentials().encoded)
+            values["skip-auth-prefixes"] = listOf("127.0.0.1/32", "::1/128")
+        }
+        values["geodata-mode"] = false
+        values["geo-auto-update"] = false
+        values["geox-url"] = linkedMapOf("geoip" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb", "geosite" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat", "mmdb" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb")
+        values["dns"] = buildDnsSection(settings.fakeIpEnabled, userDns, ipv6Enabled)
+        val opts = org.yaml.snakeyaml.DumperOptions().apply { defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK; isPrettyFlow = true; indent = 2 }
+        return "# Mihomo Android Injected Runtime Config\n" + org.yaml.snakeyaml.Yaml(opts).dump(values).trimEnd()
+    }
+
 }

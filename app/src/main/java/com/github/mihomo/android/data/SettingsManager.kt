@@ -2,14 +2,25 @@ package com.github.mihomo.android.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.github.mihomo.android.ui.components.ShortcutTouchVariant
 
 enum class PerAppProxyMode {
     DISABLED, WHITELIST, BLACKLIST
 }
 
+data class LanCredentials(val username: String, val password: String) { val encoded: String get() = "$username:$password" }
+private const val KEY_LAN_USER = "lan_auth_user"
+private const val KEY_LAN_PASSWORD = "lan_auth_password"
+private const val LAN_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"
+private val lanCredentialLock = Any()
+private val lanSecureRandom = java.security.SecureRandom()
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK
 }
+
+/** Default palette: the warm white one, which keeps the orange brand identity. */
+private const val KEY_GLASS_PALETTE = "glass_palette"
+private const val DEFAULT_GLASS_PALETTE = "cream"
 
 class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
@@ -57,6 +68,19 @@ class SettingsManager(context: Context) {
         get() = prefs.getBoolean("allow_lan", false)
         set(value) = prefs.edit().putBoolean("allow_lan", value).apply()
 
+    fun lanCredentials(): LanCredentials = synchronized(lanCredentialLock) {
+        val user = prefs.getString(KEY_LAN_USER, null)
+        val password = prefs.getString(KEY_LAN_PASSWORD, null)
+        if (!user.isNullOrBlank() && !password.isNullOrBlank()) return@synchronized LanCredentials(user, password)
+        regenerateLanCredentialsLocked()
+    }
+    fun regenerateLanCredentials(): LanCredentials = synchronized(lanCredentialLock) { regenerateLanCredentialsLocked() }
+    private fun regenerateLanCredentialsLocked(): LanCredentials {
+        val password = buildString { repeat(16) { append(LAN_PASSWORD_ALPHABET[lanSecureRandom.nextInt(LAN_PASSWORD_ALPHABET.length)]) } }
+        // commit() makes generated credentials durable before callers can start the shared listener.
+        check(prefs.edit().putString(KEY_LAN_USER, "nexus").putString(KEY_LAN_PASSWORD, password).commit()) { "Unable to persist LAN credentials" }
+        return LanCredentials("nexus", password)
+    }
     /** Switches the DNS enhanced mode between fake-ip and redir-host. */
     var fakeIpEnabled: Boolean
         get() = prefs.getBoolean("fake_ip_enabled", true)
@@ -85,26 +109,26 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("proxies_view_mode", "TABS") ?: "TABS"
         set(value) = prefs.edit().putString("proxies_view_mode", value).apply()
 
-    // Visible shortcuts set
-    var visibleShortcuts: Set<String>
-        get() = prefs.getStringSet(
-            "visible_shortcuts",
-            setOf("nodes", "profiles", "request_logs", "dns", "rules", "routing", "plugins", "network_share")
-        ) ?: setOf("nodes", "profiles", "request_logs", "dns", "rules", "routing", "plugins", "network_share")
-        set(value) = prefs.edit().putStringSet("visible_shortcuts", value).apply()
-
-    // Ordered shortcuts list (for reordering)
-    var shortcutOrder: List<String>
-        get() {
-            val raw = prefs.getString("shortcut_order", null)
-            return if (raw.isNullOrBlank()) {
-                listOf("nodes", "profiles", "request_logs", "dns", "rules", "routing", "plugins", "network_share")
-            } else {
-                raw.split(",")
-            }
+    // Migrate once: show newly introduced actions while preserving custom order/visibility.
+    private fun migrateShortcuts() {
+        if (!prefs.getBoolean("shortcuts_actions_v1", false)) {
+            val existing = prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty()
+            prefs.edit().putStringSet("visible_shortcuts", existing + DashboardShortcuts.added)
+                .putBoolean("shortcuts_actions_v1", true).apply()
         }
+    }
+    var visibleShortcuts: Set<String>
+        get() {
+            migrateShortcuts()
+            return prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty().toSet()
+        }
+        set(value) {
+            migrateShortcuts()
+            prefs.edit().putStringSet("visible_shortcuts", value).apply()
+        }
+    var shortcutOrder: List<String>
+        get() = DashboardShortcuts.order(prefs.getString("shortcut_order", null))
         set(value) = prefs.edit().putString("shortcut_order", value.joinToString(",")).apply()
-
     // JavaScript Scripting & Rewrite Settings
     var scriptingEnabled: Boolean
         get() = prefs.getBoolean("scripting_enabled", true)
@@ -149,8 +173,40 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"
         set(value) = prefs.edit().putString("app_language", value).apply()
 
+    /**
+     * Selected glass palette key. Unknown values fall back to the default rather than crashing, so
+     * a palette can be removed from a future build without a migration.
+     */
+    var glassPaletteKey: String
+        get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
+        set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
+
+    /** Selected dashboard shortcut touch motion style. Invalid stored values fall back safely. */
+    var shortcutTouchVariant: ShortcutTouchVariant
+        get() = runCatching {
+            ShortcutTouchVariant.valueOf(prefs.getString("shortcut_touch_variant", ShortcutTouchVariant.GentleFloat.name)!!)
+        }.getOrDefault(ShortcutTouchVariant.GentleFloat)
+        set(value) = prefs.edit().putString("shortcut_touch_variant", value.name).apply()
     /** Master switch for haptic feedback on key interactions. */
     var hapticEnabled: Boolean
         get() = prefs.getBoolean("haptic_enabled", true)
         set(value) = prefs.edit().putBoolean("haptic_enabled", value).apply()
+
+    /** Captures IPv6 in the TUN and lets the core carry it; off leaves IPv6 outside the VPN. */
+    var ipv6Enabled: Boolean
+        get() = prefs.getBoolean("ipv6_enabled", false)
+        set(value) = prefs.edit().putBoolean("ipv6_enabled", value).apply()
+
+    var tunMtu: Int
+        get() = TunTuning.normalizeMtu(prefs.getInt("tun_mtu", TunTuning.DEFAULT_MTU))
+        set(value) = prefs.edit().putInt("tun_mtu", TunTuning.normalizeMtu(value)).apply()
+
+    /** Only the MIPS stack reads this; the value is still persisted for other stacks. */
+    var mipsCongestionController: String
+        get() = TunTuning.normalizeCongestionController(
+            prefs.getString("mips_congestion_controller", TunTuning.DEFAULT_CONGESTION_CONTROLLER)
+        )
+        set(value) = prefs.edit()
+            .putString("mips_congestion_controller", TunTuning.normalizeCongestionController(value))
+            .apply()
 }

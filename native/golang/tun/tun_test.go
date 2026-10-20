@@ -36,6 +36,40 @@ func TestParseStackStrictMapping(t *testing.T) {
 	}
 }
 
+func TestParseStartOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		wantMTU uint32
+		wantCC  string
+		ok      bool
+	}{
+		{"empty", "", 9000, "", true},
+		{"defaults", `{}`, 9000, "", true},
+		{"explicit", `{"mtu":1500,"congestion-controller":"BBR"}`, 1500, "bbr", true},
+		{"minimum", `{"mtu":1280}`, 1280, "", true},
+		{"maximum", `{"mtu":65535}`, 65535, "", true},
+		{"negative", `{"mtu":-1}`, 0, "", false},
+		{"fractional", `{"mtu":1500.5}`, 0, "", false},
+		{"wrong type", `{"mtu":"1500"}`, 0, "", false},
+		{"broken json", `{"mtu":`, 0, "", false},
+		{"mtu below range", `{"mtu":1279}`, 0, "", false},
+		{"mtu above range", `{"mtu":65536}`, 0, "", false},
+		{"unknown controller", `{"congestion-controller":"vegas"}`, 0, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mtu, cc, err := parseStartOptions(tt.raw)
+			if (err == nil) != tt.ok {
+				t.Fatalf("parseStartOptions(%q) error = %v", tt.raw, err)
+			}
+			if tt.ok && (mtu != tt.wantMTU || cc != tt.wantCC) {
+				t.Fatalf("parseStartOptions(%q) = (%d, %q), want (%d, %q)", tt.raw, mtu, cc, tt.wantMTU, tt.wantCC)
+			}
+		})
+	}
+}
+
 // socketpair provides a valid packet-oriented file descriptor without requiring
 // root, a /dev/net/tun device, or an external network.
 func newPacketSocketpair(t *testing.T) (int, int) {
@@ -81,7 +115,7 @@ func countFDAliases(t *testing.T, fd int) int {
 func TestMipsStartCloseBorrowsFD(t *testing.T) {
 	fd, _ := newPacketSocketpair(t)
 	before := countFDAliases(t, fd)
-	listener, err := Start(fd, "mips", "10.0.0.1/30,fd00::1/126", "", "1.1.1.1,2606:4700:4700::1111")
+	listener, err := Start(fd, "mips", "10.0.0.1/30,fd00::1/126", "", "1.1.1.1,2606:4700:4700::1111", `{"mtu":9000,"congestion-controller":"cubic"}`)
 	if err != nil {
 		t.Fatalf("Start(mips) failed: %v", err)
 	}
@@ -100,7 +134,7 @@ func TestMipsStartCloseBorrowsFD(t *testing.T) {
 
 func TestMipsIPv4AndIPv6PacketRoundTrip(t *testing.T) {
 	fd, peer := newPacketSocketpair(t)
-	listener, err := Start(fd, "mips", "10.0.0.1/30,fd00::1/126", "", "10.0.0.2,fd00::2")
+	listener, err := Start(fd, "mips", "10.0.0.1/30,fd00::1/126", "", "10.0.0.2,fd00::2", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +194,7 @@ func TestMipsIPv4AndIPv6PacketRoundTrip(t *testing.T) {
 func TestMipsStartFailurePreservesBorrowedFD(t *testing.T) {
 	t.Run("invalid stack", func(t *testing.T) {
 		fd, _ := newPacketSocketpair(t)
-		if listener, err := Start(fd, "not-a-stack", "10.0.0.1/30,fd00::1/126", "", "1.1.1.1"); err == nil {
+		if listener, err := Start(fd, "not-a-stack", "10.0.0.1/30,fd00::1/126", "", "1.1.1.1", ""); err == nil {
 			if listener != nil {
 				_ = listener.Close()
 			}
@@ -170,7 +204,7 @@ func TestMipsStartFailurePreservesBorrowedFD(t *testing.T) {
 	})
 	t.Run("invalid gateway", func(t *testing.T) {
 		fd, _ := newPacketSocketpair(t)
-		if listener, err := Start(fd, "mips", "not-a-prefix", "", "1.1.1.1"); err == nil {
+		if listener, err := Start(fd, "mips", "not-a-prefix", "", "1.1.1.1", ""); err == nil {
 			if listener != nil {
 				_ = listener.Close()
 			}
@@ -178,4 +212,43 @@ func TestMipsStartFailurePreservesBorrowedFD(t *testing.T) {
 		}
 		assertFDOpen(t, fd)
 	})
+}
+
+func TestMipsIPv4OnlyTuningPreservesBorrowedFD(t *testing.T) {
+	for _, controller := range []string{"cubic", "reno", "bbr", "bbr3"} {
+		t.Run(controller, func(t *testing.T) {
+			fd, _ := newPacketSocketpair(t)
+			before := countFDAliases(t, fd)
+			options := fmt.Sprintf(`{"mtu":1280,"congestion-controller":%q}`, controller)
+			listener, err := Start(fd, "mips", "10.0.0.1/30", "", "10.0.0.2", options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := listener.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertFDOpen(t, fd)
+			if after := countFDAliases(t, fd); after != before {
+				t.Fatalf("FD aliases: before=%d after=%d", before, after)
+			}
+		})
+	}
+}
+
+func TestInvalidOptionsNeverDuplicateOrCloseBorrowedFD(t *testing.T) {
+	for _, options := range []string{`{"mtu":1279}`, `{"mtu":65536}`, `{"congestion-controller":"vegas"}`, `{`} {
+		t.Run(options, func(t *testing.T) {
+			fd, _ := newPacketSocketpair(t)
+			before := countFDAliases(t, fd)
+			listener, err := Start(fd, "mips", "10.0.0.1/30", "", "10.0.0.2", options)
+			if err == nil {
+				_ = listener.Close()
+				t.Fatal("invalid options unexpectedly accepted")
+			}
+			assertFDOpen(t, fd)
+			if after := countFDAliases(t, fd); after != before {
+				t.Fatalf("invalid options leaked duplicate: before=%d after=%d", before, after)
+			}
+		})
+	}
 }

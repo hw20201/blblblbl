@@ -58,6 +58,12 @@ object AppStrings {
         "tun_stack_mixed_desc" to "Mixed（TCP 系统栈，UDP gVisor）",
         "tun_stack_gvisor_desc" to "gVisor（用户态网络栈）",
         "tun_stack_mips_desc" to "MIPS（Mihomo 原生 Go 网络栈）",
+        "settings_ipv6" to "IPv6 路由",
+        "settings_ipv6_desc" to "开启后 IPv6 进入隧道并由节点出站；关闭时不捕获 IPv6，可能绕过 VPN。",
+        "settings_tun_mtu" to "TUN MTU",
+        "settings_tun_mtu_desc" to "1280–65535，默认 9000；修改后自动重建隧道。",
+        "settings_mips_cc" to "MIPS 拥塞控制",
+        "settings_mips_cc_desc" to "仅 MIPS 栈生效；默认 cubic，bbr 更适合高延迟链路。",
         "settings_boot_startup" to "开机自启动",
         "settings_haptic" to "触觉反馈",
         "settings_appearance" to "外观与显示",
@@ -78,7 +84,8 @@ object AppStrings {
         "settings_arch" to "系统架构",
         "settings_reset_core" to "重置内核状态",
         "settings_reset_core_confirm" to "确定要重置内核状态吗？当前连接会断开。",
-        "settings_always_on_vpn" to "始终开启的 VPN (系统设置)",
+        "settings_always_on_vpn" to "始终开启的 VPN",
+        "settings_always_on_vpn_desc" to "在系统设置中管理",
         "settings_view_stream" to "查看流",
         "settings_about" to "关于 Nexus",
         "theme_system" to "跟随系统",
@@ -141,6 +148,12 @@ object AppStrings {
         "tun_stack_mixed_desc" to "Mixed (TCP: system; UDP: gVisor)",
         "tun_stack_gvisor_desc" to "gVisor (userspace network stack)",
         "tun_stack_mips_desc" to "MIPS (Mihomo native Go IP stack)",
+        "settings_ipv6" to "IPv6 Routing",
+        "settings_ipv6_desc" to "Captures IPv6 in the tunnel and sends it through the proxy. When off, IPv6 stays outside the VPN.",
+        "settings_tun_mtu" to "TUN MTU",
+        "settings_tun_mtu_desc" to "1280–65535, default 9000. The tunnel is rebuilt after a change.",
+        "settings_mips_cc" to "MIPS Congestion Control",
+        "settings_mips_cc_desc" to "MIPS stack only; cubic is the default and bbr suits high-latency links.",
         "settings_boot_startup" to "Boot on Startup",
         "settings_haptic" to "Haptic Feedback",
         "settings_appearance" to "Appearance & Display",
@@ -162,7 +175,8 @@ object AppStrings {
         "settings_arch" to "Architecture",
         "settings_reset_core" to "Reset Core State",
         "settings_reset_core_confirm" to "Reset the core state? The current connection will be dropped.",
-        "settings_always_on_vpn" to "Always-On VPN (System)",
+        "settings_always_on_vpn" to "Always-On VPN",
+        "settings_always_on_vpn_desc" to "Manage in system settings",
         "settings_view_stream" to "View Stream",
         "theme_system" to "Follow System",
         "theme_light" to "Light",
@@ -224,6 +238,12 @@ object AppStrings {
         "tun_stack_mixed_desc" to "Mixed (TCP: системный; UDP: gVisor)",
         "tun_stack_gvisor_desc" to "gVisor (пользовательский сетевой стек)",
         "tun_stack_mips_desc" to "MIPS (родной IP-стек Mihomo на Go)",
+        "settings_ipv6" to "Маршрутизация IPv6",
+        "settings_ipv6_desc" to "IPv6 идёт через туннель и прокси. Если выключено, IPv6 остаётся вне VPN.",
+        "settings_tun_mtu" to "MTU туннеля",
+        "settings_tun_mtu_desc" to "1280–65535, по умолчанию 9000. После изменения туннель пересоздаётся.",
+        "settings_mips_cc" to "Управление перегрузкой MIPS",
+        "settings_mips_cc_desc" to "Только для стека MIPS; по умолчанию cubic, bbr лучше для каналов с большой задержкой.",
         "settings_boot_startup" to "Автозапуск",
         "settings_haptic" to "Виброотклик",
         "settings_appearance" to "Внешний вид",
@@ -245,7 +265,8 @@ object AppStrings {
         "settings_arch" to "Архитектура",
         "settings_reset_core" to "Сбросить ядро",
         "settings_reset_core_confirm" to "Сбросить состояние ядра? Текущее подключение будет разорвано.",
-        "settings_always_on_vpn" to "Постоянный VPN (система)",
+        "settings_always_on_vpn" to "Постоянный VPN",
+        "settings_always_on_vpn_desc" to "Управление в системных настройках",
         "settings_view_stream" to "Просмотр потока",
         "theme_system" to "Как в системе",
         "theme_light" to "Светлая",
@@ -338,7 +359,15 @@ object AppStrings {
         "tile_connected" to "已连接",
         "tile_connecting" to "连接中…",
         "tile_disconnecting" to "断开中…",
-        "tile_disconnected" to "已断开"
+        "tile_disconnected" to "已断开",
+        "palette_section" to "色泽主题",
+        "palette_footer" to "静态玻璃配色，仅影响外观。跨明暗选择会切换主题模式；跟随系统时深色使用午夜，浅色恢复所选浅色色板。",
+        "palette_white" to "白玻璃",
+        "palette_blue" to "浅蓝",
+        "palette_cream" to "奶白",
+        "palette_mint" to "薄荷",
+        "palette_lavender" to "薰衣草",
+        "palette_midnight" to "午夜"
     )
 
     private val enExtra = mapOf(
@@ -418,7 +447,15 @@ object AppStrings {
         "tile_connected" to "Connected",
         "tile_connecting" to "Connecting…",
         "tile_disconnecting" to "Disconnecting…",
-        "tile_disconnected" to "Disconnected"
+        "tile_disconnected" to "Disconnected",
+        "palette_section" to "Colour Theme",
+        "palette_footer" to "Static glass colours only. Switching brightness selects light/dark mode. System mode uses Midnight at night and your saved light palette by day.",
+        "palette_white" to "Porcelain",
+        "palette_blue" to "Azure",
+        "palette_cream" to "Cream",
+        "palette_mint" to "Mint",
+        "palette_lavender" to "Lavender",
+        "palette_midnight" to "Midnight"
     )
 
     private val ruExtra = mapOf(
@@ -488,7 +525,15 @@ object AppStrings {
         "tile_connected" to "Подключено",
         "tile_connecting" to "Подключение…",
         "tile_disconnecting" to "Отключение…",
-        "tile_disconnected" to "Отключено"
+        "tile_disconnected" to "Отключено",
+        "palette_section" to "Цветовая тема",
+        "palette_footer" to "Статические цвета стекла. Смена светлой/тёмной палитры меняет режим темы. Системный режим: Midnight ночью и выбранная светлая палитра днём.",
+        "palette_white" to "Фарфор",
+        "palette_blue" to "Лазурь",
+        "palette_cream" to "Крем",
+        "palette_mint" to "Мята",
+        "palette_lavender" to "Лаванда",
+        "palette_midnight" to "Полночь"
     )
 
     private val zhAll = zh + zhExtra

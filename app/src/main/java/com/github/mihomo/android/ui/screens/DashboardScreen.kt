@@ -39,15 +39,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.zIndex
 import com.github.kr328.clash.core.model.Proxy
+import com.github.mihomo.android.data.DashboardData
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.theme.*
 import kotlin.math.roundToInt
-import com.github.mihomo.android.ui.components.rememberHapticAction
-import com.github.mihomo.android.ui.components.rememberHapticValueAction
-import com.github.mihomo.android.ui.components.hapticClickable
-import com.github.mihomo.android.data.DashboardData
 
 data class ShortcutDef(
     val id: String,
@@ -62,6 +61,7 @@ data class ShortcutDef(
 fun DashboardScreen(
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
     vpnState: VpnState,
+    requestMonitoringEnabled: Boolean = false,
     currentMode: TunnelMode,
     activeProfileName: String,
     mainGroupName: String,
@@ -69,7 +69,6 @@ fun DashboardScreen(
     activeNodeName: String,
     totalNodes: Int,
     totalRules: Int,
-    requestMonitoringEnabled: Boolean,
     visibleShortcuts: Set<String>,
     shortcutOrder: List<String>,
     onToggleVpn: () -> Unit,
@@ -79,12 +78,13 @@ fun DashboardScreen(
     onNavigateToProfiles: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
     onNavigateToLogs: () -> Unit,
-    onNavigateToRules: () -> Unit,
-    onNavigateToDns: () -> Unit,
-    onNavigateToRequests: () -> Unit,
-    onNavigateToNetworkShare: () -> Unit,
+    onNavigateToRules: () -> Unit = {},
+    onNavigateToDns: () -> Unit = {},
+    onNavigateToRequests: () -> Unit = {},
+    onNavigateToNetworkShare: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
-    onUpdateShortcutOrder: (List<String>) -> Unit
+    onUpdateShortcutOrder: (List<String>) -> Unit,
+    glassScene: NavigationLensState? = null
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
@@ -121,16 +121,30 @@ fun DashboardScreen(
     // State for general Informational Dialog
     var activeDialogTitle by remember { mutableStateOf<String?>(null) }
     var activeDialogContent by remember { mutableStateOf<String?>(null) }
+    var showOutboundIp by remember { mutableStateOf(false) }
+    val latestToggleVpn by rememberUpdatedState(onToggleVpn)
 
     val lang = LocalAppLanguage.current
 
     // All shortcut item definitions available across entire DashboardScreen (cached to eliminate recomposition lag)
     val allShortcutMap = remember(
-        lang, activeProfileName, activeNodeName, totalNodes, totalRules,
+        lang, activeProfileName, activeNodeName, totalNodes, totalRules, requestMonitoringEnabled,
         vpnState.upSpeed, vpnState.downSpeed, vpnState.totalUp, vpnState.totalDown,
-        vpnState.coreVersion, isRunning, requestMonitoringEnabled
+        vpnState.coreVersion, isRunning, isStarting, vpnState.status
     ) {
         mapOf(
+            "vpn" to ShortcutDef("vpn", if (vpnState.status == VpnState.Status.STOPPING) "正在停止" else if (isRunning || isStarting) "停止 VPN" else "启动 VPN",
+                when (vpnState.status) {
+                    VpnState.Status.RUNNING -> "已连接 · 点击停止"
+                    VpnState.Status.STARTING -> "连接中 · 点击取消"
+                    VpnState.Status.STOPPING -> "请稍候"
+                    else -> "点击连接"
+                }, { Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = LoonOrange, modifier = Modifier.size(38.dp)) }) {
+                if (vpnState.status != VpnState.Status.STOPPING) latestToggleVpn()
+            },
+            "ip_test" to ShortcutDef("ip_test", "IP 测试", "出站 IP · 点击检测", {
+                Icon(Icons.Default.Public, contentDescription = null, tint = IosBlue, modifier = Modifier.size(38.dp))
+            }) { showOutboundIp = true },
             "nodes" to ShortcutDef("nodes", AppStrings.get("shortcut_nodes", lang), "$totalNodes", { NodesIllustration() }) {
                 showQuickNodeSelector = true
             },
@@ -163,12 +177,20 @@ fun DashboardScreen(
         )
     }
 
-    val displayedShortcuts = remember(localOrder, visibleShortcuts, allShortcutMap) {
+    val displayedShortcuts = remember(localOrder, visibleShortcuts, lang, allShortcutMap) {
         localOrder.mapNotNull { allShortcutMap[it] }.filter { visibleShortcuts.contains(it.id) }
     }
 
+    if (showOutboundIp) {
+        OutboundIpSheet(isVpnRunning = isRunning, onDismiss = { showOutboundIp = false })
+    }
+
     val isDarkTheme = LocalLoonColors.current.isDark
-    val topBgBrush = if (isDarkTheme) {
+    // With glass enabled the shared backdrop already provides the colour field, so the screen
+    // itself must stay transparent or it would paint over it.
+    val topBgBrush = if (GlassDefaults.enabled) {
+        Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+    } else if (isDarkTheme) {
         Brush.verticalGradient(
             colors = listOf(LoonBg, LoonBg)
         )
@@ -191,27 +213,29 @@ fun DashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(LoonBg)
+                .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(topBgBrush)
                     .statusBarsPadding()
-                    .bounceOverscroll(allowTop = false, allowBottom = true)
+                    .bounceOverscroll()
                     .verticalScroll(state = scrollState, enabled = draggedId == null)
                     .padding(horizontal = 20.dp)
                     .padding(top = 16.dp, bottom = 110.dp)
             ) {
-                // Header: LOON (MIHOMO) & Mode Selector + iOS Switch
-                Row(
+                // Header: NEXUS (LOON style) & Mode Selector + iOS Switch
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 4.dp, bottom = 18.dp)
                 ) {
-                    Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = "NEXUS",
                             color = LoonOrange,
@@ -220,49 +244,39 @@ fun DashboardScreen(
                             letterSpacing = 0.5.sp
                         )
 
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .hapticClickable { showModeBottomSheet = true }
-                                    .padding(vertical = 3.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = when (currentMode) {
-                                        TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
-                                        TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
-                                        TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
-                                    },
-                                    color = LoonOrangeLight,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = LoonOrangeLight,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
+                        // Top Right iOS Cupertino Switch (aligned directly with NEXUS title)
+                        CupertinoSwitch(
+                            checked = isRunning || isStarting,
+                            onCheckedChange = { onToggleVpn() }
+                        )
                     }
 
-                    // Top Right iOS Switch
-                    Switch(
-                        checked = isRunning || isStarting,
-                        onCheckedChange = rememberHapticValueAction({ onToggleVpn() }),
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = LoonGreen,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFE2E4EB),
-                            uncheckedBorderColor = Color.Transparent,
-                            checkedBorderColor = Color.Transparent
-                        )
-                    )
+                    Box(modifier = Modifier.padding(top = 2.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showModeBottomSheet = true }
+                                .padding(vertical = 3.dp, horizontal = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = when (currentMode) {
+                                    TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
+                                    TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
+                                    TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
+                                },
+                                color = LoonOrangeLight,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = LoonOrangeLight,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Dual Traffic Cards Row (Upload & Download)
@@ -286,7 +300,7 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(26.dp))
 
-                // Section Header: 快捷方式
+                // Section Header: 快捷方式 + 纯文字“编辑 / 完成”按钮 (无铅笔图标)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -301,36 +315,20 @@ fun DashboardScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    val editBtnBg = if (isDarkTheme) Color(0xFF252A37) else Color(0xFFE8EBF2)
-                    val editContentColor = if (isEditingShortcuts) Color(0xFFF59E0B) else Color(0xFF2563EB)
-
-                    Surface(
-                        shape = CircleShape,
-                        color = editBtnBg,
-                        border = null,
+                    val haptic = rememberIosHaptic()
+                    Text(
+                        text = if (isEditingShortcuts) AppStrings.get("shortcuts_done", lang) else AppStrings.get("shortcuts_edit", lang),
+                        color = IosBlue,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .hapticClickable { isEditingShortcuts = !isEditingShortcuts }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (isEditingShortcuts) Icons.Default.Check else Icons.Default.Edit,
-                                contentDescription = null,
-                                tint = editContentColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isEditingShortcuts) AppStrings.get("shortcuts_done", lang) else AppStrings.get("shortcuts_edit", lang),
-                                color = editContentColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                haptic.lightTick()
+                                isEditingShortcuts = !isEditingShortcuts
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
 
                 // Order according to user preference (Default: nodes, profiles, ...)
@@ -496,6 +494,7 @@ fun DashboardScreen(
                                 subtitle = item.subtitle,
                                 icon = item.icon,
                                 isEditing = isEditingShortcuts,
+                                lens = glassScene,
                                 onDelete = {
                                     if (draggedId == null) { // Prevent delete during drag
                                         onUpdateVisibleShortcuts(visibleShortcuts - item.id)
@@ -523,7 +522,7 @@ fun DashboardScreen(
                         .height(52.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .border(1.dp, LoonCardBorder, RoundedCornerShape(16.dp))
-                        .hapticClickable { showAddShortcutSheet = true },
+                        .clickable { showAddShortcutSheet = true },
                     color = LoonCard
                 ) {
                     Row(
@@ -606,7 +605,7 @@ fun DashboardScreen(
                             }
 
                             IconButton(
-                                onClick = rememberHapticAction({
+                                onClick = {
                                     if (mainGroupName.isNotBlank() && !isTestingQuickSheet) {
                                         isTestingQuickSheet = true
                                         coroutineScope.launch {
@@ -615,8 +614,7 @@ fun DashboardScreen(
                                             isTestingQuickSheet = false
                                         }
                                     }
-                                }),
-                                enabled = mainGroupName.isNotBlank() && !isTestingQuickSheet,
+                                },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 AnimatedSpeedTestIcon(
@@ -668,68 +666,58 @@ fun DashboardScreen(
                             LazyColumn(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    .weight(1f)
                             ) {
                                 itemsIndexed(
                                     items = filteredNodes,
                                     key = { index, proxy -> "${proxy.name}_$index" }
-                                ) { _, proxy ->
+                                ) { index, proxy ->
                                     val isSelected = proxy.name == activeNodeName
                                     val nodeEmoji = extractLeadingEmoji(proxy.name)
 
-                                    Surface(
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .border(
-                                                width = if (isSelected) 1.5.dp else 1.dp,
-                                                color = if (isSelected) LoonBlue else LoonCardBorder,
-                                                shape = RoundedCornerShape(18.dp)
-                                            )
-                                            .hapticClickable {
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
                                                 onSelectProxy(mainGroupName, proxy)
                                                 showQuickNodeSelector = false
-                                            },
-                                        color = LoonCard
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 14.dp, vertical = 11.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                                if (nodeEmoji != null) {
-                                                    Text(
-                                                        text = nodeEmoji,
-                                                        fontSize = 16.sp,
-                                                        modifier = Modifier.padding(end = 8.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    Text(
-                                                        text = proxy.name,
-                                                        color = if (isSelected) LoonBlue else LoonTextPrimary,
-                                                        fontSize = 14.sp,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                        maxLines = 1
-                                                    )
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                    Text(
-                                                        text = proxy.type.uppercase(),
-                                                        color = LoonTextMuted,
-                                                        fontSize = 10.sp
-                                                    )
-                                                }
                                             }
+                                            .padding(horizontal = 8.dp, vertical = 11.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                            if (nodeEmoji != null) {
+                                                Text(
+                                                    text = nodeEmoji,
+                                                    fontSize = 17.sp,
+                                                    modifier = Modifier.padding(end = 10.dp)
+                                                )
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = proxy.name,
+                                                    color = if (isSelected) LoonOrange else LoonTextPrimary,
+                                                    fontSize = 14.5.sp,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    maxLines = 1
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = proxy.type.uppercase(),
+                                                    color = LoonTextMuted,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                        }
 
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             if (isTestingQuickSheet) {
                                                 CircularProgressIndicator(
                                                     modifier = Modifier.size(13.dp),
                                                     strokeWidth = 1.8.dp,
-                                                    color = LoonBlue
+                                                    color = LoonOrange
                                                 )
                                             } else {
                                                 val delayColor = when {
@@ -747,12 +735,29 @@ fun DashboardScreen(
                                                 Text(
                                                     text = delayText,
                                                     color = delayColor,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.Bold else FontWeight.Medium,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
+                                                    modifier = Modifier.padding(end = 8.dp)
+                                                )
+                                            }
+
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = LoonOrange,
+                                                    modifier = Modifier.size(18.dp)
                                                 )
                                             }
                                         }
+                                    }
+
+                                    if (index < filteredNodes.size - 1) {
+                                        HorizontalDivider(
+                                            color = LoonCardBorder,
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
                                     }
                                 }
                             }
@@ -794,7 +799,7 @@ fun DashboardScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = LoonTextPrimary
                             )
-                            IconButton(onClick = rememberHapticAction({ showAddShortcutSheet = false })) {
+                            IconButton(onClick = { showAddShortcutSheet = false }) {
                                 Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
                             }
                         }
@@ -823,7 +828,7 @@ fun DashboardScreen(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(12.dp))
                                             .border(1.dp, LoonCardBorder, RoundedCornerShape(12.dp))
-                                            .hapticClickable {
+                                            .clickable {
                                                 onUpdateVisibleShortcuts(visibleShortcuts + item.id)
                                             },
                                         color = LoonCard
@@ -899,54 +904,49 @@ fun DashboardScreen(
                             Triple(TunnelMode.DIRECT, AppStrings.get("mode_direct", lang), "所有流量直接连接，不通过代理")
                         )
 
-                        modes.forEach { (mode, title, desc) ->
+                        modes.forEachIndexed { index, (mode, title, desc) ->
                             val isSelected = mode == currentMode
-                            Surface(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 5.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .border(
-                                        width = if (isSelected) 1.5.dp else 1.dp,
-                                        color = if (isSelected) LoonOrange else LoonCardBorder,
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .hapticClickable {
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
                                         onModeSelected(mode)
                                         showModeBottomSheet = false
-                                    },
-                                color = LoonCard
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 13.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = title,
-                                            fontSize = 15.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) LoonOrange else LoonTextPrimary
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = desc,
-                                            fontSize = 12.sp,
-                                            color = LoonTextSecondary
-                                        )
-                                    }
-                                    if (isSelected) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(10.dp)
-                                                .clip(CircleShape)
-                                                .background(LoonOrange)
-                                        )
-                                    }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        fontSize = 15.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) LoonOrange else LoonTextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = desc,
+                                        fontSize = 12.sp,
+                                        color = LoonTextSecondary
+                                    )
                                 }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = LoonOrange,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            if (index < modes.size - 1) {
+                                HorizontalDivider(
+                                    color = LoonCardBorder,
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
                             }
                         }
                     }
@@ -973,7 +973,7 @@ fun DashboardScreen(
                         )
                     },
                     confirmButton = {
-                        TextButton(onClick = rememberHapticAction({ activeDialogTitle = null })) {
+                        TextButton(onClick = { activeDialogTitle = null }) {
                             Text("知道了", color = LoonBlue, fontWeight = FontWeight.Bold)
                         }
                     },

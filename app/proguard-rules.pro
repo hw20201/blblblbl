@@ -2,8 +2,7 @@
 # Native bridge (libclash.so / libbridge.so) -- entry points are looked up by
 # JNI name, so they must survive shrinking and obfuscation.
 # NOTE: shrinking is currently disabled (isMinifyEnabled = false) because the
-# minified build crashes on startup with the native core. These rules are kept
-# for when that is investigated further.
+# minified build previously crashed on startup. R8 is experimental and opt-in.
 # ---------------------------------------------------------------------------
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
@@ -33,7 +32,6 @@
 # ---------------------------------------------------------------------------
 # QuickJS is driven through JNI.
 -keep class com.quickjs.** { *; }
-
 # Rhino is invoked reflectively by the script engine.
 -dontwarn org.mozilla.javascript.**
 -keep class org.mozilla.javascript.** { *; }
@@ -45,3 +43,16 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -dontwarn org.slf4j.**
+
+# Manifest components and reflectively accessed persisted data.
+-keep class com.github.mihomo.android.MihomoApplication { *; }
+-keep class com.github.mihomo.android.ui.MainActivity { *; }
+-keep class com.github.mihomo.android.service.MihomoVpnService { *; }
+-keep class com.github.mihomo.android.service.MihomoTileService { *; }
+-keep class com.github.mihomo.android.receiver.BootReceiver { *; }
+-keep class com.github.mihomo.android.data.** { *; }
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+-keepattributes Signature,MethodParameters,Exceptions,EnclosingMethod

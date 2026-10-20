@@ -6,8 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import com.github.mihomo.android.ui.components.hapticClickable
-import com.github.mihomo.android.ui.components.rememberHapticAction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,8 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -39,19 +40,44 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale as scaleDrawing
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.mihomo.android.ui.glass.GlassAccent
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassRadius
+import com.github.mihomo.android.ui.glass.GlassSurface
+import com.github.mihomo.android.ui.glass.LocalShortcutBlurEnabled
+import com.github.mihomo.android.ui.glass.glassTextPrimary
+import com.github.mihomo.android.ui.glass.NavigationLensState
+import com.github.mihomo.android.ui.glass.glassPalette
+import com.github.mihomo.android.ui.glass.NavigationLens
+import com.github.mihomo.android.ui.glass.NavigationLensOpticsState
+import com.github.mihomo.android.ui.glass.lensTabMagnification
+import com.github.mihomo.android.ui.glass.NavigationGlassSurface
+import com.github.mihomo.android.ui.glass.glassTextSecondary
+import com.github.mihomo.android.ui.glass.navigationLensDrag
 import com.github.mihomo.android.ui.theme.*
-
 @Composable
 fun LoonTrafficCard(
     modifier: Modifier = Modifier,
     title: String,
     speed: String,
-    isUpload: Boolean
+    isUpload: Boolean,
+    glass: Boolean = GlassDefaults.enabled
 ) {
+    if (glass) {
+        LoonTrafficCardGlass(
+            modifier = modifier,
+            title = title,
+            speed = speed,
+            isUpload = isUpload
+        )
+        return
+    }
+
     val gradient = if (isUpload) {
         Brush.horizontalGradient(listOf(Color(0xFF00C853), Color(0xFF00E676)))
     } else {
@@ -109,6 +135,58 @@ fun LoonTrafficCard(
                     modifier = Modifier.size(width = 32.dp, height = 38.dp)
                 )
             }
+        }
+    }
+}
+
+/**
+ * Glass variant of [LoonTrafficCard]. Same geometry (82dp tall, 18dp radius, arrow on the right) so
+ * the dashboard layout is untouched; only the material changes. The accent now tints the panel
+ * instead of filling it, which is what makes the metric legible over a busy colour field.
+ */
+@Composable
+private fun LoonTrafficCardGlass(
+    modifier: Modifier = Modifier,
+    title: String,
+    speed: String,
+    isUpload: Boolean
+) {
+    val accent = if (isUpload) GlassAccent.upload else GlassAccent.download
+    GlassSurface(
+        modifier = modifier.height(82.dp),
+        shape = RoundedCornerShape(GlassRadius.card),
+        accent = accent
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 14.dp, end = 56.dp)
+        ) {
+            Text(
+                text = title,
+                color = glassTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = if (speed.isBlank()) "--" else speed,
+                color = glassTextPrimary,
+                fontSize = 15.5.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            IosTrafficArrow(
+                isUpload = isUpload,
+                modifier = Modifier.size(width = 32.dp, height = 38.dp)
+            )
         }
     }
 }
@@ -302,102 +380,160 @@ fun LoonShortcutCard(
     icon: @Composable () -> Unit,
     isEditing: Boolean = false,
     onDelete: (() -> Unit)? = null,
+    /** Background-only scene; never includes this card or navigation content. */
+    lens: NavigationLensState? = null,
+    /** Disable only the Gaussian filter for same-material visual comparisons. */
+    blurEnabled: Boolean = LocalShortcutBlurEnabled.current,
     onClick: () -> Unit
 ) {
+    val haptic = rememberIosHaptic()
+    val touchVariant = LocalShortcutTouchVariant.current
+    val previewPose = LocalShortcutTouchPreview.current?.takeIf { it.title == title }?.pose
+    val experimentalInteractions = remember { MutableInteractionSource() }
+    val touchMotion = rememberShortcutTouchMotion(
+        touchVariant ?: ShortcutTouchVariant.GentleFloat,
+        enabled = touchVariant != null && !isEditing,
+        frozenPose = previewPose
+    )
+    val basePressModifier = modifier
+        .height(118.dp)
+        .testTag("shortcut-card-$title")
+    val pressModifier = if (touchVariant == null || isEditing) {
+        basePressModifier.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+            haptic.lightTick()
+            onClick()
+        }
+    } else {
+        basePressModifier
+            .clickable(
+                interactionSource = experimentalInteractions,
+                indication = null,
+                enabled = true
+            ) {
+                haptic.lightTick()
+                onClick()
+            }
+            .then(touchMotion.modifier)
+    }
+
+    // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.
+    if (GlassDefaults.enabled) {
+        GlassSurface(
+            modifier = pressModifier,
+            shape = RoundedCornerShape(GlassRadius.card),
+            lens = lens,
+            blurEnabled = blurEnabled,
+            shortcutRefraction = touchMotion.refraction
+        ) {
+            ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+        }
+        return
+    }
+
     Surface(
-        modifier = modifier
-            .height(118.dp)
+        modifier = pressModifier
+            .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
             .clip(RoundedCornerShape(18.dp))
             .border(
-                width = 1.dp,
+                width = 0.5.dp,
                 color = LoonCardBorder,
                 shape = RoundedCornerShape(18.dp)
-            )
-            .shadow(2.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
-            .hapticClickable(if (!isEditing) onClick else null),
+            ),
         color = LoonCard
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Text info on top-left
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = 14.dp, end = 56.dp)
-            ) {
+        ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+    }
+}
+
+/** Shared body of [LoonShortcutCard]; identical in both material variants. */
+@Composable
+private fun ShortcutCardContent(
+    title: String,
+    subtitle: String,
+    icon: @Composable () -> Unit,
+    isEditing: Boolean,
+    onDelete: (() -> Unit)?
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Text info on top-left
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 14.dp, top = 14.dp, end = 56.dp)
+        ) {
+            Text(
+                text = title,
+                color = LoonTextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            if (subtitle.isNotBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = title,
-                    color = LoonTextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
+                    text = subtitle,
+                    color = LoonTextSecondary,
+                    fontSize = 12.sp,
                     maxLines = 1
                 )
-                if (subtitle.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = subtitle,
-                        color = LoonTextSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 1
-                    )
-                }
             }
+        }
 
-            // Bottom-left: clean chevron '>' button or drag handle (no background color block)
+        // Bottom-left: clean chevron '>' button or drag handle (no background color block)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 14.dp, bottom = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isEditing) {
+                Canvas(modifier = Modifier.size(18.dp)) {
+                    val stroke = 2.dp.toPx()
+                    val w = size.width
+                    val h = size.height
+                    val color = Color(0xFF9AA0AE)
+                    drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
+                    drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFF9AA0AE),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // Bottom-right large floating illustration
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 10.dp, bottom = 10.dp)
+                .size(54.dp),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            icon()
+        }
+
+        // Red minus/remove button badge at top-right in edit mode
+        if (isEditing && onDelete != null) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 14.dp, bottom = 14.dp),
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF3B30))
+                    .clickable { onDelete() },
                 contentAlignment = Alignment.Center
             ) {
-                if (isEditing) {
-                    Canvas(modifier = Modifier.size(18.dp)) {
-                        val stroke = 2.dp.toPx()
-                        val w = size.width
-                        val h = size.height
-                        val color = Color(0xFF9AA0AE)
-                        drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
-                        drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
-                    }
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = Color(0xFF9AA0AE),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            // Bottom-right large floating illustration
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 10.dp, bottom = 10.dp)
-                    .size(54.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                icon()
-            }
-
-            // Red minus/remove button badge at top-right in edit mode
-            if (isEditing && onDelete != null) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFFF3B30))
-                        .hapticClickable(onDelete),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "−",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
+                Text(
+                    text = "\u2212",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
         }
     }
@@ -860,19 +996,79 @@ fun AppRoutingIllustration() {
 fun LoonFloatingBottomBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lens: NavigationLensState? = null
 ) {
+    if (GlassDefaults.enabled) {
+        var selectionPulse by remember { mutableIntStateOf(0) }
+        var dragPosition by remember { mutableStateOf<Float?>(null) }
+        val optics = remember { NavigationLensOpticsState(selectedTab.toFloat()) }
+        // One refracting backdrop layer only. Sharp foreground drawing shares its position;
+        // the tab layout, semantic nodes and touch targets never grow or move.
+        Box(
+            modifier = modifier
+                // The original items determine the width; both material layers match the dock.
+                .wrapContentSize(Alignment.BottomCenter)
+                .height(BOTTOM_BAR_HEIGHT)
+                .testTag("navigation-dock")
+                .navigationLensDrag(BOTTOM_BAR_SLOTS, { dragPosition = it }, { tab ->
+                    selectionPulse++
+                    onTabSelected(tab)
+                })
+                // Resting glass is inset; clicked glass grows symmetrically over the selected option.
+                .graphicsLayer { clip = false }
+        ) {
+            // Capsule keeps the cheap static material: no scene sampling, no shader pass.
+            GlassSurface(
+                modifier = Modifier.matchParentSize(),
+                shape = RoundedCornerShape(GlassRadius.bar)
+            ) {}
+            NavigationLens(
+                selectedSlot = selectedTab.coerceIn(0, BOTTOM_BAR_SLOTS - 1),
+                slotCount = BOTTOM_BAR_SLOTS,
+                lens = lens,
+                modifier = Modifier.matchParentSize(),
+                selectionPulse = selectionPulse,
+                dragPosition = dragPosition,
+                optics = optics
+            )
+            BottomBarItems(selectedTab, { tab ->
+                selectionPulse++
+                onTabSelected(tab)
+            }, glassMode = true, optics = if (lens != null) optics else null)
+        }
+        return
+    }
+
     Surface(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
-            .border(1.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
+            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
         shape = RoundedCornerShape(32.dp),
         color = LocalLoonColors.current.bottomBarBg
     ) {
+        BottomBarItems(selectedTab, onTabSelected)
+    }
+}
+
+/** Number of slots in the bottom bar; the lens travels between their centres. */
+private const val BOTTOM_BAR_SLOTS = 3
+
+/** Fixed capsule height: liquid motion never changes the navigation layout. */
+private val BOTTOM_BAR_HEIGHT = 64.dp
+private val BOTTOM_BAR_WIDTH = 304.dp
+
+@Composable
+private fun BottomBarItems(
+    selectedTab: Int, onTabSelected: (Int) -> Unit,
+    glassMode: Boolean = false, hideSelectedIcon: Boolean = false,
+    optics: NavigationLensOpticsState? = null
+) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 28.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(40.dp),
+                .then(if (glassMode) Modifier.widthIn(max = BOTTOM_BAR_WIDTH).fillMaxWidth() else Modifier)
+                .padding(horizontal = if (glassMode) 0.dp else 28.dp, vertical = 7.dp),
+            horizontalArrangement = if (glassMode) Arrangement.SpaceEvenly else Arrangement.spacedBy(40.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val lang = LocalAppLanguage.current
@@ -880,6 +1076,9 @@ fun LoonFloatingBottomBar(
                 icon = Icons.Default.Speed,
                 label = AppStrings.get("nav_dashboard", lang),
                 isSelected = selectedTab == 0,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 0,
+                opticalScale = optics?.let { { lensTabMagnification(0, it.frame.position, it.frame.expansion) } },
                 onClick = { onTabSelected(0) }
             )
             BottomNavItem(
@@ -888,16 +1087,21 @@ fun LoonFloatingBottomBar(
                 },
                 label = AppStrings.get("nav_proxies", lang),
                 isSelected = selectedTab == 1,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 1,
+                opticalScale = optics?.let { { lensTabMagnification(1, it.frame.position, it.frame.expansion) } },
                 onClick = { onTabSelected(1) }
             )
             BottomNavItem(
                 icon = Icons.Outlined.Settings,
                 label = AppStrings.get("nav_settings", lang),
                 isSelected = selectedTab == 2,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 2,
+                opticalScale = optics?.let { { lensTabMagnification(2, it.frame.position, it.frame.expansion) } },
                 onClick = { onTabSelected(2) }
             )
         }
-    }
 }
 
 @Composable
@@ -957,52 +1161,57 @@ private fun BottomNavItem(
     customIcon: (@Composable (Color) -> Unit)? = null,
     label: String,
     isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    hideIcon: Boolean = false,
+    opticalScale: (() -> Float)? = null,
     onClick: () -> Unit
 ) {
+    val haptic = rememberIosHaptic()
     val tint by animateColorAsState(
-        targetValue = if (isSelected) LoonBlue else Color(0xFF9AA1B0),
+        targetValue = if (isSelected) IosBlue else Color(0xFF8E8E93),
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.05f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "nav_scale"
-    )
+    val scale = if (opticalScale == null) {
+        val legacyScale by animateFloatAsState(
+            targetValue = if (isSelected) 1.08f else 1.0f,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+            label = "nav_scale"
+        )
+        legacyScale
+    } else 1f
 
     Column(
-        modifier = Modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                haptic.selection()
+                onClick()
             }
-            .then(Modifier.clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
-                onClick = rememberHapticAction(onClick)
-            ))
+            // Draw-time vector/text magnification only: no bitmap readback, shader per icon,
+            // blur or extra animation clock. The existing AGSL shell supplies the glass sheen.
+            .drawWithContent {
+                val magnification = opticalScale?.invoke() ?: scale
+                scaleDrawing(magnification, magnification) {
+                    this@drawWithContent.drawContent()
+                }
+            }
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (customIcon != null) {
-            customIcon(tint)
-        } else if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(22.dp)
-            )
+        Box(modifier = Modifier.graphicsLayer { alpha = if (hideIcon) 0f else 1f }) {
+            if (customIcon != null) customIcon(tint) else if (icon != null) {
+                Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+            }
         }
         Spacer(modifier = Modifier.height(1.dp))
         Text(
             text = label,
             color = tint,
             fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
@@ -1067,7 +1276,7 @@ fun rememberBounceOverscrollConnection(
                     overscrollOffset.animateTo(
                         targetValue = 0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            dampingRatio = 0.82f,
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
@@ -1081,7 +1290,7 @@ fun rememberBounceOverscrollConnection(
                     overscrollOffset.animateTo(
                         targetValue = 0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            dampingRatio = 0.82f,
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
@@ -1093,6 +1302,7 @@ fun rememberBounceOverscrollConnection(
     return Pair(connection, overscrollOffset.asState())
 }
 
+// iOS-style Rubber-Band Bounce Overscroll
 fun Modifier.bounceOverscroll(
     allowTop: Boolean = true,
     allowBottom: Boolean = true

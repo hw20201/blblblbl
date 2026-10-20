@@ -29,6 +29,9 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
     !releaseKeyPassword.isNullOrBlank() &&
     !releaseStorePassword.isNullOrBlank()
 
+// R8 remains experimental and off for signed draft packages.
+val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: false
+
 val nativeChecksums = rootProject.file("native/SHA256SUMS")
 val nativeLibraries = listOf("libclash.so", "libbridge.so").associate { name ->
     val path = "app/src/main/jniLibs/arm64-v8a/$name"
@@ -56,13 +59,14 @@ tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 android {
     namespace = "com.github.mihomo.android"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.0.8"
+        versionCode = 28
+        versionName = "1.0.24"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -84,10 +88,9 @@ android {
 
     buildTypes {
         release {
-            // R8 shrinking/obfuscation stays off: it crashes on startup with the native core
-            // (verified on device). Keep rules are kept in proguard-rules.pro for reference.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Enable only for separately device-tested builds with -Pnexus.r8=true.
+            isMinifyEnabled = r8Enabled
+            isShrinkResources = r8Enabled
             isDebuggable = false
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
@@ -111,6 +114,12 @@ android {
         compose = true
     }
 
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
@@ -122,6 +131,8 @@ android {
         }
         jniLibs {
             useLegacyPackaging = true
+            // The guard's NDK build must not strip/rewrite pinned core binaries.
+            keepDebugSymbols += setOf("**/libclash.so", "**/libbridge.so")
         }
     }
 }

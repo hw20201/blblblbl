@@ -23,13 +23,61 @@ func ParseStack(stack string) (C.TUNStack, error) {
 	return value, nil
 }
 
+const (
+	defaultMTU = 9000
+	minMTU     = 1280
+	maxMTU     = 65535
+)
+
+// startOptions mirrors the JSON that the Kotlin service passes through JNI.
+type startOptions struct {
+	MTU                  uint32 `json:"mtu"`
+	CongestionController string `json:"congestion-controller"`
+}
+
+// These are the congestion controls mipstack registers; cubic is its default.
+var supportedCongestionControllers = map[string]struct{}{
+	"cubic": {},
+	"reno":  {},
+	"bbr":   {},
+	"bbr3":  {},
+}
+
+func parseStartOptions(raw string) (uint32, string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return defaultMTU, "", nil
+	}
+	var options startOptions
+	if err := json.Unmarshal([]byte(raw), &options); err != nil {
+		return 0, "", fmt.Errorf("invalid TUN options: %w", err)
+	}
+	mtu := options.MTU
+	if mtu == 0 {
+		mtu = defaultMTU
+	}
+	if mtu < minMTU || mtu > maxMTU {
+		return 0, "", fmt.Errorf("TUN MTU %d out of range %d..%d", mtu, minMTU, maxMTU)
+	}
+	controller := strings.ToLower(strings.TrimSpace(options.CongestionController))
+	if controller != "" {
+		if _, ok := supportedCongestionControllers[controller]; !ok {
+			return 0, "", fmt.Errorf("unsupported TUN congestion controller %q", controller)
+		}
+	}
+	return mtu, controller, nil
+}
+
 // Start borrows fd. The patched Mihomo tunNew duplicates it at the ownership
 // boundary; successful and failed listeners both close only their own duplicate.
-func Start(fd int, stack, gateway, portal, dns string) (io.Closer, error) {
+func Start(fd int, stack, gateway, portal, dns, rawOptions string) (io.Closer, error) {
 	if fd <= 0 {
 		return nil, fmt.Errorf("invalid borrowed tun fd: %d", fd)
 	}
 	tunStack, err := ParseStack(stack)
+	if err != nil {
+		return nil, err
+	}
+	mtu, congestionController, err := parseStartOptions(rawOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +113,12 @@ func Start(fd int, stack, gateway, portal, dns string) (io.Closer, error) {
 	options := LC.Tun{
 		Enable: true, Device: sing_tun.InterfaceName, Stack: tunStack,
 		DNSHijack: dnsHijack, AutoRoute: false, AutoDetectInterface: false,
-		Inet4Address: prefix4, Inet6Address: prefix6, MTU: 9000, FileDescriptor: fd,
+		Inet4Address: prefix4, Inet6Address: prefix6, MTU: mtu, FileDescriptor: fd,
+	}
+	if tunStack == C.TunMips {
+		options.CongestionController = congestionController
+	} else if congestionController != "" {
+		log.Warnln("TUN congestion controller %q is ignored for stack %s", congestionController, tunStack.String())
 	}
 	serialized, _ := json.Marshal(options)
 	log.Debugln("TUN requested stack=%s, options=%s", tunStack.String(), serialized)
