@@ -2,6 +2,7 @@ package com.github.mihomo.android.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.github.mihomo.android.ui.components.ShortcutTouchVariant
 
 enum class PerAppProxyMode {
     DISABLED, WHITELIST, BLACKLIST
@@ -180,6 +181,12 @@ class SettingsManager(context: Context) {
         get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
         set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
 
+    /** Selected dashboard shortcut touch motion style. Invalid stored values fall back safely. */
+    var shortcutTouchVariant: ShortcutTouchVariant
+        get() = runCatching {
+            ShortcutTouchVariant.valueOf(prefs.getString("shortcut_touch_variant", ShortcutTouchVariant.GentleFloat.name)!!)
+        }.getOrDefault(ShortcutTouchVariant.GentleFloat)
+        set(value) = prefs.edit().putString("shortcut_touch_variant", value.name).apply()
     /** Master switch for haptic feedback on key interactions. */
     var hapticEnabled: Boolean
         get() = prefs.getBoolean("haptic_enabled", true)

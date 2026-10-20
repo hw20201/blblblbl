@@ -114,6 +114,7 @@ fun GlassSurface(
     tokens: GlassTokens = LocalGlassTokens.current,
     lens: NavigationLensState? = null,
     blurEnabled: Boolean = true,
+    shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() },
     content: @Composable BoxScope.() -> Unit
 ) {
     val fill = if (accent == null) {
@@ -157,7 +158,8 @@ fun GlassSurface(
         Box(modifier = modifier.clip(shape)) {
             CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled,
                 softMeshRim = true, isDark = tokens.isDark,
-                hybrid = hybrid, shaderEnabled = quality != ShortcutGlassQuality.Shared)
+                hybrid = hybrid, shaderEnabled = quality != ShortcutGlassQuality.Shared,
+                shortcutRefraction = shortcutRefraction)
             Box(Modifier.matchParentSize().background(translucentFill, shape).shortcutCardPolish()
                 .then(if (Build.VERSION.SDK_INT < 33 || quality == ShortcutGlassQuality.Shared)
                     Modifier.restrainedCardRim(shape) else Modifier))

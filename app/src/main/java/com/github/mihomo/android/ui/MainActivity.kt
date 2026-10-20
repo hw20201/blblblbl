@@ -55,6 +55,10 @@ import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.components.LoonFloatingBottomBar
 import com.github.mihomo.android.ui.components.LocalHapticFeedbackEnabled
+import com.github.mihomo.android.ui.components.LocalShortcutTouchVariant
+import com.github.mihomo.android.ui.components.ShortcutTouchVariant
+import com.github.mihomo.android.ui.components.LocalShortcutMotionEnabled
+import com.github.mihomo.android.ui.components.rememberShortcutAnimationsEnabled
 import com.github.mihomo.android.ui.screens.*
 import com.github.mihomo.android.ui.theme.LoonBg
 import com.github.mihomo.android.ui.theme.MihomoTheme
@@ -220,6 +224,7 @@ class MainActivity : ComponentActivity() {
         var lanCredentials by remember { mutableStateOf(settingsManager.lanCredentials()) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
+        var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
         var tunMtu by remember { mutableIntStateOf(settingsManager.tunMtu) }
         var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
@@ -702,7 +707,9 @@ class MainActivity : ComponentActivity() {
         CompositionLocalProvider(
             LocalAppLanguage provides appLanguage,
             // Read the persisted preference at action time so changes apply immediately.
-            LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled }
+            LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled },
+            LocalShortcutTouchVariant provides shortcutTouchVariant,
+            LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
         ProvideSoftMeshMotion {
@@ -861,6 +868,11 @@ class MainActivity : ComponentActivity() {
                         allowLan = allowLan,
                         fakeIpEnabled = fakeIpEnabled,
                         hapticEnabled = hapticEnabled,
+                        shortcutTouchVariant = shortcutTouchVariant,
+                        onShortcutTouchVariantChanged = { variant ->
+                            shortcutTouchVariant = variant
+                            settingsManager.shortcutTouchVariant = variant
+                        },
                         ipv6Enabled = ipv6Enabled,
                         tunMtu = tunMtu,
                         mipsCongestionController = mipsCongestionController,

@@ -30,6 +30,7 @@ import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.data.TunStack
+import com.github.mihomo.android.ui.components.ShortcutTouchVariant
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
@@ -50,6 +51,8 @@ fun SettingsScreen(
     tunMtu: Int = 9000,
     mipsCongestionController: String = "cubic",
     hapticEnabled: Boolean = true,
+    shortcutTouchVariant: ShortcutTouchVariant = ShortcutTouchVariant.GentleFloat,
+    onShortcutTouchVariantChanged: (ShortcutTouchVariant) -> Unit = {},
     onIpv6EnabledChanged: (Boolean) -> Unit = {},
     onTunMtuChanged: (Int) -> Unit = {},
     onMipsCongestionControllerChanged: (String) -> Unit = {},
@@ -66,6 +69,7 @@ fun SettingsScreen(
     val settingsManager = remember { SettingsManager(context) }
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
+    var showShortcutTouchDialog by remember { mutableStateOf(false) }
     var showMtuDialog by remember { mutableStateOf(false) }
     var showCongestionDialog by remember { mutableStateOf(false) }
     var mtuDraft by remember { mutableStateOf(tunMtu.toString()) }
@@ -232,6 +236,20 @@ fun SettingsScreen(
                     iconBg = Color(0xFFFF2D55),
                     showChevron = true,
                     onClick = onNavigateToAppearance
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "快捷卡片触感",
+                    subtitle = "A 轻按浮起｜B 跟手倾斜｜C 浮力回弹",
+                    value = when (shortcutTouchVariant) {
+                        ShortcutTouchVariant.GentleFloat -> "A"
+                        ShortcutTouchVariant.FingerTilt -> "B"
+                        ShortcutTouchVariant.BuoyantSpring -> "C"
+                    },
+                    icon = Icons.Default.TouchApp,
+                    iconBg = Color(0xFF007AFF),
+                    showChevron = true,
+                    onClick = { showShortcutTouchDialog = true }
                 )
                 CupertinoDivider()
                 CupertinoCell(title = "触感反馈", subtitle = "立即应用于界面交互", trailing = {
@@ -472,6 +490,39 @@ fun SettingsScreen(
         )
     }
 
+    if (showShortcutTouchDialog) {
+        AlertDialog(
+            onDismissRequest = { showShortcutTouchDialog = false },
+            title = { Text("快捷卡片触感") },
+            text = {
+                Column {
+                    listOf(
+                        ShortcutTouchVariant.GentleFloat to ("A 轻按浮起" to "轻柔抬升，动作克制"),
+                        ShortcutTouchVariant.FingerTilt to ("B 跟手倾斜" to "随手指方向产生倾斜"),
+                        ShortcutTouchVariant.BuoyantSpring to ("C 浮力回弹" to "更明显的浮起与弹性回落")
+                    ).forEach { (variant, labels) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                onShortcutTouchVariantChanged(variant)
+                                showShortcutTouchDialog = false
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = shortcutTouchVariant == variant, onClick = {
+                                onShortcutTouchVariantChanged(variant)
+                                showShortcutTouchDialog = false
+                            })
+                            Column(Modifier.padding(start = 8.dp)) {
+                                Text(labels.first, fontWeight = FontWeight.Medium)
+                                Text(labels.second, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showShortcutTouchDialog = false }) { Text("完成") } }
+        )
+    }
     if (showMtuDialog) {
         AlertDialog(onDismissRequest = { showMtuDialog = false }, title = { Text("TUN MTU") },
             text = { OutlinedTextField(value = mtuDraft, onValueChange = { v -> if (v.length <= 5 && v.all(Char::isDigit)) mtuDraft = v }, singleLine = true) },

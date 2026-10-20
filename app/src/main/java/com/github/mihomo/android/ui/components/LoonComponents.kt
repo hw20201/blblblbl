@@ -387,13 +387,34 @@ fun LoonShortcutCard(
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
-    val pressModifier = modifier
+    val touchVariant = LocalShortcutTouchVariant.current
+    val previewPose = LocalShortcutTouchPreview.current?.takeIf { it.title == title }?.pose
+    val experimentalInteractions = remember { MutableInteractionSource() }
+    val touchMotion = rememberShortcutTouchMotion(
+        touchVariant ?: ShortcutTouchVariant.GentleFloat,
+        enabled = touchVariant != null && !isEditing,
+        frozenPose = previewPose
+    )
+    val basePressModifier = modifier
         .height(118.dp)
         .testTag("shortcut-card-$title")
-        .iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+    val pressModifier = if (touchVariant == null || isEditing) {
+        basePressModifier.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
             haptic.lightTick()
             onClick()
         }
+    } else {
+        basePressModifier
+            .clickable(
+                interactionSource = experimentalInteractions,
+                indication = null,
+                enabled = true
+            ) {
+                haptic.lightTick()
+                onClick()
+            }
+            .then(touchMotion.modifier)
+    }
 
     // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.
     if (GlassDefaults.enabled) {
@@ -401,7 +422,8 @@ fun LoonShortcutCard(
             modifier = pressModifier,
             shape = RoundedCornerShape(GlassRadius.card),
             lens = lens,
-            blurEnabled = blurEnabled
+            blurEnabled = blurEnabled,
+            shortcutRefraction = touchMotion.refraction
         ) {
             ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
         }

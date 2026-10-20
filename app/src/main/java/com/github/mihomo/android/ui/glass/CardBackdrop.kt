@@ -41,7 +41,8 @@ internal fun BoxScope.CardBackdrop(
     softMeshRim: Boolean = false,
     isDark: Boolean = false,
     hybrid: Boolean = false,
-    shaderEnabled: Boolean = true
+    shaderEnabled: Boolean = true,
+    shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() }
 ) {
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -57,8 +58,10 @@ internal fun BoxScope.CardBackdrop(
     Box(Modifier.matchParentSize()
         .onGloballyPositioned { origin = it.positionInRoot() }
         .graphicsLayer {
+            // Read here, not during composition, so animated snapshot state invalidates the layer.
+            val refraction = shortcutRefraction()
             if (Build.VERSION.SDK_INT >= 33 && rim != null) {
-                rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark, hybrid)
+                rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark, hybrid, refraction)
                 renderEffect = rim.effect
             } else {
                 renderEffect = blur
