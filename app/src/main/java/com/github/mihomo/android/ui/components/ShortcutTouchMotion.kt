@@ -167,6 +167,8 @@ internal fun rememberShortcutTouchMotion(
         // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
         // Feed the actual finger position so every press location produces a consistent lens.
         // Keep that point through release while lift animates down; reset() only clears pressed.
-        ShortcutRefraction(visibleLift(), if (animate) input.x else 0f, if (animate) input.y else 0f)
+        ShortcutRefraction(visibleLift(), if (animate) input.x else 0f, if (animate) input.y else 0f,
+            // Contact starts clear: unlike the bevel kick, frost follows actual separation.
+            frostLift = if (animate) lift.value.coerceIn(0f, 1f) else 0f)
     }
 }

@@ -29,7 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 internal fun shouldBlurCardBackdrop(apiLevel: Int, hardwareAccelerated: Boolean): Boolean =
     apiLevel >= 31 && hardwareAccelerated
 
-/** Legacy preview switch; soft-mesh shortcuts now skip Gaussian filtering in either state. */
+/** Review switch: disable only Gaussian diffusion, retaining shortcut geometry and bevel. */
 internal val LocalShortcutBlurEnabled = staticCompositionLocalOf { true }
 
 /** Replay only the backdrop at its root-relative position; never record card content here. */
@@ -42,12 +42,16 @@ internal fun BoxScope.CardBackdrop(
     isDark: Boolean = false,
     hybrid: Boolean = false,
     shaderEnabled: Boolean = true,
+    contactFrost: Boolean = false,
     shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() }
 ) {
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
     val rim = remember(softMeshRim, shaderEnabled) {
         if (softMeshRim && shaderEnabled && Build.VERSION.SDK_INT >= 33) ShortcutMeshOptics() else null
+    }
+    val frost = remember(contactFrost, blurEnabled) {
+        if (contactFrost && blurEnabled && Build.VERSION.SDK_INT >= 31) ShortcutContactFrost() else null
     }
     val blur = remember(density, softMeshRim, blurEnabled) {
         if (!softMeshRim && blurEnabled && Build.VERSION.SDK_INT >= 31) {
@@ -62,9 +66,9 @@ internal fun BoxScope.CardBackdrop(
             val refraction = shortcutRefraction()
             if (Build.VERSION.SDK_INT >= 33 && rim != null) {
                 rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark, hybrid, refraction)
-                renderEffect = rim.effect
+                renderEffect = frost?.update(refraction.frostLift, density, rim.nativeEffect) ?: rim.effect
             } else {
-                renderEffect = blur
+                renderEffect = if (Build.VERSION.SDK_INT >= 31) frost?.update(refraction.frostLift, density, null) ?: blur else null
             }
         }
         .drawWithContent {

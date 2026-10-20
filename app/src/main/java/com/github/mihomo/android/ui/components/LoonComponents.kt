@@ -423,6 +423,7 @@ fun LoonShortcutCard(
             shape = RoundedCornerShape(GlassRadius.card),
             lens = lens,
             blurEnabled = blurEnabled,
+            shortcutContactFrost = true,
             shortcutRefraction = touchMotion.refraction
         ) {
             ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)

@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
  * Panel material for one palette.
  *
  * The default material uses tint, rim and sheen. Shortcut cards replay the already-soft shared
- * mesh with a colour-responsive bevel, without Gaussian filtering; navigation keeps its optics.
+ * mesh with a colour-responsive bevel; opted-in shortcuts diffuse only during lift. Navigation keeps its optics.
  */
 @Immutable
 data class GlassTokens(
@@ -114,6 +114,7 @@ fun GlassSurface(
     tokens: GlassTokens = LocalGlassTokens.current,
     lens: NavigationLensState? = null,
     blurEnabled: Boolean = true,
+    shortcutContactFrost: Boolean = false,
     shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() },
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -159,6 +160,7 @@ fun GlassSurface(
             CardBackdrop(lens = lens, fallback = fill, blurEnabled = blurEnabled,
                 softMeshRim = true, isDark = tokens.isDark,
                 hybrid = hybrid, shaderEnabled = quality != ShortcutGlassQuality.Shared,
+                contactFrost = shortcutContactFrost,
                 shortcutRefraction = shortcutRefraction)
             Box(Modifier.matchParentSize().background(translucentFill, shape).shortcutCardPolish()
                 .then(if (Build.VERSION.SDK_INT < 33 || quality == ShortcutGlassQuality.Shared)

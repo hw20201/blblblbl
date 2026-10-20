@@ -8,7 +8,8 @@ import androidx.compose.ui.graphics.RenderEffect as ComposeRenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
 
 /** Lift in [0, 1], touch direction in [-1, 1]; neutral touch is the card centre. */
-data class ShortcutRefraction(val lift: Float = 0f, val x: Float = 0f, val y: Float = 0f)
+data class ShortcutRefraction(val lift: Float = 0f, val x: Float = 0f, val y: Float = 0f,
+    val frostLift: Float = lift)
 
 /**
  * Reuse the already-diffuse shared mesh: no Gaussian pass, capture or per-card clock.
@@ -81,6 +82,8 @@ internal class ShortcutMeshOptics {
     private var parameters: Parameters? = null
     var effect: ComposeRenderEffect? = null
         private set
+    var nativeEffect: RenderEffect? = null
+        private set
 
     fun update(width: Float, height: Float, density: Float, radius: Float, dark: Boolean, hybrid: Boolean = false,
         refraction: ShortcutRefraction = ShortcutRefraction()) {
@@ -96,7 +99,8 @@ internal class ShortcutMeshOptics {
         shader.setFloatUniform("touch", (r.x * .5f + .5f) * width, (r.y * .5f + .5f) * height)
         // RenderEffect snapshots uniforms. Reuse for draw-only mesh motion; update only for
         // geometry, theme or finite touch motion. Source display-list changes remain live.
-        effect = RenderEffect.createRuntimeShaderEffect(shader, "backdrop").asComposeRenderEffect()
+        nativeEffect = RenderEffect.createRuntimeShaderEffect(shader, "backdrop")
+        effect = nativeEffect?.asComposeRenderEffect()
         parameters = next
     }
 }
