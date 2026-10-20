@@ -62,7 +62,9 @@ class LiquidOpticsTests(unittest.TestCase):
         factor = eta*nz-math.sqrt(k)
         rx, ry, rz = factor*nx, factor*ny, -eta+factor*nz
         tilt = math.hypot(rx, ry)/(-rz)*(68*SCALE*1.55+8*SCALE)
-        blur = 2*(3*2**(-1.5))
+        # Full pickup grows the kernel to 3.4dp; resting LOD remains 1.5.
+        self.assertIn('max(blurRadius, 3.4)', S)
+        blur = 2*3.4
         bound = tilt+displacement(0, 1)+1.4+blur
         self.assertLess(bound, 24)
         print('Conservative overscan bound: %.4f dp < 24 dp' % bound)
@@ -80,10 +82,11 @@ class LiquidOpticsTests(unittest.TestCase):
         changed = subprocess.check_output(['git','diff','--name-only','c91a27b22ee43aeb2dad36c2f41c225b2cf2fcab'], cwd=ROOT, text=True).splitlines()
         production = [p for p in changed if '/src/main/' in p]
         self.assertEqual(set(pathlib.Path(p).name for p in production),
-                         {'ShortcutRefractiveOptics.kt','GlassBackground.kt','StructuredMeshWallpaper.kt'})
+                         {'ShortcutRefractiveOptics.kt','GlassBackground.kt','StructuredMeshWallpaper.kt','CardBackdrop.kt'})
         replay = (GLASS/'CardBackdrop.kt').read_text()
         self.assertIn('setPolyToPoly(scene, 0, local, 0, 4)', replay)
         self.assertIn('SHORTCUT_BACKDROP_OVERSCAN_DP', replay)
+        self.assertIn('val maximum = if (followup) 8f', replay)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

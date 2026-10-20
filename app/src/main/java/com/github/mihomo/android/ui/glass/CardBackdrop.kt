@@ -129,7 +129,9 @@ internal fun BoxScope.CardBackdrop(
                 rim.update(size.width, size.height, density, GlassRadius.card.toPx(), isDark, hybrid, refraction)
                 renderEffect = frost?.update(refraction.frostLift, density, rim.nativeEffect) ?: rim.effect
             } else {
-                val maximum = if (followup) (ShortcutFollowupParameters.blurRadiusDp * 2f).coerceAtMost(8f)
+                // Gaussian fallback is not the AGSL nine-tap kernel: retain its tested
+                // 8dp range so rest softness and the local clear core stay perceptible.
+                val maximum = if (followup) 8f
                     else if (tunedMaterial) 6f else 8f
                 renderEffect = if (Build.VERSION.SDK_INT >= 31) frost?.update(refraction.frostLift, density, null, maximum) ?: blur else null
             }

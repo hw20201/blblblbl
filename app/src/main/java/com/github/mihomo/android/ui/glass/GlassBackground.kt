@@ -52,6 +52,7 @@ fun NexusGlassBackground(
     val seed = LocalSoftMeshSeed.current
     val motion = remember(seed) { SoftMeshMotion(seed ?: Random.nextLong()) }
     val structured = LocalStructuredMeshEnabled.current
+    val custom = palette.key.startsWith("custom:")
     val baseBlobs = if (palette.isDark || palette.key.startsWith("custom:")) palette.blobs else IceLavenderMesh
     val blobs = remember(palette, structured) {
         if (structured) structuredMeshCells(palette, baseBlobs) else baseBlobs
@@ -60,9 +61,16 @@ fun NexusGlassBackground(
     val veil = if (palette.isDark) palette.veil.copy(alpha = if (structured) .08f else .16f)
         else Color.White.copy(alpha = if (structured) .035f else .10f)
     // Unit-space brushes stay cached across frames. Transform the canvas, not the foreground.
-    val brushes = remember(blobs, structured) {
+    val brushes = remember(blobs, structured, custom) {
         blobs.map { blob ->
-            if (structured) Brush.radialGradient(
+            if (structured && custom) Brush.radialGradient(
+                0f to blob.color,
+                .36f to blob.color.copy(alpha = blob.color.alpha * .86f),
+                .63f to blob.color.copy(alpha = blob.color.alpha * .46f),
+                .84f to blob.color.copy(alpha = blob.color.alpha * .10f),
+                1f to Color.Transparent,
+                center = Offset.Zero, radius = 1f
+            ) else if (structured) Brush.radialGradient(
                 0f to blob.color,
                 .44f to blob.color.copy(alpha = blob.color.alpha * .90f),
                 .64f to blob.color.copy(alpha = blob.color.alpha * .48f),
@@ -89,13 +97,16 @@ fun NexusGlassBackground(
                     blobs.forEachIndexed { index, blob ->
                         val pose = motion.sample(index, time)
                         val radius = (if (structured) size.minDimension else diag) * blob.radius
-                        val x = if (structured) blob.x + (pose.x - .5f) * .16f else pose.x
-                        val y = if (structured) blob.y + (pose.y - .5f) * .08f else pose.y
+                        // Custom monochromatic fields need a little more travel now that
+                        // the bevel no longer invents relief contrast or a white Fresnel rim.
+                        val travel = if (custom) 1.5f else 1f
+                        val x = if (structured) blob.x + (pose.x - .5f) * .16f * travel else pose.x
+                        val y = if (structured) blob.y + (pose.y - .5f) * .08f * travel else pose.y
                         translate(size.width * x, size.height * y) {
                             rotate(pose.rotation, Offset.Zero) {
                                 // Broad oblique colour ribbons, not tiny diagnostic grids.
-                                val stretchX = if (structured) 1.22f else 1f
-                                val stretchY = if (structured) .82f else 1f
+                                val stretchX = if (structured && !custom) 1.22f else 1f
+                                val stretchY = if (structured && !custom) .82f else 1f
                                 scale(radius * pose.scaleX * stretchX, radius * pose.scaleY * stretchY, Offset.Zero) {
                                     drawCircle(brushes[index], radius = 1f, center = Offset.Zero)
                                 }

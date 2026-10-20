@@ -101,7 +101,10 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         float rim = 1.0 - smoothstep(0.0, max(edgeWidth, 0.01), depth);
         float fade = clamp(lift, 0.0, 1.0);
         fade = fade * fade * (3.0 - 2.0 * fade);
-        float sigma = blurRadius * density * fade * (1.0 - clamp(edgeClarity, 0.0, 1.0) * rim) * (1.0 - contactMask);
+        // LOD 1.5 describes the resting material, not the full pickup response.
+        // Grow only on physical lift; 3.4dp keeps the complete footprint within 24dp.
+        float liftedBlur = mix(blurRadius, max(blurRadius, 3.4), motionLift * (1.0 - contactMode));
+        float sigma = liftedBlur * density * fade * (1.0 - clamp(edgeClarity, 0.0, 1.0) * rim) * (1.0 - contactMask);
         float ratio = clamp(1.0 - depth / thick, 0.0, 1.0);
         float thetaI = asin(clamp(ratio * ratio, 0.0, 1.0));
         float thetaT = asin(clamp(sin(thetaI) / max(ior, 1.001), 0.0, 1.0));
