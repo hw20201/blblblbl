@@ -45,7 +45,10 @@ internal const val SHORTCUT_GLASS_SHADER = """
             if (hybrid > 0.5 || lift > 0.0) {
                 // Touch creates a local, asymmetric lens displacement, gated to the curved bevel.
                 float2 touchVector = (p - touch) / max(min(viewport.x, viewport.y) * 0.5, 1.0);
-                float touchWeight = clamp(1.0 - length(touchVector), 0.0, 1.0);
+                // Keep a baseline response around the whole bevel. A hard 1-distance cutoff
+                // made mid-card taps produce almost no press refraction, while corner taps did.
+                float touchDistance = length(touchVector);
+                float touchWeight = 1.0 - 0.38 * smoothstep(0.0, 1.35, touchDistance);
                 float2 shift = float2(normal.x * 1.2 + touchVector.x * 1.5,
                     normal.y * 1.2 + touchVector.y * 2.2) * lift * density * touchWeight;
                 c = backdrop.eval(clamp(p - normal * edge * edge * (2.1 * density + lift * 2.6 * density) - shift,

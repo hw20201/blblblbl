@@ -101,6 +101,26 @@ class ShortcutTouchBehaviorRegressionTest {
         }
     }
 
+    @Test fun refractionUsesActualTouchPointAndRespondsOnShortPress() {
+        val refraction = androidx.compose.runtime.mutableStateOf(ShortcutRefraction())
+        compose.setContent {
+            val motion = rememberShortcutTouchMotion(ShortcutTouchVariant.GentleFloat, enabled = true)
+            SideEffect { refraction.value = motion.refraction() }
+            Box(motion.modifier.size(120.dp).clickable { }.testTag("touch-refraction"))
+        }
+        val target = compose.onNodeWithTag("touch-refraction")
+        target.performTouchInput { down(Offset(12f, 36f)) }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            val actual = refraction.value
+            assertEquals("x must be the normalized finger position", -0.8f, actual.x, 0.03f)
+            assertEquals("y must be the normalized finger position", -0.4f, actual.y, 0.03f)
+            assertTrue("short press starts with visible refraction lift", actual.lift >= 0.35f)
+        }
+        target.performTouchInput { up() }
+        compose.waitForIdle()
+    }
+
     @Test fun editModeRetainsDeleteAndDisablesCardActivation() {
         var clicks = 0
         var deletes = 0

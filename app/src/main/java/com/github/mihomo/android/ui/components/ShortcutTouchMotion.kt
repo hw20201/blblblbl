@@ -72,7 +72,9 @@ private class TouchInput {
     var pressed by mutableStateOf(false)
     var x by mutableFloatStateOf(0f)
     var y by mutableFloatStateOf(0f)
-    fun reset() { pressed = false; x = 0f; y = 0f }
+    // Keep the last contact point while the lift springs back. Resetting x/y on release
+    // would move the shader's lens target to the card centre in the very same frame.
+    fun reset() { pressed = false }
 }
 
 internal class ShortcutTouchMotion(val modifier: Modifier, val refraction: () -> ShortcutRefraction)
@@ -118,7 +120,9 @@ internal fun rememberShortcutTouchMotion(
     }
     fun visibleLift(): Float = when {
         !animate -> 0f
-        input.pressed && frozenPose == null -> lift.value.coerceAtLeast(.18f)
+        // A short tap may end before the 85 ms lift tween advances much. Keep a visible
+        // minimum so the optical state is perceptible from the first rendered press frame.
+        input.pressed && frozenPose == null -> lift.value.coerceAtLeast(.35f)
         else -> lift.value.coerceIn(0f, 1f)
     }
     val modifier = Modifier.pointerInput(input, enabled) {
@@ -160,7 +164,9 @@ internal fun rememberShortcutTouchMotion(
         clip = false
     }
     return ShortcutTouchMotion(modifier) {
-        // The backdrop reads these snapshot values: down invalidates optics even on a static mesh.
-        ShortcutRefraction(visibleLift(), if (animate) ry.value / 4f else 0f, if (animate) -rx.value / 4f else 0f)
+        // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
+        // Feed the actual finger position so every press location produces a consistent lens.
+        // Keep that point through release while lift animates down; reset() only clears pressed.
+        ShortcutRefraction(visibleLift(), if (animate) input.x else 0f, if (animate) input.y else 0f)
     }
 }

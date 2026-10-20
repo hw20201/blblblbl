@@ -16,5 +16,7 @@ class ShortcutRefractionOpticsTest {
         assertTrue(SHORTCUT_GLASS_SHADER.contains("if (hybrid > 0.5 || lift > 0.0)"))
         assertTrue(SHORTCUT_GLASS_SHADER.contains("* lift * density * touchWeight"))
         assertTrue(SHORTCUT_GLASS_SHADER.contains("uniform float2 touch"))
+        assertTrue("touch response must not drop to zero for mid-card taps",
+            SHORTCUT_GLASS_SHADER.contains("1.0 - 0.38 * smoothstep(0.0, 1.35, touchDistance)"))
     }
 }
