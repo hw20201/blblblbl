@@ -29,6 +29,17 @@ class StructuredMeshWallpaperTest {
         }
     }
 
+    @Test fun defaultDarkCellsStayCoolAndBelowTextLuminance() {
+        val dark = GlassPalettes.all.first { it.isDark }
+        val cells = structuredMeshCells(dark, dark.blobs)
+        assertEquals(15, cells.size)
+        cells.forEach {
+            assertTrue(it.color.blue >= it.color.red)
+            assertTrue(maxOf(it.color.red, it.color.green, it.color.blue) < .40f)
+            assertTrue(it.color.alpha <= .73f)
+        }
+    }
+
     @Test fun emptyColourFieldFallsBackToBaseWithoutDivideByZero() {
         assertTrue(structuredMeshCells(GlassPalettes.CREAM.copy(blobs = emptyList()), emptyList()).isEmpty())
     }

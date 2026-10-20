@@ -64,9 +64,9 @@ fun NexusGlassBackground(
         blobs.map { blob ->
             if (structured) Brush.radialGradient(
                 0f to blob.color,
-                .36f to blob.color.copy(alpha = blob.color.alpha * .86f),
-                .63f to blob.color.copy(alpha = blob.color.alpha * .46f),
-                .84f to blob.color.copy(alpha = blob.color.alpha * .10f),
+                .44f to blob.color.copy(alpha = blob.color.alpha * .90f),
+                .64f to blob.color.copy(alpha = blob.color.alpha * .48f),
+                .80f to blob.color.copy(alpha = blob.color.alpha * .08f),
                 1f to Color.Transparent,
                 center = Offset.Zero, radius = 1f
             ) else Brush.radialGradient(
@@ -93,7 +93,10 @@ fun NexusGlassBackground(
                         val y = if (structured) blob.y + (pose.y - .5f) * .08f else pose.y
                         translate(size.width * x, size.height * y) {
                             rotate(pose.rotation, Offset.Zero) {
-                                scale(radius * pose.scaleX, radius * pose.scaleY, Offset.Zero) {
+                                // Broad oblique colour ribbons, not tiny diagnostic grids.
+                                val stretchX = if (structured) 1.22f else 1f
+                                val stretchY = if (structured) .82f else 1f
+                                scale(radius * pose.scaleX * stretchX, radius * pose.scaleY * stretchY, Offset.Zero) {
                                     drawCircle(brushes[index], radius = 1f, center = Offset.Zero)
                                 }
                             }

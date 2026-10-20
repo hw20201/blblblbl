@@ -18,15 +18,15 @@ internal const val SHORTCUT_BACKDROP_OVERSCAN_DP = 24f
 
 /** Latest user snapshot. Preserve the 1.0.26 constants for an honest old/new comparison. */
 internal object ShortcutFollowupParameters {
-    const val blurLod = 3.5f
+    const val blurLod = 1.5f
     val blurRadiusDp = 3f * 2f.pow(blurLod - 3f)
     fun resolve(widthDp: Float, heightDp: Float, density: Float): Resolved =
         ShortcutTunedParameters.resolve(widthDp, heightDp, density).copy(
-            thicknessDp = ShortcutTunedParameters.lengthDp(42f),
-            edgeWidthDp = ShortcutTunedParameters.lengthDp(18.5f),
-            blurDp = blurRadiusDp, squircle = 2f, edgeClarity = .70f,
-            ior = 1.60f, distortion = .100f, dispersion = 15.5f, fresnel = .56f,
-            edgeStrength = 1.20f, saturation = .82f, tint = .10f, grain = .010f)
+            thicknessDp = ShortcutTunedParameters.lengthDp(68f),
+            edgeWidthDp = ShortcutTunedParameters.lengthDp(12f),
+            blurDp = blurRadiusDp, squircle = 2f, edgeClarity = .75f,
+            ior = 2f, distortion = .100f, dispersion = 15.5f, fresnel = .64f,
+            edgeStrength = 1f, saturation = .86f, tint = 0f, grain = 0f)
 }
 
 // n=2 is a true circular corner; native round-rect clipping matches its SDF exactly.
@@ -55,8 +55,6 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     uniform float edgeStrength;
     uniform float saturation;
     uniform float tint;
-    uniform float grain;
-    uniform float dark;
     uniform float lift;
     uniform float motionLift;
     uniform float2 touch;
@@ -108,7 +106,11 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         float thetaI = asin(clamp(ratio * ratio, 0.0, 1.0));
         float thetaT = asin(clamp(sin(thetaI) / max(ior, 1.001), 0.0, 1.0));
         float edgeFactor = depth < thick ? -tan(thetaT - thetaI) : 0.0;
-        float dispDp = min(edgeFactor * distortion * 80.0 * 0.62105263 * (1.0 + motionLift * 0.45 * (1.0 - contactMode)), 14.5 * 0.62105263);
+        // LOD 1.5 in the HTML permits 2.5 + 4*1.5 = 8.5 CSS px, not 14.5dp.
+        // Smooth saturation avoids the hard plateau in min(raw, cap).
+        float maxDisplacement = 8.5 * 0.62105263;
+        float rawDisplacement = edgeFactor * distortion * 80.0 * 0.62105263 * (1.0 + motionLift * 0.45 * (1.0 - contactMode));
+        float dispDp = maxDisplacement * (1.0 - exp(-rawDisplacement / maxDisplacement));
         float rimLimit = min(edgeWidth * 0.6, 18.0 * 0.62105263);
         float rimRaw = edgeStrength * distortion * 80.0 * 0.62105263 * (1.0 - 1.0 / max(ior, 1.001)) * 2.0;
         dispDp += rimLimit * (1.0 - exp(-rimRaw / max(rimLimit, 0.001))) * rim;
@@ -127,24 +129,22 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         off *= bend;
         float chroma = clamp(dispersion * 0.02, 0.0, 0.35);
         half4 base = sampleBlur(uv + off * (1.0 - 0.2 * chroma), sigma);
-        base.r = sampleBlur(uv + off * (1.0 - 0.3 * chroma), sigma).r;
-        base.b = sampleBlur(uv + off * (1.0 - 0.1 * chroma), sigma).b;
-        // Scene-dependent relief: amplify ONLY the difference from actual unbent input.
-        // A flat source produces no invented optical contour or bright/neon stroke.
-        if (rim > 0.001 && bend > 0.0) {
-            half3 straight = backdrop.eval(bounded(p)).rgb;
-            half3 relief = clamp(base.rgb - straight, -0.025, 0.025);
-            base.rgb = clamp(base.rgb + relief * half(2.5 * rim), 0.0, base.a);
+        // Interior has no dispersion offset: avoid two identical nine-tap gathers.
+        if (dot(off, off) > 0.0001 && chroma > 0.001) {
+            base.r = sampleBlur(uv + off * (1.0 - 0.3 * chroma), sigma).r;
+            base.b = sampleBlur(uv + off * (1.0 - 0.1 * chroma), sigma).b;
         }
         half lum = dot(base.rgb, half3(0.2126, 0.7152, 0.0722));
         base.rgb = mix(half3(lum), base.rgb, mix(saturation, 1.0, contactMask * 0.75));
         base.rgb = mix(base.rgb, half3(base.a), tint * (1.0 - contactMask * 0.75));
-        float fres = pow(1.0 - clamp(depth / thick, 0.0, 1.0), 3.0) * fresnel;
-        base.rgb = mix(base.rgb, half3(base.a), fres * 0.42 * (1.0 - contactMask * 0.5));
-        // Microscopic roughness uses physical pixels, not one coarse visible tile per dp.
-        // At contact it vanishes; on lift the new 0.010 setting replaces old 0.052.
-        float noise = fract(sin(dot(floor(p) + dark * float2(17.0, 31.0), float2(127.1, 311.7))) * 43758.5453) - 0.5;
-        base.rgb = clamp(base.rgb + half(noise * grain * fade * (1.0 - contactMask)) * base.a, 0.0, base.a);
+        // Fresnel is a narrow, scene-coloured directional reflection, NOT a white
+        // wash across the entire thickness. Flat input stays flat; dark stays dark.
+        float fres = pow(rim, 3.0) * fresnel;
+        float facing = clamp(0.5 - normal.y * 0.35 - normal.x * 0.15, 0.0, 1.0);
+        if (fres > 0.001 && bend > 0.0) {
+            half3 reflection = backdrop.eval(bounded(uv - off * 0.35)).rgb;
+            base.rgb = mix(base.rgb, reflection, fres * facing * 0.18 * bend);
+        }
         return base;
     }
 """
@@ -188,8 +188,6 @@ internal class ShortcutRefractiveOptics {
         shader.setFloatUniform("edgeStrength", params.edgeStrength)
         shader.setFloatUniform("saturation", params.saturation)
         shader.setFloatUniform("tint", params.tint)
-        shader.setFloatUniform("grain", params.grain)
-        shader.setFloatUniform("dark", if (dark) 1f else 0f)
         shader.setFloatUniform("lift", r.frostLift)
         shader.setFloatUniform("motionLift", r.lift)
         shader.setFloatUniform("touch", r.x, r.y)
