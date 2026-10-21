@@ -33,3 +33,10 @@ API 33+ supports the RuntimeShader refraction path; older Android / reduced-qual
 - The broader unit-suite attempt terminated with a native SIGSEGV (exit 139). Partial XML recorded 202 tests, zero recorded assertion failures/errors and one skip; the full suite has NOT passed.
 - No physical Android VPN, frame-rate or tactile testing was performed.
 - Delivered arm64 draft: versionCode 37, versionName `1.0.32-with-suspended-draft-glass`; debug-signed, separate app data.
+
+## Launch-crash investigation (vivo Android 16 report)
+
+- Confirmed source defect: the dashboard title lenses were descendants of the scrolling Column recorded into `titleScene`, while sampling that same scene. Moved the header to a sibling so the recorded content excludes its own lenses. This also restores the title’s pinned layout.
+- The original hierarchy failed a launcher visibility regression; the corrected hierarchy passes. Two focused API 35 Robolectric NATIVE tests pass: dashboard composition/RecordingCanvas path plus title-outside-scroll assertion, and RuntimeShader uniform bindings. RecordingCanvas does not execute the vivo GPU driver, native VPN initialization or an Android 16 installation.
+- The exact reported vivo crash is NOT reproduced or conclusively diagnosed. APK zip alignment and native ELF LOAD alignment are 16 KB compatible. No USB Android device is connected; the host lacks an Android 16 hardware-backed runtime.
+- No replacement APK is being delivered as a verified fix. The next required evidence is the installed draft’s `files/last_crash.txt` (Java exception logger), or an adb crash-buffer capture if that file is absent/native termination occurred. Existing liquid-glass effects and VPN/native libraries are retained.

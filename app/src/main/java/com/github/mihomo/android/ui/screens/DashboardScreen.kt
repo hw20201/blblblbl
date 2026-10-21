@@ -528,64 +528,66 @@ fun DashboardScreen(
                 }
             }
 
-                // Header: NEXUS (LOON style) & Mode Selector + iOS Switch
-                Column(
-                    modifier = Modifier
-                        .onSizeChanged { headerHeightPx = it.height }
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 20.dp)
-                        .padding(top = 12.dp, bottom = 12.dp)
+            } // Only scrolling content belongs to the recorded scene.
 
+            // Header: NEXUS (LOON style) & Mode Selector + iOS Switch
+            Column(
+                modifier = Modifier
+                    .onSizeChanged { headerHeightPx = it.height }
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 12.dp, bottom = 12.dp)
+
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    PageTitleGlass(titleScene) { Text(
+                        text = "NEXUS",
+                        color = LoonOrange,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
+                    ) }
+
+                    // Top Right iOS Cupertino Switch (aligned directly with NEXUS title)
+                    CupertinoSwitch(
+                        checked = isRunning || isStarting,
+                        onCheckedChange = { onToggleVpn() }
+                    )
+                }
+
+                PageTitleGlass(titleScene, modifier = Modifier.padding(top = 6.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showModeBottomSheet = true }
+                            .padding(vertical = 3.dp, horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        PageTitleGlass(titleScene) { Text(
-                            text = "NEXUS",
-                            color = LoonOrange,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.5.sp
-                        ) }
-
-                        // Top Right iOS Cupertino Switch (aligned directly with NEXUS title)
-                        CupertinoSwitch(
-                            checked = isRunning || isStarting,
-                            onCheckedChange = { onToggleVpn() }
+                        Text(
+                            text = when (currentMode) {
+                                TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
+                                TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
+                                TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
+                            },
+                            color = LoonOrangeLight,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = LoonOrangeLight,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-
-                    PageTitleGlass(titleScene, modifier = Modifier.padding(top = 6.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { showModeBottomSheet = true }
-                                .padding(vertical = 3.dp, horizontal = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = when (currentMode) {
-                                    TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
-                                    TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
-                                    TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
-                                },
-                                color = LoonOrangeLight,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                tint = LoonOrangeLight,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
                 }
+            }
 
 
             // =========================================================================
@@ -1006,9 +1008,4 @@ fun DashboardScreen(
             }
         }
     }
-}
-
-
-
-
 }
