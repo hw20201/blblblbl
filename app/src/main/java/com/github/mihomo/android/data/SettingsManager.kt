@@ -3,6 +3,7 @@ package com.github.mihomo.android.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.github.mihomo.android.ui.components.ShortcutTouchVariant
+import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
 
 enum class PerAppProxyMode {
     DISABLED, WHITELIST, BLACKLIST
@@ -180,6 +181,10 @@ class SettingsManager(context: Context) {
     var glassPaletteKey: String
         get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
         set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
+
+    var shortcutGlassLevel: ShortcutGlassLevel
+        get() = ShortcutGlassLevel.fromPreference(prefs.getString("shortcut_glass_level", null))
+        set(value) = prefs.edit().putString("shortcut_glass_level", value.name).apply()
 
     /** Selected dashboard shortcut touch motion style. Invalid stored values fall back safely. */
     var shortcutTouchVariant: ShortcutTouchVariant

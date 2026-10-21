@@ -61,7 +61,11 @@ class ShortcutContactFollowMotionTest {
             }
             compose.mainClock.advanceTimeBy(120); compose.waitForIdle()
             val pressed = node.fetchSemanticsNode().boundsInRoot
-            assertTrue("press gently contracts the card, rather than enlarging it", pressed.width < original.width)
+            if (choice == ShortcutTouchVariant.FingerTilt) {
+                assertEquals("B centre press does not resize the plane", original.width, pressed.width, .01f)
+            } else {
+                assertTrue("A/C retain contraction", pressed.width < original.width)
+            }
             frame.performTouchInput { moveTo(center + Offset(center.x * .5f, 0f)) }
             compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
             val horizontal = compose.runOnIdle { optics() }
@@ -73,8 +77,14 @@ class ShortcutContactFollowMotionTest {
             val moved = compose.runOnIdle { optics() }
             assertTrue("vertical motion after horizontal lock updates local press", moved.y > horizontal.y + .2f)
             val bounds = node.fetchSemanticsNode().boundsInRoot
-            assertTrue("horizontal follow is at most 4dp plus tiny projection tolerance", kotlin.math.abs(bounds.center.x - original.center.x) <= 4.5f)
-            assertEquals("no vertical module drag", original.center.y, bounds.center.y, .3f)
+            if (choice == ShortcutTouchVariant.FingerTilt) {
+                // Perspective changes the enclosing rectangle slightly; it is not a Y pickup.
+                assertTrue("B remains near its slot", kotlin.math.abs(bounds.center.y - original.center.y) < 5f)
+                assertTrue("B horizontal follow stays bounded including perspective", kotlin.math.abs(bounds.center.x - original.center.x) < 8f)
+            } else {
+                assertTrue("horizontal follow stays bounded", kotlin.math.abs(bounds.center.x - original.center.x) <= 4.5f)
+                assertEquals("A/C have no vertical module drag", original.center.y, bounds.center.y, .3f)
+            }
             var last = moved
             for (point in listOf(Offset(-.65f, -.6f), Offset(.65f, -.6f), Offset(.65f, .6f), Offset.Zero, Offset(-.65f, .6f))) {
                 frame.performTouchInput { moveTo(center + Offset(center.x * point.x, center.y * point.y)) }

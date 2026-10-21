@@ -31,6 +31,7 @@ import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.data.TunStack
 import com.github.mihomo.android.ui.components.ShortcutTouchVariant
+import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
@@ -53,6 +54,8 @@ fun SettingsScreen(
     hapticEnabled: Boolean = true,
     shortcutTouchVariant: ShortcutTouchVariant = ShortcutTouchVariant.GentleFloat,
     onShortcutTouchVariantChanged: (ShortcutTouchVariant) -> Unit = {},
+    shortcutGlassLevel: ShortcutGlassLevel = ShortcutGlassLevel.Normal,
+    onShortcutGlassLevelChanged: (ShortcutGlassLevel) -> Unit = {},
     onIpv6EnabledChanged: (Boolean) -> Unit = {},
     onTunMtuChanged: (Int) -> Unit = {},
     onMipsCongestionControllerChanged: (String) -> Unit = {},
@@ -70,6 +73,7 @@ fun SettingsScreen(
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
     var showShortcutTouchDialog by remember { mutableStateOf(false) }
+    var showShortcutGlassDialog by remember { mutableStateOf(false) }
     var showMtuDialog by remember { mutableStateOf(false) }
     var showCongestionDialog by remember { mutableStateOf(false) }
     var mtuDraft by remember { mutableStateOf(tunMtu.toString()) }
@@ -250,6 +254,20 @@ fun SettingsScreen(
                     iconBg = Color(0xFF007AFF),
                     showChevron = true,
                     onClick = { showShortcutTouchDialog = true }
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = if (lang == "en") "Shortcut glass intensity" else "快捷卡片玻璃明显度",
+                    subtitle = if (lang == "en") "Affects shortcut cards only" else "仅影响快捷卡片，不改变底部滑钮",
+                    value = when (shortcutGlassLevel) {
+                        ShortcutGlassLevel.Normal -> if (lang == "en") "Normal" else "普通"
+                        ShortcutGlassLevel.Obvious -> if (lang == "en") "Obvious" else "明显"
+                        ShortcutGlassLevel.Extreme -> if (lang == "en") "Extreme" else "极致"
+                    },
+                    icon = Icons.Default.Layers,
+                    iconBg = Color(0xFF5E5CE6),
+                    showChevron = true,
+                    onClick = { showShortcutGlassDialog = true }
                 )
                 CupertinoDivider()
                 CupertinoCell(title = "触感反馈", subtitle = "立即应用于界面交互", trailing = {
@@ -490,6 +508,37 @@ fun SettingsScreen(
         )
     }
 
+    if (showShortcutGlassDialog) {
+        AlertDialog(
+            onDismissRequest = { showShortcutGlassDialog = false },
+            title = { Text(if (lang == "en") "Shortcut glass intensity" else "快捷卡片玻璃明显度") },
+            text = {
+                Column {
+                    val choices = listOf(
+                        Triple(ShortcutGlassLevel.Normal, if (lang == "en") "Normal" else "普通", if (lang == "en") "Lighter resource use" else "较轻开销"),
+                        Triple(ShortcutGlassLevel.Obvious, if (lang == "en") "Obvious" else "明显", if (lang == "en") "Balanced" else "平衡"),
+                        Triple(ShortcutGlassLevel.Extreme, if (lang == "en") "Extreme" else "极致", if (lang == "en") "Stronger optics; GPU cost above Normal" else "强折射；GPU 开销高于普通")
+                    )
+                    choices.forEach { (level, label, description) ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            onShortcutGlassLevelChanged(level)
+                            showShortcutGlassDialog = false
+                        }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = shortcutGlassLevel == level, onClick = {
+                                onShortcutGlassLevelChanged(level)
+                                showShortcutGlassDialog = false
+                            })
+                            Column(Modifier.padding(start = 8.dp)) {
+                                Text(label, fontWeight = FontWeight.Medium)
+                                Text(description, color = LoonTextSecondary, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showShortcutGlassDialog = false }) { Text(if (lang == "en") "Done" else "完成") } }
+        )
+    }
     if (showShortcutTouchDialog) {
         AlertDialog(
             onDismissRequest = { showShortcutTouchDialog = false },

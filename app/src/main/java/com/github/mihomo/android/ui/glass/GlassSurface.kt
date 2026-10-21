@@ -115,6 +115,7 @@ fun GlassSurface(
     lens: NavigationLensState? = null,
     blurEnabled: Boolean = true,
     shortcutContactFrost: Boolean = false,
+    shortcutDockLens: Boolean = false,
     shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() },
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -136,6 +137,11 @@ fun GlassSurface(
     val tunedMaterial = shortcutContactFrost && LocalShortcutTunedMaterialEnabled.current
     val effectiveShape = if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
         else if (tunedMaterial) ShortcutTunedCardShape else shape
+    val dockLens = LocalShortcutDockLensEnabled.current
+    if (shortcutContactFrost && shortcutDockLens && dockLens) {
+        ShortcutDockGlassSurface(modifier, effectiveShape, lens, tokens, shortcutRefraction, content)
+        return
+    }
     val hybrid = lens != null && LocalShortcutGlassDesign.current == ShortcutGlassDesign.Hybrid
     val quality = if (hybrid) rememberShortcutGlassQuality() else null
     if (lens == null || Build.VERSION.SDK_INT < 31 || quality == ShortcutGlassQuality.Flat) {

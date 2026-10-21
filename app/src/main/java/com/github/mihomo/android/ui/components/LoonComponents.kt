@@ -50,6 +50,10 @@ import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.LocalShortcutBlurEnabled
+import com.github.mihomo.android.ui.glass.LocalShortcutDockLensEnabled
+import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
+import com.github.mihomo.android.ui.glass.shortcutSuspensionShadow
+import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import com.github.mihomo.android.ui.glass.glassTextPrimary
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.glassPalette
@@ -397,55 +401,49 @@ fun LoonShortcutCard(
         frozenPose = previewPose,
         onPickupChanged = onPickupChanged
     )
-    val basePressModifier = modifier
-        .height(118.dp)
-        .testTag("shortcut-card-$title")
-    val pressModifier = if (touchVariant == null || isEditing) {
-        basePressModifier.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+    val experimental = touchVariant != null && !isEditing
+    val fixedSlot = modifier.height(118.dp).testTag("shortcut-card-$title")
+    val slotModifier = if (experimental) fixedSlot.then(touchMotion.gestureModifier)
+        .clickable(interactionSource = experimentalInteractions, indication = null) {
+            haptic.lightTick()
+            onClick()
+        } else fixedSlot
+    val planeSize = Modifier.fillMaxWidth().height(118.dp)
+    val pressModifier = if (experimental) planeSize.then(touchMotion.visualModifier)
+        else planeSize.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
             haptic.lightTick()
             onClick()
         }
-    } else {
-        basePressModifier
-            .then(touchMotion.gestureModifier)
-            .clickable(
-                interactionSource = experimentalInteractions,
-                indication = null,
-                enabled = true
+    val dockLens = LocalShortcutDockLensEnabled.current
+    val dark = LocalGlassTokens.current.isDark
+    val shadow = if (GlassDefaults.enabled && dockLens)
+        Modifier.shortcutSuspensionShadow(ShortcutFollowupCardShape, dark) else Modifier
+
+    // The slot/shadow never tilts; only the glass plane and its foreground rotate.
+    Box(slotModifier.then(shadow)) {
+        if (GlassDefaults.enabled) {
+            GlassSurface(
+                modifier = pressModifier,
+                shape = RoundedCornerShape(GlassRadius.card),
+                lens = lens,
+                blurEnabled = blurEnabled,
+                shortcutContactFrost = true,
+                shortcutDockLens = true,
+                shortcutRefraction = touchMotion.refraction
             ) {
-                haptic.lightTick()
-                onClick()
+                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
             }
-            .then(touchMotion.visualModifier)
-    }
-
-    // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.
-    if (GlassDefaults.enabled) {
-        GlassSurface(
-            modifier = pressModifier,
-            shape = RoundedCornerShape(GlassRadius.card),
-            lens = lens,
-            blurEnabled = blurEnabled,
-            shortcutContactFrost = true,
-            shortcutRefraction = touchMotion.refraction
-        ) {
-            ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+        } else {
+            Surface(
+                modifier = pressModifier
+                    .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
+                    .clip(RoundedCornerShape(18.dp))
+                    .border(0.5.dp, LoonCardBorder, RoundedCornerShape(18.dp)),
+                color = LoonCard
+            ) {
+                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+            }
         }
-        return
-    }
-
-    Surface(
-        modifier = pressModifier
-            .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
-            .clip(RoundedCornerShape(18.dp))
-            .border(
-                width = 0.5.dp,
-                color = LoonCardBorder,
-                shape = RoundedCornerShape(18.dp)
-            ),
-        color = LoonCard
-    ) {
-        ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
     }
 }
 

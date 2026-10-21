@@ -73,7 +73,9 @@ class ShortcutTouchPreviewTest {
             val image = screenshot()
             save(image, "${variant.name}-${if(dark) "dark" else "light"}-$index.png")
             if (index == 4) assertTrue("neutral must exactly return", baseline.sameAs(image))
-            if (index in 1..3) {
+            if (index == 1 && variant == ShortcutTouchVariant.FingerTilt) {
+                assertTrue("B centre press stays at rest without scale or lift", baseline.sameAs(image))
+            } else if (index in 1..3) {
                 assertFalse("touch keyframe must visibly change", baseline.sameAs(image))
                 // The shader, background, neighbours, dock and all other UI remain frozen.
                 for (y in 0 until image.height) for (x in 0 until image.width) {
@@ -116,12 +118,15 @@ class ShortcutTouchPreviewTest {
         save(before, "${variant.name}-actual-rest.png")
         val restBounds = card.fetchSemanticsNode().boundsInRoot
         compose.mainClock.autoAdvance = false
-        card.performTouchInput { down(center) }
+        card.performTouchInput {
+            // B centre deliberately has no tilt; an off-centre press must visibly respond.
+            down(if (variant == ShortcutTouchVariant.FingerTilt) Offset(width * .85f, height * .2f) else center)
+        }
         compose.mainClock.advanceTimeBy(32)
         compose.waitForIdle()
         val immediate = screenshot()
         save(immediate, "${variant.name}-actual-down32ms.png")
-        assertFalse("visible lift starts within first 32ms even with a frozen background", before.sameAs(immediate))
+        assertFalse("visible touch response starts within 32ms with a frozen background", before.sameAs(immediate))
         val lifted = card.fetchSemanticsNode().boundsInRoot
         assertEquals("click and accessibility hit area must not move with the visual slab", restBounds, lifted)
         compose.mainClock.advanceTimeBy(96)

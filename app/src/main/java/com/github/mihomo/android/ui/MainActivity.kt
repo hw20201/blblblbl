@@ -45,8 +45,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
+import com.github.mihomo.android.ui.glass.LocalShortcutGlassLevel
 import com.github.mihomo.android.ui.glass.GlassPalettes
+import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NexusGlassBackground
 import com.github.mihomo.android.ui.glass.ProvideGlassTheme
@@ -225,6 +227,7 @@ class MainActivity : ComponentActivity() {
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
+        var shortcutGlassLevel by remember { mutableStateOf(settingsManager.shortcutGlassLevel) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
         var tunMtu by remember { mutableIntStateOf(settingsManager.tunMtu) }
         var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
@@ -709,6 +712,7 @@ class MainActivity : ComponentActivity() {
             // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled },
             LocalShortcutTouchVariant provides shortcutTouchVariant,
+            LocalShortcutGlassLevel provides shortcutGlassLevel,
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
@@ -872,6 +876,11 @@ class MainActivity : ComponentActivity() {
                         onShortcutTouchVariantChanged = { variant ->
                             shortcutTouchVariant = variant
                             settingsManager.shortcutTouchVariant = variant
+                        },
+                        shortcutGlassLevel = shortcutGlassLevel,
+                        onShortcutGlassLevelChanged = { level ->
+                            shortcutGlassLevel = level
+                            settingsManager.shortcutGlassLevel = level
                         },
                         ipv6Enabled = ipv6Enabled,
                         tunMtu = tunMtu,

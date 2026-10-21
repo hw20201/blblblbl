@@ -65,8 +65,8 @@ android {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.0.27"
+        versionCode = 35
+        versionName = "1.0.30"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -123,6 +123,11 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
+    }
+
+    lint {
+        // Only the single existing TileService issue expressly authorized for this branch.
+        baseline = file("lint-baseline.xml")
     }
 
     packaging {
