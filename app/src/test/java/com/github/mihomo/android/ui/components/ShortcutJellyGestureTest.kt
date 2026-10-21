@@ -102,9 +102,15 @@ class ShortcutJellyGestureTest {
             assertTrue("direction $index follows its signed drag", displacement.x * direction.x + displacement.y * direction.y > 0f)
             assertTrue("radial translation stays within the 4dp cap", displacement.getDistance() <= 4.6f)
             assertEquals("slot hit rectangle remains fixed", slotRest, card.fetchSemanticsNode().boundsInRoot)
-            compose.runOnIdle { assertEquals("one pickup notification per held gesture", listOf(true, false).take((index + 1) * 2), pickups) }
+            val completedPickups = List(index) { listOf(true, false) }.flatten()
+            compose.runOnIdle {
+                assertEquals("one pickup notification while held, with no early release", completedPickups + true, pickups)
+            }
             card.performTouchInput { up() }
             compose.waitForIdle()
+            compose.runOnIdle {
+                assertEquals("one matching release notification per gesture", completedPickups + listOf(true, false), pickups)
+            }
             assertTrue("release springs visual plane back", (center() - rest).getDistance() < .75f)
             assertEquals("release leaves hit rectangle fixed", slotRest, card.fetchSemanticsNode().boundsInRoot)
         }

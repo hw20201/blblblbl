@@ -197,9 +197,10 @@ internal fun rememberShortcutTouchMotion(
         else -> lift.value.coerceIn(0f, 1f)
     }
     // Direct manipulation tracks immediately; only release uses the selected rebound.
-    val dragSpec = if ((jelly && input.pressed) || input.dragging || !animate) snap<Float>()
+    val directlyManipulated = input.dragging || (jelly && input.pressed)
+    val dragSpec = if (directlyManipulated || !animate) snap<Float>()
         else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
-    val travelActive = animate && (input.dragging || (jelly && input.pressed))
+    val travelActive = animate && directlyManipulated
     val dragX = animateFloatAsState(if (travelActive) input.dragX else 0f, dragSpec, label = "shortcut_drag_x")
     val dragY = animateFloatAsState(if (travelActive) input.dragY else 0f, dragSpec, label = "shortcut_drag_y")
     // Read input live inside long-lived pointerInput, not a captured composition Boolean.
