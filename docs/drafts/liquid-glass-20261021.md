@@ -40,3 +40,36 @@ API 33+ supports the RuntimeShader refraction path; older Android / reduced-qual
 - The original hierarchy failed a launcher visibility regression; the corrected hierarchy passes. Two focused API 35 Robolectric NATIVE tests pass: dashboard composition/RecordingCanvas path plus title-outside-scroll assertion, and RuntimeShader uniform bindings. RecordingCanvas does not execute the vivo GPU driver, native VPN initialization or an Android 16 installation.
 - The exact reported vivo crash is NOT reproduced or conclusively diagnosed. APK zip alignment and native ELF LOAD alignment are 16 KB compatible. No USB Android device is connected; the host lacks an Android 16 hardware-backed runtime.
 - No replacement APK is being delivered as a verified fix. The next required evidence is the installed draft’s `files/last_crash.txt` (Java exception logger), or an adb crash-buffer capture if that file is absent/native termination occurred. Existing liquid-glass effects and VPN/native libraries are retained.
+
+## Candidate 2 after original was uninstalled
+
+The original device-private crash file may have been removed by uninstall. Do not
+ask the owner to reinstall the old crashing APK to retrieve it. Candidate 2 contains
+the corrected dashboard scene hierarchy from 5466fa4; this remains a candidate, not
+a confirmed fix for the Android 16 vivo launch failure.
+
+A debug-only launcher (`DraftDiagnosticsActivity`, separate `:draft_diagnostics`
+process, software-rendered native Android views) now checks this app's saved Java
+exception and its own Android process-exit history. A fresh install proceeds directly
+to the normal UI. If a new crash is recorded, the next launch displays its report
+instead of immediately repeating the failing UI launch. Copy/share actions require
+a tap and never upload automatically; retry retains evidence. Native/system crashes
+may provide only exit information, not a complete native stack. This mechanism itself
+has not been checked on a vivo device. Normal app startup and all glass/VPN behavior
+are retained; only the diagnostics process bypasses normal native/Compose startup.
+
+Build: `assembleDebug` and the two focused classes `DraftLaunchRegressionTest`
+and `DraftDiagnosticsTest` succeeded (4 tests, zero failures/errors/skips) on the
+host's API 35 Robolectric runtime. MainActivity RecordingCanvas/pinned-heading and
+shader uniform checks passed; diagnostics tests cover fresh launch, report viewing,
+explicit sharing and evidence-preserving retry. These are not hardware Android 16
+or vivo GPU tests. Full unit suite was not rerun for this candidate.
+
+The first build daemon disappeared at dexing. A bounded-memory retry using one
+worker, in-process Kotlin compilation, and a 1500 MiB Gradle heap completed in 1m35s.
+APK ZIP integrity, v2 debug signature, 16-KiB archive alignment, arm64-only ABI,
+separate application ID, version suffix and diagnostics launcher manifest checked.
+
+Package remains `com.github.mihomo.android.draftglass`, label `Nexus Glass DRAFT`,
+versionCode 37, versionName `1.0.32-with-suspended-draft-glass-candidate2`.
+No merge, release or production package replacement is authorized.

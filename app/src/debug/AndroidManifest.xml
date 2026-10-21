@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity android:name="com.github.mihomo.android.ui.MainActivity">
+            <intent-filter tools:node="removeAll" />
+        </activity>
+        <!-- Independent, software-rendered entrance: a failed main-process launch cannot
+             prevent viewing a saved report on the next tap. Debug builds only. -->
+        <activity android:name="com.github.mihomo.android.ui.DraftDiagnosticsActivity"
+            android:exported="true" android:process=":draft_diagnostics"
+            android:hardwareAccelerated="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
