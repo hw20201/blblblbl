@@ -47,6 +47,7 @@ import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.ProxyGroupGlass
 import com.github.mihomo.android.ui.glass.useProxyGroupGlass
+import com.github.mihomo.android.ui.glass.proxyCardNeedsOuterBorder
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -871,21 +872,29 @@ private fun LoonProxyItemCard(
         // 2 Columns: Balanced Grid Card (Fixed Height 62dp)
         // ---------------------------------------------------------------------
         2 -> {
+            val groupGlass = GlassDefaults.enabled && useProxyGroupGlass(
+                proxy.isGroup, columns, glassScene != null
+            )
+            val cardShape = RoundedCornerShape(14.dp)
             ProxyGlassCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(62.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(
-                        width = if (isSelected) 1.5.dp else 0.5.dp,
-                        color = if (isSelected) IosBlue else LoonCardBorder,
-                        shape = RoundedCornerShape(14.dp)
+                    .clip(cardShape)
+                    .then(
+                        if (proxyCardNeedsOuterBorder(groupGlass, isSelected)) {
+                            Modifier.border(
+                                width = if (isSelected) 1.5.dp else 0.5.dp,
+                                color = if (isSelected) IosBlue else LoonCardBorder,
+                                shape = cardShape
+                            )
+                        } else Modifier
                     )
                     .iosPressable { onClick() },
                 color = cardBg,
-                shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
-                groupScene = if (useProxyGroupGlass(proxy.isGroup, columns, glassScene != null)) glassScene else null,
+                shape = cardShape,
+                groupScene = if (groupGlass) glassScene else null,
                 accent = if (isSelected) IosBlue else null
             ) {
                 Column(

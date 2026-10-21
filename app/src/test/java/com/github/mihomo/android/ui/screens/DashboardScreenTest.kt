@@ -2,15 +2,13 @@ package com.github.mihomo.android.ui.screens
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.kr328.clash.core.model.Proxy
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -87,4 +85,45 @@ class DashboardScreenTest {
         compose.waitForIdle()
         compose.onNodeWithText("已暂停").assertExists()
     }
+    @Test fun modePickerExpandsFromItsControlAndSelectsInPlace() {
+        var selected: TunnelMode? = null
+        compose.setContent {
+            DashboardScreen(
+                scrollState = ScrollState(0),
+                vpnState = VpnState(status = VpnState.Status.STOPPED),
+                currentMode = TunnelMode.RULE,
+                activeProfileName = "未选择",
+                mainGroupName = "",
+                mainGroupProxies = emptyList<Proxy>(),
+                activeNodeName = "",
+                totalNodes = 0,
+                totalRules = 0,
+                visibleShortcuts = shortcutOrder.toSet(),
+                shortcutOrder = shortcutOrder,
+                onToggleVpn = noOp,
+                onModeSelected = { selected = it },
+                onSelectProxy = { _, _ -> },
+                onHealthCheck = {},
+                onNavigateToProfiles = noOp,
+                onNavigateToAppRouting = noOp,
+                onNavigateToLogs = noOp,
+                onNavigateToRules = noOp,
+                onNavigateToDns = noOp,
+                onNavigateToRequests = noOp,
+                onNavigateToNetworkShare = noOp,
+                onUpdateVisibleShortcuts = {},
+                onUpdateShortcutOrder = {},
+            )
+        }
+
+        compose.onNodeWithTag("mode-picker-panel").assertDoesNotExist()
+        compose.onNodeWithTag("mode-picker-trigger").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("mode-picker-panel").assertExists()
+        compose.onNodeWithTag("mode-option-global").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(TunnelMode.GLOBAL, selected) }
+        compose.onNodeWithTag("mode-picker-panel").assertDoesNotExist()
+    }
+
 }

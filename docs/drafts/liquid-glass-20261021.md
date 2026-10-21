@@ -181,3 +181,9 @@ Candidate 4 validation:
 - Focused Compose/Robolectric test suite passed (23 tests) covering light/dark live glass, fixed hit geometry, center jitter, angle limits, opposite-edge geometry, cancel/click, and measured rendered lift/rebound. Saved screenshots were inspected; they are software-rendered API35 evidence only, not vivo GPU or tactile verification.
 - Candidate6 versionCode 38 keeps the candidate5 performance build type, isolated `.draftglass` app identity, same signing setup, and retained native VPN binaries. No production branch/release is touched.
 - Built performance APK: `Nexus-Glass-DRAFT-arm64-candidate6-motion-performance-20261022.apk`, 44,280,000 bytes; SHA-256 `2c46088be6de19643f2a7d6dc304ccfcd34ec66c1dddfd2f29e859068710c922`. Gradle output metadata identifies package `com.github.mihomo.android.draftglass`, versionCode 38, arm64-v8a native libraries are present, and ZIP integrity check passes.
+
+### Candidate7 interaction and glass geometry — 2026-10-22
+- Removed the redundant outer stroke from unselected two-column proxy group glass cards; retained the group surface's existing inner/bevel edge and selected-state blue outline. Non-glass and other card borders are unchanged.
+- Replaced the dashboard's mode bottom sheet with a frosted glass panel that expands/collapses in place below the mode control using a spring and fade, with Back-to-dismiss and immediate selection. Other independent bottom sheets remain.
+- Kept candidate6 A/B/C touch-follow, contact-side sink/opposite lift, and settle behavior unchanged; added/retained focused regression coverage alongside new picker and border-policy tests.
+- Pending: focused test/build and APK metadata verification; no physical vivo touch/visual assessment claimed.

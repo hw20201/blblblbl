@@ -4,7 +4,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
@@ -46,6 +54,8 @@ import com.github.mihomo.android.data.DashboardData
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.glass.PageTitleGlass
+import com.github.mihomo.android.ui.glass.NavigationGlassSurface
+import com.github.mihomo.android.ui.glass.LensStrength
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.glass.GlassDefaults
@@ -94,8 +104,13 @@ fun DashboardScreen(
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
-    var showModeBottomSheet by remember { mutableStateOf(false) }
-    val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showModePicker by remember { mutableStateOf(false) }
+    val modePickerProgress by animateFloatAsState(
+        targetValue = if (showModePicker) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+        label = "mode_picker_glass_expansion"
+    )
+    BackHandler(enabled = showModePicker) { showModePicker = false }
 
     // State for Quick Node Selector Modal
     var showQuickNodeSelector by remember { mutableStateOf(false) }
@@ -567,7 +582,8 @@ fun DashboardScreen(
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable { showModeBottomSheet = true }
+                            .testTag("mode-picker-trigger")
+                            .clickable { showModePicker = !showModePicker }
                             .padding(vertical = 3.dp, horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -587,6 +603,79 @@ fun DashboardScreen(
                             tint = LoonOrangeLight,
                             modifier = Modifier.size(18.dp)
                         )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = showModePicker,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    enter = expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)
+                    ) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
+                    exit = shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
+                    ) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMedium))
+                ) {
+                    NavigationGlassSurface(
+                        modifier = Modifier.fillMaxWidth().testTag("mode-picker-panel"),
+                        lens = titleScene,
+                        shape = RoundedCornerShape(22.dp),
+                        cornerRadius = 22.dp,
+                        strength = LensStrength.SUBTLE,
+                        expansionProgress = { modePickerProgress },
+                        frosted = true
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+                            Text(
+                                text = AppStrings.get("select_mode", lang),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = LoonTextSecondary,
+                                modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 4.dp)
+                            )
+                            val modes = listOf(
+                                Triple(TunnelMode.RULE, AppStrings.get("mode_rule", lang), "根据分流规则匹配分流策略"),
+                                Triple(TunnelMode.GLOBAL, AppStrings.get("mode_global", lang), "强制转发至目标节点"),
+                                Triple(TunnelMode.DIRECT, AppStrings.get("mode_direct", lang), "所有流量直接连接，不通过代理")
+                            )
+                            modes.forEachIndexed { index, (mode, title, desc) ->
+                                val selected = mode == currentMode
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("mode-option-${mode.name.lowercase()}")
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            onModeSelected(mode)
+                                            showModePicker = false
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(title, fontSize = 15.sp,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (selected) LoonOrange else LoonTextPrimary)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(desc, fontSize = 12.sp, color = LoonTextSecondary)
+                                    }
+                                    if (selected) Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = LoonOrange,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                if (index < modes.lastIndex) HorizontalDivider(
+                                    color = LoonCardBorder.copy(alpha = 0.62f),
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -894,86 +983,6 @@ fun DashboardScreen(
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // =========================================================================
-            // Mode Selector BottomSheet (Smooth 24dp rounded sheet)
-            // =========================================================================
-            if (showModeBottomSheet) {
-                ModalBottomSheet(
-                    onDismissRequest = { showModeBottomSheet = false },
-                    sheetState = modeSheetState,
-                    containerColor = LoonCard,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    dragHandle = { BottomSheetDefaults.DragHandle() }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .padding(bottom = 36.dp)
-                    ) {
-                        Text(
-                            text = AppStrings.get("select_mode", lang),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LoonTextPrimary,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        val modes = listOf(
-                            Triple(TunnelMode.RULE, AppStrings.get("mode_rule", lang), "根据分流规则匹配分流策略"),
-                            Triple(TunnelMode.GLOBAL, AppStrings.get("mode_global", lang), "强制转发至目标节点"),
-                            Triple(TunnelMode.DIRECT, AppStrings.get("mode_direct", lang), "所有流量直接连接，不通过代理")
-                        )
-
-                        modes.forEachIndexed { index, (mode, title, desc) ->
-                            val isSelected = mode == currentMode
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        onModeSelected(mode)
-                                        showModeBottomSheet = false
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 13.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = title,
-                                        fontSize = 15.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) LoonOrange else LoonTextPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = desc,
-                                        fontSize = 12.sp,
-                                        color = LoonTextSecondary
-                                    )
-                                }
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = LoonOrange,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            if (index < modes.size - 1) {
-                                HorizontalDivider(
-                                    color = LoonCardBorder,
-                                    thickness = 0.5.dp,
-                                    modifier = Modifier.padding(horizontal = 8.dp)
-                                )
                             }
                         }
                     }

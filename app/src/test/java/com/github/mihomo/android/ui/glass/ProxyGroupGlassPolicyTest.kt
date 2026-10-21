@@ -27,3 +27,12 @@ class ProxyGroupGlassPolicyTest {
         assertFalse(replayProxyGroupBackdrop(30, lowRam = false, hasSource = true))
     }
 }
+
+    @Test fun glassGroupUsesItsOwnRimWithoutAnExtraWhiteCardStroke() {
+        assertFalse(proxyCardNeedsOuterBorder(groupGlass = true, selected = false))
+        // Keep the blue selection indicator even when the material supplies its own bevel.
+        assertTrue(proxyCardNeedsOuterBorder(groupGlass = true, selected = true))
+        // Non-glass cards retain their ordinary outline in both states.
+        assertTrue(proxyCardNeedsOuterBorder(groupGlass = false, selected = false))
+        assertTrue(proxyCardNeedsOuterBorder(groupGlass = false, selected = true))
+    }

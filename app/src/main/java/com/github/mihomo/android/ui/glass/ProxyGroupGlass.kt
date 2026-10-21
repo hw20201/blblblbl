@@ -35,6 +35,10 @@ import androidx.compose.ui.platform.testTag
 internal fun useProxyGroupGlass(isGroup: Boolean, columns: Int, hasSource: Boolean): Boolean =
     isGroup && columns == 2 && hasSource
 
+/** Group glass owns its unselected rim; an extra card border double-strokes that edge. */
+internal fun proxyCardNeedsOuterBorder(groupGlass: Boolean, selected: Boolean): Boolean =
+    !groupGlass || selected
+
 /** The dense strategy grid deliberately never creates an AGSL shader or a blur effect. */
 internal fun replayProxyGroupBackdrop(apiLevel: Int, lowRam: Boolean, hasSource: Boolean): Boolean =
     hasSource && apiLevel >= 31 && !lowRam
