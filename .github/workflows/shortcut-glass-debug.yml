@@ -1,0 +1,67 @@
+name: Shortcut glass debug APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shortcut-glass:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout uploaded source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Make wrapper executable
+        run: chmod +x gradlew
+      - name: Check shortcut glass source invariants
+        id: source
+        continue-on-error: true
+        run: python3 scripts/check_shortcut_suspended.py
+      - name: Run shortcut glass rendering and gesture tests
+        id: targeted
+        continue-on-error: true
+        run: |
+          ./gradlew :app:testDebugUnitTest \
+            --tests '*ShortcutGlassLevelsRenderingTest' \
+            --tests '*ShortcutGlassResponseRenderingTest' \
+            --tests '*ShortcutGlassLevelPolicyTest' \
+            --tests '*ShortcutJellyGestureTest' \
+            --tests '*ShortcutSuspendedTiltTest' \
+            --max-workers=2 --no-configuration-cache --console=plain
+      - name: Build unsigned-release-independent Debug APK
+        run: ./gradlew :app:assembleDebug --max-workers=2 --no-configuration-cache --console=plain
+      - name: Upload Debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortcut-glass-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortcut-glass-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
+      - name: Report failed validation
+        if: steps.targeted.outcome == 'failure' || steps.source.outcome == 'failure'
+        run: |
+          echo 'Shortcut-glass checks failed. Review the Actions log and test-reports artifact.' >&2
+          exit 1

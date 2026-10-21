@@ -22,14 +22,27 @@ class ShortcutGlassLevelPolicyTest {
     }
 
     @Test fun sharedDockKernelHasCorrectOverscanAndCheapCentreBranch() {
-        assertTrue(SHORTCUT_DOCK_LENS_SHADER.contains("(p - inputOrigin) - viewport * 0.5"))
-        assertTrue(SHORTCUT_DOCK_LENS_SHADER.contains("inputViewport - float2(0.5)"))
-        assertTrue(SHORTCUT_DOCK_LENS_SHADER.contains("if (edge > 0.001 && aberration > 0.001)"))
-        assertFalse(SHORTCUT_DOCK_LENS_SHADER.contains("half4 cr ="))
+        assertTrue(LIQUID_GLASS_LENS_SHADER.contains("(p - inputOrigin) - viewport * 0.5"))
+        assertTrue(LIQUID_GLASS_LENS_SHADER.contains("inputViewport - float2(0.5)"))
+        assertTrue(LIQUID_GLASS_LENS_SHADER.contains("if (edge > 0.001 && aberration > 0.001)"))
+        assertTrue(LIQUID_GLASS_LENS_SHADER.contains("uniform float chromaticSamples"))
+        assertFalse(LIQUID_GLASS_LENS_SHADER.contains("half4 cr ="))
         for (level in ShortcutGlassLevel.entries) {
-            val s=level.strength
-            val bound=s.displacementDp+level.aberrationDp+2f
+            val style=liquidGlassStyle(level)
+            assertEquals(level.aberrationDp,style.aberrationDp,.0001f)
+            assertEquals(level.chromaticSamples,style.chromaticSamples)
+            val bound=style.displacementDp+style.aberrationDp+2f
             assertTrue("${level.name}: footprint $bound",bound<SHORTCUT_DOCK_MARGIN_DP)
         }
+    }
+
+    @Test fun reusableStylesIncreaseOpticalStrengthByLevel() {
+        val styles = ShortcutGlassLevel.entries.map(::liquidGlassStyle)
+        assertEquals(LensStrength.STRONG.displacementDp,styles[0].displacementDp,0f)
+        assertEquals(LensStrength.STRONG.bevelDp,styles[0].bevelDp,0f)
+        assertTrue(styles[1].rimAlpha > styles[0].rimAlpha)
+        assertTrue(styles[2].rimAlpha > styles[1].rimAlpha)
+        assertTrue(styles[1].displacementDp > styles[0].displacementDp)
+        assertTrue(styles[2].bevelDp > styles[1].bevelDp)
     }
 }
