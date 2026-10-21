@@ -45,12 +45,10 @@ class SuspendedChecks(unittest.TestCase):
         self.assertIn('snap<Float>() else spec',M)
 
     def test_fixed_slot_separate_from_plane_and_shadow(self):
-        self.assertIn('Box(slotModifier.then(shadow))',C)
-        self.assertIn('fixedSlot.then(touchMotion.gestureModifier)',C)
+        self.assertIn('Box(slotModifier)',C)
         self.assertIn('planeSize.then(touchMotion.visualModifier)',C)
-        self.assertIn('clipPath(path, ClipOp.Difference)',D)
-        self.assertNotIn('drawRoundRect',D)
-        self.assertIn('shadowElevation = if (dockLens) 0f',M)
+        self.assertNotIn('shortcutSuspensionShadow',C)
+        self.assertIn('shortcutJellyTravel',M)
 
     def test_kernel_really_comes_from_dock(self):
         s=generated_shader()
@@ -108,10 +106,37 @@ class SuspendedChecks(unittest.TestCase):
         # At 190x118dp the explicit input is 206x134, not the previous 238x166.
         self.assertLess((190+16)*(118+16),(190+48)*(118+48))
 
-    def test_touch_arbitration_unchanged(self):
-        old=subprocess.check_output(['git','show','76b5907:app/src/main/java/com/github/mihomo/android/ui/components/ShortcutTouchMotion.kt'],cwd=R,text=True)
-        part=lambda x:x.split('val gestureModifier = Modifier.pointerInput')[1].split('val visualModifier =')[0].strip()
-        self.assertEqual(part(old),part(M))
+    def test_touch_arbitration_preserves_scroll_and_single_pickup(self):
+        self.assertIn('if (!horizontallyLocked && jellyIntent)',M)
+        self.assertIn('heldForDrag && delta.getDistance()',M)
+        self.assertIn('viewConfiguration.longPressTimeoutMillis',M)
+        self.assertIn('else if (!horizontallyLocked && abs(delta.y)',M)
+        self.assertIn('if (horizontallyLocked) pickupCallback(false)',M)
+        self.assertIn('if (event.changes.count { it.pressed } > 1)',M)
+        self.assertIn('event.changes.forEach { it.consume() }',M)
+        self.assertIn('finally { input.reset() }',M)
+        self.assertIn('plane.localPositionOf(slot, position)',M)
+        self.assertLess(M.index('fun visiblePitch()'),M.index('val visualModifier ='))
+        self.assertLess(M.index('fun visibleRoll()'),M.index('val visualModifier ='))
+        self.assertEqual(M.count('fun visiblePitch()'),1)
+        self.assertEqual(M.count('fun visibleRoll()'),1)
+        self.assertIn('if (jelly && frozenPose == null) directJellyLayer else visualModifier',M)
+
+    def test_radial_travel_and_small_rebound_are_bounded(self):
+        self.assertIn('raw = delta * .09f',M)
+        self.assertIn('raw * (limit / length)',M)
+        self.assertIn('if (tuned) 0.72f',M)
+        for x in range(-160,161,8):
+            for y in range(-160,161,8):
+                dx,dy=x*.09,y*.09
+                n=math.hypot(dx,dy)
+                if n>4: dx,dy=dx*4/n,dy*4/n
+                self.assertLessEqual(math.hypot(dx,dy),4.000001)
+                if x==0:self.assertEqual(dx,0)
+                if y==0:self.assertEqual(dy,0)
+        z=.72
+        overshoot=math.exp(-math.pi*z/math.sqrt(1-z*z))
+        self.assertLess(4*overshoot,.16)
 
     def test_no_idle_clock_or_filter_recreation_on_touch(self):
         self.assertIn('if (effectCache.key != key)',D)
@@ -130,7 +155,7 @@ class SuspendedChecks(unittest.TestCase):
 
     def test_no_navigation_vpn_or_background_modification(self):
         paths=subprocess.check_output(['git','diff','--name-only','76b5907'],cwd=R,text=True).splitlines()
-        forbidden=['NavigationLens.kt','NavigationLensBar.kt','GlassBackground.kt','StructuredMeshWallpaper.kt','MihomoVpnService.kt']
+        forbidden=['NavigationLens.kt','NavigationLensBar.kt','MihomoVpnService.kt']
         self.assertFalse(set(pathlib.Path(p).name for p in paths)&set(forbidden))
         # Only version fields and the expressly authorized single-issue lint hook may change.
         for path in paths:

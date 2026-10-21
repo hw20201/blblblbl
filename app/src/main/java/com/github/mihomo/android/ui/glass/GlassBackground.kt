@@ -72,9 +72,9 @@ fun NexusGlassBackground(
                 center = Offset.Zero, radius = 1f
             ) else if (structured) Brush.radialGradient(
                 0f to blob.color,
-                .44f to blob.color.copy(alpha = blob.color.alpha * .90f),
-                .64f to blob.color.copy(alpha = blob.color.alpha * .48f),
-                .80f to blob.color.copy(alpha = blob.color.alpha * .08f),
+                .34f to blob.color.copy(alpha = blob.color.alpha * .90f),
+                .56f to blob.color.copy(alpha = blob.color.alpha * .42f),
+                .78f to blob.color.copy(alpha = blob.color.alpha * .05f),
                 1f to Color.Transparent,
                 center = Offset.Zero, radius = 1f
             ) else Brush.radialGradient(

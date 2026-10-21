@@ -50,10 +50,6 @@ import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.LocalShortcutBlurEnabled
-import com.github.mihomo.android.ui.glass.LocalShortcutDockLensEnabled
-import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
-import com.github.mihomo.android.ui.glass.shortcutSuspensionShadow
-import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import com.github.mihomo.android.ui.glass.glassTextPrimary
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.glassPalette
@@ -414,13 +410,9 @@ fun LoonShortcutCard(
             haptic.lightTick()
             onClick()
         }
-    val dockLens = LocalShortcutDockLensEnabled.current
-    val dark = LocalGlassTokens.current.isDark
-    val shadow = if (GlassDefaults.enabled && dockLens)
-        Modifier.shortcutSuspensionShadow(ShortcutFollowupCardShape, dark) else Modifier
-
-    // The slot/shadow never tilts; only the glass plane and its foreground rotate.
-    Box(slotModifier.then(shadow)) {
+    // No fixed ground duplicate: only this plane moves; the slot owns hit testing.
+    // B enters direct manipulation only after a held contact; short vertical motion remains scrollable.
+    Box(slotModifier) {
         if (GlassDefaults.enabled) {
             GlassSurface(
                 modifier = pressModifier,

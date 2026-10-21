@@ -253,6 +253,37 @@ class ShortcutTouchBehaviorRegressionTest {
         compose.runOnIdle { assertEquals("release clears the horizontal owner", listOf(true, false), pickups) }
     }
 
+    @Test fun bJellyTravelIsRadialAndCappedInAllDirections() {
+        for (point in listOf(Offset(100f,0f),Offset(0f,100f),Offset(100f,100f),Offset(-100f,60f))) {
+            val out=shortcutJellyTravel(point,4f)
+            assertTrue("$point within 4dp",out.getDistance()<=4.001f)
+            assertTrue("$point preserves direction",out.x*point.x+out.y*point.y>0f)
+        }
+    }
+    @Test fun bLongPressCanMoveVerticallyAndSpringsBackWithoutClick() {
+        var clicks = 0
+        val pickups = mutableListOf<Boolean>()
+        compose.setContent {
+            CompositionLocalProvider(LocalShortcutTouchVariant provides ShortcutTouchVariant.FingerTilt) {
+                LoonShortcutCard(Modifier.size(174.dp,118.dp), "Jelly", "", {},
+                    onPickupChanged = { pickups += it }, onClick = { clicks++ })
+            }
+        }
+        val card=compose.onNodeWithTag("shortcut-card-Jelly")
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(2f, 2f), delayMillis = 600)
+            moveTo(center + Offset(0f, 70f), delayMillis = 80)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(0, clicks)
+            assertEquals(listOf(true,false), pickups)
+        }
+    }
+
+
     @Test fun horizontalIntentThresholdRejectsSmallAndAmbiguousMoves() {
         assertTrue(shortcutHorizontalIntent(15f, 0f, 10f))
         assertTrue(!shortcutHorizontalIntent(12f, 0f, 10f))

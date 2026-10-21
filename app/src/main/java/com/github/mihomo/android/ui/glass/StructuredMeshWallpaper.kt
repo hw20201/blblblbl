@@ -17,8 +17,8 @@ internal fun structuredMeshCells(palette: GlassPaletteSpec, baseBlobs: List<Glas
         GlassBlob(Color(it).copy(alpha = .72f), 0f, 0f, .34f)
     }
     val colours = when { custom -> baseBlobs; palette.isDark -> darkColours; else -> IceLavenderMesh }
-    val contrast = when { custom -> 1f; palette.isDark -> 1f; else -> 1.18f }
-    val alphaGain = when { custom -> 1f; palette.isDark -> 1f; else -> 1.10f }
+    val contrast = when { custom -> 1f; palette.isDark -> 1f; else -> 1.28f }
+    val alphaGain = when { custom -> 1f; palette.isDark -> 1f; else -> 1.12f }
     val base = if (palette.isDark || custom) palette.base else Color(0xFFECF3FF)
     return List(15) { index ->
         val row = index / 3

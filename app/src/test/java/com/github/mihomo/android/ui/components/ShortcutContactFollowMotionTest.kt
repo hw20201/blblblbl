@@ -36,7 +36,7 @@ class ShortcutContactFollowMotionTest {
         compose.setContent {
             CompositionLocalProvider(LocalShortcutTunedMaterialEnabled provides true,
                 LocalShortcutOpticalFollowupEnabled provides true, LocalShortcutContactFollowEnabled provides true,
-                LocalShortcutMotionEnabled provides true) {
+                LocalShortcutMotionEnabled provides true, LocalShortcutDockLensEnabled provides false) {
                 val motion = rememberShortcutTouchMotion(variant.value, enabled = true)
                 SideEffect { optics = motion.refraction }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -113,7 +113,8 @@ class ShortcutContactFollowMotionTest {
         var pickups = 0; var clicks = 0
         compose.setContent {
             CompositionLocalProvider(LocalShortcutContactFollowEnabled provides true,
-                LocalShortcutMotionEnabled provides false) {
+                LocalShortcutMotionEnabled provides false,
+                LocalShortcutDockLensEnabled provides false) {
                 val motion = rememberShortcutTouchMotion(ShortcutTouchVariant.FingerTilt, true,
                     onPickupChanged = { if (it) pickups++ })
                 SideEffect { optics = motion.refraction }

@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.github.mihomo.android.ui.glass.ShortcutRefraction
 import com.github.mihomo.android.ui.glass.SHORTCUT_CONTACT_REBOUND
@@ -89,6 +91,10 @@ private class TouchInput {
     var dragging by mutableStateOf(false)
     var dragX by mutableFloatStateOf(0f)
     var dragY by mutableFloatStateOf(0f)
+    var tiltX by mutableFloatStateOf(0f)
+    var tiltY by mutableFloatStateOf(0f)
+    var slotCoordinates: LayoutCoordinates? = null
+    var planeCoordinates: LayoutCoordinates? = null
     // Keep the last contact point while the lift springs back. Resetting x/y on release
     // would move the shader's lens target to the card centre in the very same frame.
     fun reset() { pressed = false; dragging = false; dragX = 0f; dragY = 0f }
@@ -106,6 +112,13 @@ internal class ShortcutTouchMotion(
 internal fun shortcutHorizontalIntent(dx: Float, dy: Float, touchSlop: Float): Boolean =
     abs(dx) > max(0f, touchSlop) * 1.25f && abs(dx) > abs(dy) * 1.5f
 
+/** B keeps the 4dp travel radius in every direction; diagonals never exceed it. */
+internal fun shortcutJellyTravel(delta: Offset, limit: Float): Offset {
+    val raw = delta * .09f
+    val length = raw.getDistance()
+    return if (length > limit && length > 0f) raw * (limit / length) else raw
+}
+
 /** One finite gesture animation drives slab and backdrop optics; no idle clock or capture. */
 @Composable
 internal fun rememberShortcutTouchMotion(
@@ -117,7 +130,8 @@ internal fun rememberShortcutTouchMotion(
     val tuned = LocalShortcutTunedMaterialEnabled.current
     val followup = LocalShortcutOpticalFollowupEnabled.current
     val dockLens = LocalShortcutDockLensEnabled.current
-    val splitShadow = tuned && followup
+    val jelly = dockLens && tuned && variant == ShortcutTouchVariant.FingerTilt
+    val splitShadow = tuned && followup && !jelly
     val contactFollow = tuned && followup && LocalShortcutContactFollowEnabled.current && enabled && frozenPose == null
     val input = remember(variant, enabled, tuned) { TouchInput() }
     val pickupCallback by rememberUpdatedState(onPickupChanged)
@@ -133,13 +147,13 @@ internal fun rememberShortcutTouchMotion(
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 0.88f
-        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.9f else 0.76f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.72f else 0.76f
         ShortcutTouchVariant.BuoyantSpring -> 0.55f
     }
     val target = when {
         !animate -> ShortcutTouchPose()
         frozenPose != null -> frozenPose
-        input.pressed -> currentTarget(input.x, input.y)
+        input.pressed -> currentTarget(if (jelly) input.tiltX else input.x, if (jelly) input.tiltY else input.y)
         else -> ShortcutTouchPose()
     }
     // Compose's animation clock applies the system duration scale, including slow scales.
@@ -183,10 +197,16 @@ internal fun rememberShortcutTouchMotion(
         else -> lift.value.coerceIn(0f, 1f)
     }
     // Direct manipulation tracks immediately; only release uses the selected rebound.
-    val dragSpec = if (input.dragging || !animate) snap<Float>() else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
-    val dragX = animateFloatAsState(if (input.dragging) input.dragX else 0f, dragSpec, label = "shortcut_drag_x")
-    val dragY = animateFloatAsState(if (input.dragging) input.dragY else 0f, dragSpec, label = "shortcut_drag_y")
-    val gestureModifier = Modifier.pointerInput(input, enabled) {
+    val dragSpec = if ((jelly && input.pressed) || input.dragging || !animate) snap<Float>()
+        else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
+    val travelActive = animate && (input.dragging || (jelly && input.pressed))
+    val dragX = animateFloatAsState(if (travelActive) input.dragX else 0f, dragSpec, label = "shortcut_drag_x")
+    val dragY = animateFloatAsState(if (travelActive) input.dragY else 0f, dragSpec, label = "shortcut_drag_y")
+    // Read input live inside long-lived pointerInput, not a captured composition Boolean.
+    fun travelX(): Float = if (!animate) 0f else if (input.dragging || (jelly && input.pressed)) input.dragX else dragX.value
+    fun travelY(): Float = if (!animate) 0f else if (input.dragging || (jelly && input.pressed)) input.dragY else dragY.value
+    val gestureModifier = Modifier.onGloballyPositioned { input.slotCoordinates = it }
+        .pointerInput(input, enabled, jelly, animate) {
         if (!enabled) return@pointerInput
         try {
             awaitEachGesture {
@@ -195,12 +215,19 @@ internal fun rememberShortcutTouchMotion(
                 input.pressed = true
                 var horizontallyLocked = false
                 fun update(position: Offset) {
-                    // The gesture anchor stays in the original slot, but the optical contact
-                    // belongs to the translated plane, not that stationary slot.
-                    val local = position - Offset(if (input.dragging) input.dragX else dragX.value,
-                        if (input.dragging) input.dragY else dragY.value)
-                    input.x = ((local.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
-                    input.y = ((local.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    // Intent stays in the unmoving slot; do not feed a rotating plane back
+                    // into its own tilt target. Optical contact uses the actual plane instead.
+                    input.tiltX = ((position.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    input.tiltY = ((position.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    val slot = input.slotCoordinates?.takeIf { it.isAttached }
+                    val plane = input.planeCoordinates?.takeIf { it.isAttached }
+                    val local = if (jelly && slot != null && plane != null)
+                        plane.localPositionOf(slot, position)
+                    else position - Offset(travelX(), travelY())
+                    val width = if (jelly && plane != null) plane.size.width else size.width
+                    val height = if (jelly && plane != null) plane.size.height else size.height
+                    input.x = ((local.x / width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    input.y = ((local.y / height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
                 }
                 update(down.position)
                 try {
@@ -225,7 +252,15 @@ internal fun rememberShortcutTouchMotion(
                             break
                         }
                         val delta = change.position - down.position
-                        if (!horizontallyLocked && shortcutHorizontalIntent(delta.x, delta.y, viewConfiguration.touchSlop)) {
+                        // A normal vertical swipe must still scroll the dashboard. A deliberate
+                        // hold then drag can pick B up in any direction; horizontal intent stays fast.
+                        val heldForDrag = change.uptimeMillis - down.uptimeMillis >= viewConfiguration.longPressTimeoutMillis
+                        val jellyIntent = jelly && heldForDrag && delta.getDistance() > viewConfiguration.touchSlop
+                        if (!horizontallyLocked && jellyIntent) {
+                            horizontallyLocked = true
+                            input.dragging = true
+                            pickupCallback(true)
+                        } else if (!horizontallyLocked && shortcutHorizontalIntent(delta.x, delta.y, viewConfiguration.touchSlop)) {
                             horizontallyLocked = true
                             input.dragging = true
                             pickupCallback(true)
@@ -240,13 +275,20 @@ internal fun rememberShortcutTouchMotion(
                                 .firstOrNull { it.id == down.id }?.consume()
                             break
                         }
+                        if (jelly && animate) {
+                            val travel = shortcutJellyTravel(delta, maxDragX)
+                            input.dragX = travel.x
+                            input.dragY = travel.y
+                        }
                         if (horizontallyLocked) {
                             // This pointer node is outside the visual graphicsLayer: stable anchor,
                             // no feedback from the moved card, no exit when the finger leaves it.
-                            // Keep direct manipulation perceptible but restrained; vertical motion
-                            // remains gesture-only so it cannot pull the dashboard card.
-                            input.dragX = (delta.x * 0.09f).coerceIn(-maxDragX, maxDragX)
-                            input.dragY = 0f
+                            // Legacy A/C preserve their horizontal-only pickup. B keeps the
+                            // radial 4dp travel computed above, including diagonal/vertical drift.
+                            if (!jelly) {
+                                input.dragX = (delta.x * 0.09f).coerceIn(-maxDragX, maxDragX)
+                                input.dragY = 0f
+                            }
                             change.consume()
                         }
                         update(change.position)
@@ -258,6 +300,10 @@ internal fun rememberShortcutTouchMotion(
             }
         } finally { input.reset() }
     }
+    fun visiblePitch(): Float = if (!animate) 0f else if (jelly && input.pressed && frozenPose == null)
+        currentTarget(input.tiltX, input.tiltY).rotationX else rx.value
+    fun visibleRoll(): Float = if (!animate) 0f else if (jelly && input.pressed && frozenPose == null)
+        currentTarget(input.tiltX, input.tiltY).rotationY else ry.value
     val visualModifier = Modifier.graphicsLayer {
         val immediate = animate && input.pressed && frozenPose == null
         val targetScale = currentTarget(0f, 0f).scale
@@ -269,16 +315,13 @@ internal fun rememberShortcutTouchMotion(
             else -> scale.value
         }
         scaleX = visibleScale; scaleY = visibleScale
-        translationX = (if (animate) dx.value else 0f).dp.toPx() + if (input.dragging) input.dragX else dragX.value
-        translationY = (when { !animate -> 0f; immediate && target.offsetYDp != 0f -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx() + if (input.dragging) input.dragY else dragY.value
-        rotationX = if (animate && !splitShadow) rx.value else 0f
-        rotationY = if (animate && !splitShadow) ry.value else 0f
+        translationX = (if (animate) dx.value else 0f).dp.toPx() + travelX()
+        translationY = (when { !animate -> 0f; immediate && target.offsetYDp != 0f -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx() + travelY()
+        rotationX = if (!splitShadow) visiblePitch() else 0f
+        rotationY = if (!splitShadow) visibleRoll() else 0f
         cameraDistance = (if (tuned && variant == ShortcutTouchVariant.FingerTilt) 160f
             else if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
-        // Keep the ground shadow flat. Native round-rect outlines otherwise use
-        // tilted vertex Z as extra caster height, producing very long penumbrae.
-        shadowElevation = if (dockLens) 0f
-            else if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
+        shadowElevation = if (dockLens) 0f else if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
             else ((if (animate) 0.45f else 0f) + visibleLift() * 1.1f).dp.toPx()
         shape = if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
         clip = false
@@ -289,17 +332,17 @@ internal fun rememberShortcutTouchMotion(
             else if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         clip = false
     }
-    return ShortcutTouchMotion(gestureModifier, visualModifier) {
-        // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
-        // Feed the actual finger position so every press location produces a consistent lens.
-        // Keep that point through release while lift animates down; reset() only clears pressed.
-        // The backdrop draw observes the actual plane pose too, including when the finger
-        // is beyond +/-1 and touch uniforms stop changing. This invalidates world anchoring.
+    val directJellyLayer = Modifier.graphicsLayer {
+        translationX = travelX(); translationY = travelY()
+        rotationX = visiblePitch(); rotationY = visibleRoll()
+        cameraDistance = 100.dp.toPx(); shadowElevation = 0f; clip = false
+    }.onGloballyPositioned { input.planeCoordinates = it }
+    val activeVisualModifier = if (jelly && frozenPose == null) directJellyLayer else visualModifier
+    return ShortcutTouchMotion(gestureModifier, activeVisualModifier) {
         scale.value; dx.value; dy.value; rx.value; ry.value
         input.dragX; input.dragY; dragX.value; dragY.value
         ShortcutRefraction(visibleLift(),
             if (animate || contactFollow) input.x else 0f, if (animate || contactFollow) input.y else 0f,
-            // Contact starts clear: unlike the bevel kick, frost follows actual separation.
             frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
             contact = if (contactFollow) contactValue() else 0f,
             contactFollow = contactFollow)
