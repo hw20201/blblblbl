@@ -65,7 +65,7 @@ android {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
+        versionCode = 38
         versionName = "1.0.32-with-suspended"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -104,7 +104,7 @@ android {
             isMinifyEnabled = false
             // Isolated disposable UI draft; never replaces the owner's installed production app.
             applicationIdSuffix = ".draftglass"
-            versionNameSuffix = "-draft-glass-candidate5"
+            versionNameSuffix = "-draft-glass-candidate6"
         }
     }
 
@@ -116,7 +116,7 @@ android {
         isMinifyEnabled = false
         isShrinkResources = false
         applicationIdSuffix = ".draftglass"
-        versionNameSuffix = "-draft-glass-candidate5-performance"
+        versionNameSuffix = "-draft-glass-candidate6-motion-performance"
         signingConfig = signingConfigs.getByName("debug")
         matchingFallbacks += listOf("release")
     }

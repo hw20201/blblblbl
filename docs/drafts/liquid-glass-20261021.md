@@ -174,3 +174,10 @@ Candidate 4 validation:
 - 23 focused API35 Robolectric tests pass; light/dark page renders inspected; APK ZIP, signature and 16-KB alignment checked. No physical vivo Android16 startup/FPS measurements; device improvement remains to be tested.
 - APK SHA256: 8bddf409dbed7f9675a40286ff1cd4b0d31a2a37a9ec854e42d142ed53d6215a (44,279,652 bytes).
 - A/B/C motion refinement remains separate in /home/user/workspace/nexus-motion-wip/ and is not included.
+
+### Candidate6 shortcut touch motion — 2026-10-22
+- Refined the live dock-card contact response instead of changing the settings dialog: A is a restrained 1.004× / 1.2dp float; B follows normalized finger position with a center dead zone and a capped 6° radial tilt (contact edge recedes, opposite edge lifts), without global zoom/lift; C is a distinct 1.014× / 3.2dp buoyant lift.
+- Release is variant-specific; C uses a lower-damping spring, while cancellation is critically damped. Held B angle follows direct touch and maintains a stable gesture hit slot.
+- Focused Compose/Robolectric test suite passed (23 tests) covering light/dark live glass, fixed hit geometry, center jitter, angle limits, opposite-edge geometry, cancel/click, and measured rendered lift/rebound. Saved screenshots were inspected; they are software-rendered API35 evidence only, not vivo GPU or tactile verification.
+- Candidate6 versionCode 38 keeps the candidate5 performance build type, isolated `.draftglass` app identity, same signing setup, and retained native VPN binaries. No production branch/release is touched.
+- Built performance APK: `Nexus-Glass-DRAFT-arm64-candidate6-motion-performance-20261022.apk`, 44,280,000 bytes; SHA-256 `2c46088be6de19643f2a7d6dc304ccfcd34ec66c1dddfd2f29e859068710c922`. Gradle output metadata identifies package `com.github.mihomo.android.draftglass`, versionCode 38, arm64-v8a native libraries are present, and ZIP integrity check passes.

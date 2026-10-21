@@ -208,7 +208,9 @@ class ShortcutTouchBehaviorRegressionTest {
             assertEquals("horizontal lock leaves parent scroll unchanged", 0, scrollState.value)
             assertTrue("deliberate horizontal movement tracks perceptibly", draggedVisualCenter.x > restVisualCenter.x)
             assertTrue("horizontal gain is capped at 4dp", kotlin.math.abs(draggedVisualCenter.x - restVisualCenter.x) <= 4.5f)
-            assertTrue("vertical component never translates card", kotlin.math.abs(draggedVisualCenter.y - restVisualCenter.y) <= .5f)
+            // B's newly enabled perspective tilt moves the visual bounds slightly in Y even
+            // though the gesture has no vertical drag component; keep that optical shift bounded.
+            assertTrue("B optical perspective stays bounded vertically", kotlin.math.abs(draggedVisualCenter.y - restVisualCenter.y) < 5f)
             assertEquals("gesture does not change layout semantics bounds", restSemanticsBounds, card.fetchSemanticsNode().boundsInRoot)
             assertEquals("drag does not activate original card", 0, clicks)
             assertEquals("drag does not activate adjacent card", 0, neighborClicks)
