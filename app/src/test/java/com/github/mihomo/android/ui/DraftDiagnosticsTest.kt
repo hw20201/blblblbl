@@ -28,6 +28,23 @@ class DraftDiagnosticsTest {
         app.getSharedPreferences("draft_diagnostics", 0).edit().clear().commit()
     }
     @After fun clean() { clear() }
+    @Test fun appIconStartsMainDirectlyAndKeepsExplicitDiagnosticsShortcut() {
+        val launch = app.packageManager.getLaunchIntentForPackage(app.packageName)
+        assertNotNull(launch)
+        assertEquals(MainActivity::class.java.name, launch!!.component?.className)
+        val info = app.packageManager.getActivityInfo(launch.component!!,
+            android.content.pm.PackageManager.GET_META_DATA)
+        val resource = info.metaData.getInt("android.app.shortcuts")
+        assertTrue(resource != 0)
+        val parser = app.resources.getXml(resource)
+        var diagnostic = false
+        while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "intent") {
+                diagnostic = parser.getAttributeValue("http://schemas.android.com/apk/res/android", "targetClass") == DraftDiagnosticsActivity::class.java.name
+            }
+        }
+        assertTrue("Long-press shortcut retains crash-report entry", diagnostic)
+    }
     @Test fun freshInstallLaunchesOrdinaryAppWithoutInterruption() {
         val activity = Robolectric.buildActivity(DraftDiagnosticsActivity::class.java).setup().get()
         assertTrue(activity.isFinishing)

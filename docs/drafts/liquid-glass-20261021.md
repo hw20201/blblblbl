@@ -166,3 +166,11 @@ Candidate 4 validation:
 - Package remains `com.github.mihomo.android.draftglass`; label `Nexus Glass DRAFT`;
   versionCode 37; versionName `1.0.32-with-suspended-draft-glass-candidate4`;
   arm64 only, debug signed. Native library content is unchanged from Candidate 3.
+
+## Candidate5 performance — 2026-10-22
+- Direct MainActivity icon launch; diagnostics retained through launcher long-press shortcut.
+- Non-debuggable, same-package/debug-certificate performance build; no VPN feature/data stripping.
+- Bounded synchronous dashboard overscroll and spring return, fixed header/navigation; reduced eager pager composition, isolated background layers, paused decorative mesh motion during scroll.
+- 23 focused API35 Robolectric tests pass; light/dark page renders inspected; APK ZIP, signature and 16-KB alignment checked. No physical vivo Android16 startup/FPS measurements; device improvement remains to be tested.
+- APK SHA256: 8bddf409dbed7f9675a40286ff1cd4b0d31a2a37a9ec854e42d142ed53d6215a (44,279,652 bytes).
+- A/B/C motion refinement remains separate in /home/user/workspace/nexus-motion-wip/ and is not included.

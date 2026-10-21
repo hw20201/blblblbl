@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -29,19 +30,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
 /** Fixed-time injection for actual Compose previews/tests, not a second renderer. */
+internal val LocalSoftMeshPaused = staticCompositionLocalOf<() -> Boolean> { { false } }
 internal val LocalSoftMeshTime = staticCompositionLocalOf<State<Float>?> { null }
 internal const val MESH_UPDATE_DELAY_MS = 42L // <=24 Hz; align each update to a display frame.
 
 /** One timeline/route for main tabs and sliding sub-screens: navigation never resets the field. */
 @Composable
-internal fun ProvideSoftMeshMotion(content: @Composable () -> Unit) {
+internal fun ProvideSoftMeshMotion(paused: () -> Boolean = { false }, content: @Composable () -> Unit) {
     if (!GlassDefaults.enabled) {
         content()
         return
     }
-    val time = rememberSoftMeshTime()
+    val time = rememberSoftMeshTime(paused)
     val seed = remember { kotlin.random.Random.nextLong() }
-    CompositionLocalProvider(LocalSoftMeshTime provides time, LocalSoftMeshSeed provides seed, content = content)
+    CompositionLocalProvider(LocalSoftMeshTime provides time, LocalSoftMeshSeed provides seed, LocalSoftMeshPaused provides paused, content = content)
 }
 
 /** Accumulates visible time only: resuming never jumps over time spent in the background. */
@@ -67,7 +69,7 @@ internal fun meshMayAnimate(resumed: Boolean, focused: Boolean, shown: Boolean, 
 
 /** State is read ONLY in drawBehind. No per-frame recomposition of the foreground or layout. */
 @Composable
-internal fun rememberSoftMeshTime(): State<Float> {
+internal fun rememberSoftMeshTime(paused: () -> Boolean = LocalSoftMeshPaused.current): State<Float> {
     LocalSoftMeshTime.current?.let { return it }
     val elapsed = remember { mutableFloatStateOf(0f) }
     if (LocalInspectionMode.current) return elapsed
@@ -78,6 +80,7 @@ internal fun rememberSoftMeshTime(): State<Float> {
     var shown by remember(view) { mutableStateOf(view.isShown && view.windowVisibility == View.VISIBLE) }
     var animations by remember { mutableStateOf(ValueAnimator.areAnimatorsEnabled()) }
     val activeTime = remember { MeshActiveTime() }
+    val pause by rememberUpdatedState(paused)
 
     DisposableEffect(lifecycle, view) {
         val lifecycleObserver = LifecycleEventObserver { _, _ ->
@@ -128,7 +131,7 @@ internal fun rememberSoftMeshTime(): State<Float> {
         }
     }
     LaunchedEffect(lifecycle, view) {
-        snapshotFlow { meshMayAnimate(resumed, focused, shown, animations) }.collectLatest { active ->
+        snapshotFlow { meshMayAnimate(resumed, focused, shown, animations) && !pause() }.collectLatest { active ->
             activeTime.pause()
             if (active) {
                 while (true) {

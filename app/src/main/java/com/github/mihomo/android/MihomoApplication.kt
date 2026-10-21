@@ -18,14 +18,13 @@ class MihomoApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // The debug-only report launcher runs without Compose/GPU or VPN native startup.
+        // The draft-only report launcher runs without Compose/GPU or VPN native startup.
         // It must remain reachable even if the ordinary process terminates during launch.
         val processName = if (android.os.Build.VERSION.SDK_INT >= 28) getProcessName() else {
             (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager)
                 .runningAppProcesses?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName
         }
-        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 &&
-            processName == "$packageName:draft_diagnostics") return
+        if (processName == "$packageName:draft_diagnostics") return
         runCatching {
             android.system.Os.setenv("GODEBUG", "cpu.all=off", true)
         }

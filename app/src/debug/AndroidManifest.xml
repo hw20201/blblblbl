@@ -2,17 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application>
         <activity android:name="com.github.mihomo.android.ui.MainActivity">
-            <intent-filter tools:node="removeAll" />
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/draft_shortcuts" />
         </activity>
-        <!-- Independent, software-rendered entrance: a failed main-process launch cannot
-             prevent viewing a saved report on the next tap. Debug builds only. -->
+        <!-- Independent software-rendered crash reports remain available through the
+             launcher long-press shortcut, without a second process on every normal start. -->
         <activity android:name="com.github.mihomo.android.ui.DraftDiagnosticsActivity"
             android:exported="true" android:process=":draft_diagnostics"
             android:hardwareAccelerated="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+
         </activity>
     </application>
 </manifest>

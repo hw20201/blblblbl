@@ -12,6 +12,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
@@ -89,7 +90,7 @@ fun NexusGlassBackground(
     }
     Box(modifier = modifier.fillMaxSize().clipToBounds()) {
         Box(
-            modifier = Modifier.fillMaxSize().then(backdropRecorder)
+            modifier = Modifier.fillMaxSize().graphicsLayer().then(backdropRecorder)
                 .background(base)
                 .drawBehind {
                     val time = seconds.value // draw-phase read; no foreground recomposition/layout.

@@ -1215,85 +1215,74 @@ private fun BottomNavItem(
 // allowTop=true  → produces space when pulling past the top edge
 // allowBottom=true → produces space when pushing past the bottom edge
 // -------------------------------------------------------------
+/** Bounded content-only translation. Drag deltas update synchronously: never queue one
+ * snap coroutine per pointer event. Only the release owns an animation job. */
+internal class RubberBandState(private val limit: Float) {
+    var offset by mutableFloatStateOf(0f)
+    fun pull(delta: Float): Float {
+        if (delta == 0f) return 0f
+        val resistance = .42f * (1f - kotlin.math.abs(offset) / limit).coerceIn(.08f, 1f)
+        offset = (offset + delta * resistance).coerceIn(-limit, limit)
+        return delta
+    }
+    fun unwind(delta: Float): Float {
+        if (offset * delta >= 0f) return 0f
+        val consumed = if (offset > 0f) delta.coerceAtLeast(-offset) else delta.coerceAtMost(-offset)
+        offset += consumed
+        return consumed
+    }
+}
+
 @Composable
 fun rememberBounceOverscrollConnection(
     allowTop: Boolean = true,
     allowBottom: Boolean = true
 ): Pair<NestedScrollConnection, State<Float>> {
-    val coroutineScope = rememberCoroutineScope()
-    val overscrollOffset = remember { Animatable(0f) }
-
-    val connection = remember(allowTop, allowBottom) {
+    val scope = rememberCoroutineScope()
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val band = remember(density) { RubberBandState(88f * density) }
+    val connection = remember(allowTop, allowBottom, band) {
         object : NestedScrollConnection {
+            var rebound: kotlinx.coroutines.Job? = null
+            fun interrupt() { rebound?.cancel(); rebound = null }
+            suspend fun release() {
+                if (band.offset == 0f) return
+                interrupt()
+                rebound = scope.launch {
+                    val animation = Animatable(band.offset)
+                    animation.animateTo(0f, spring(dampingRatio = .78f, stiffness = 380f)) {
+                        band.offset = value
+                    }
+                    band.offset = 0f
+                }
+                rebound?.join()
+            }
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val current = overscrollOffset.value
-                // Scroll back toward zero before passing to the list
-                if (current > 0f && available.y < 0f) {
-                    val consumed = available.y.coerceAtLeast(-current)
-                    coroutineScope.launch { overscrollOffset.snapTo(current + consumed) }
-                    return Offset(0f, consumed)
-                } else if (current < 0f && available.y > 0f) {
-                    val consumed = available.y.coerceAtMost(-current)
-                    coroutineScope.launch { overscrollOffset.snapTo(current + consumed) }
-                    return Offset(0f, consumed)
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                interrupt()
+                return Offset(0f, band.unwind(available.y))
+            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if ((available.y > 0f && allowTop) || (available.y < 0f && allowBottom)) {
+                    return Offset(0f, band.pull(available.y))
                 }
                 return Offset.Zero
             }
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (source == NestedScrollSource.UserInput && available.y != 0f) {
-                    // available.y > 0 → pulling down past top edge (top overscroll)
-                    // available.y < 0 → pushing up past bottom edge (bottom overscroll)
-                    val isTopOverscroll = available.y > 0f
-                    val isBottomOverscroll = available.y < 0f
-                    if (isTopOverscroll && !allowTop) {
-                        return Offset.Zero
-                    }
-                    if (isBottomOverscroll && !allowBottom) {
-                        return Offset.Zero
-                    }
-                    val current = overscrollOffset.value
-                    val resistance = (1f - (kotlin.math.abs(current) / 500f).coerceIn(0f, 0.85f)) * 0.42f
-                    val delta = available.y * resistance
-                    coroutineScope.launch { overscrollOffset.snapTo(current + delta) }
-                    return Offset(0f, available.y)
-                }
-                return Offset.Zero
-            }
-
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (overscrollOffset.value != 0f) {
-                    overscrollOffset.animateTo(
-                        targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    )
-                    return available
-                }
-                return Velocity.Zero
+                if (band.offset == 0f) return Velocity.Zero
+                release()
+                // Consume vertical only. Never steal a horizontal pager fling.
+                return Velocity(0f, available.y)
             }
-
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                if (overscrollOffset.value != 0f) {
-                    overscrollOffset.animateTo(
-                        targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    )
-                }
+                release()
                 return Velocity.Zero
             }
         }
     }
-    return Pair(connection, overscrollOffset.asState())
+    val offset = remember(band) { derivedStateOf { band.offset } }
+    return connection to offset
 }
 
 // iOS-style Rubber-Band Bounce Overscroll

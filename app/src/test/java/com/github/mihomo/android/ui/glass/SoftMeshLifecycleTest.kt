@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -27,10 +28,11 @@ class SoftMeshLifecycleTest {
 
     @Test fun accumulatesOnlyWhileResumedAndDoesNotJumpAfterBackground() {
         compose.mainClock.autoAdvance = false
+        val scrolling = mutableStateOf(false)
         lateinit var time: State<Float>
         lateinit var view: android.view.View
         compose.setContent {
-            time = rememberSoftMeshTime()
+            time = rememberSoftMeshTime(paused = { scrolling.value })
             view = LocalView.current
             Box(Modifier.fillMaxSize())
         }
@@ -97,6 +99,15 @@ class SoftMeshLifecycleTest {
         frames(4)
         assertTrue("actual clock resumes", time.value > atPause)
         assertTrue("background duration is excluded", time.value - atPause < .5f)
+        compose.runOnIdle { scrolling.value = true }
+        frames(2)
+        val duringScroll = time.value
+        frames(8)
+        assertEquals("scrolling stops decorative mesh frame work", duringScroll, time.value, .0001f)
+        compose.runOnIdle { scrolling.value = false }
+        frames(4)
+        assertTrue("mesh resumes after scrolling", time.value > duringScroll)
+        assertTrue("scroll pause does not jump", time.value - duringScroll < .5f)
         println("Actual Compose clock: active=$beforePause, focus-loss=$atFocusLoss, background=$atPause, resumed=${time.value}")
     }
 }

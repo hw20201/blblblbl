@@ -717,7 +717,7 @@ class MainActivity : ComponentActivity() {
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
-        ProvideSoftMeshMotion {
+        ProvideSoftMeshMotion(paused = { pagerState.isScrollInProgress || dashboardScrollState.isScrollInProgress }) {
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
         val subScreenTransitionState = remember {
@@ -735,16 +735,16 @@ class MainActivity : ComponentActivity() {
                 .fillMaxSize()
                 .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
-            // 1. Primary main tabs: HorizontalPager keeps all 3 tabs persistently composed!
+            // 1. Compose visible/approaching tabs, not every distant glass page at startup.
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = false,
-                beyondViewportPageCount = 2,
+                beyondViewportPageCount = 0,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 // Keep precomposed neighbours (including glass display lists) within
                 // their own page. Titles still overlay and sample their local scroll scene.
-                Box(Modifier.fillMaxSize().clipToBounds()) {
+                Box(Modifier.fillMaxSize().graphicsLayer { clip = true }) {
                     when (page) {
                         0 -> {
                             val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies

@@ -104,8 +104,26 @@ android {
             isMinifyEnabled = false
             // Isolated disposable UI draft; never replaces the owner's installed production app.
             applicationIdSuffix = ".draftglass"
-            versionNameSuffix = "-draft-glass-candidate4"
+            versionNameSuffix = "-draft-glass-candidate5"
         }
+    }
+
+    // Same disposable identity/signature and local diagnostics, without debuggable ART
+    // or Compose inspection dependencies. No R8/reflection/native changes in this candidate.
+    buildTypes.create("performance") {
+        initWith(buildTypes.getByName("release"))
+        isDebuggable = false
+        isMinifyEnabled = false
+        isShrinkResources = false
+        applicationIdSuffix = ".draftglass"
+        versionNameSuffix = "-draft-glass-candidate5-performance"
+        signingConfig = signingConfigs.getByName("debug")
+        matchingFallbacks += listOf("release")
+    }
+    sourceSets.getByName("performance") {
+        java.srcDir("src/debug/java")
+        res.srcDir("src/debug/res")
+        manifest.srcFile("src/debug/AndroidManifest.xml")
     }
 
     compileOptions {

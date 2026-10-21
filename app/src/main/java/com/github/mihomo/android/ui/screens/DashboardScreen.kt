@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -219,7 +220,7 @@ fun DashboardScreen(
         )
     }
 
-    // Stretch overscroll disabled specifically on DashboardScreen as requested
+    // Replace platform stretching with bounded content translation; header/dock remain siblings.
     CompositionLocalProvider(
         LocalOverscrollConfiguration provides null
     ) {
@@ -233,6 +234,7 @@ fun DashboardScreen(
                     .fillMaxSize()
                     .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
                     .background(topBgBrush)
+                    .testTag("dashboard-scroll")
                     .bounceOverscroll()
                     .verticalScroll(state = scrollState, enabled = draggedId == null && pickedUpShortcutId == null)
                     .padding(horizontal = 20.dp)

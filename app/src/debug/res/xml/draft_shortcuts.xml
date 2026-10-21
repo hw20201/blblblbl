@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="draft_diagnostics" android:enabled="true"
+        android:icon="@android:drawable/ic_menu_info_details"
+        android:shortcutShortLabel="@string/draft_diagnostics_label">
+        <intent android:action="android.intent.action.VIEW"
+            android:targetPackage="com.github.mihomo.android.draftglass"
+            android:targetClass="com.github.mihomo.android.ui.DraftDiagnosticsActivity" />
+    </shortcut>
+</shortcuts>
