@@ -62,7 +62,12 @@ class ShortcutPickupPoseRegressionTest {
         compose.mainClock.autoAdvance = false
     }
 
-    private fun advance(ms: Long) { compose.mainClock.advanceTimeBy(ms); compose.waitForIdle() }
+    private fun advance(ms: Long) {
+        // A manual clock must first commit changed targets on a frame. waitForIdle
+        // alone does not submit recomposition while autoAdvance is disabled.
+        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(ms); compose.waitForIdle()
+    }
     private fun read() = compose.runOnIdle { optics() }
 
     @Test fun tunedBFourCornersKeepRawContactAndFollowTargetPose() {
@@ -133,7 +138,7 @@ class ShortcutPickupPoseRegressionTest {
                 tuned.value = material
                 followup.value = opticalFollowup
             }
-            compose.waitForIdle()
+            advance(32)
             slot.performTouchInput { down(center + Offset(center.x * .6f, center.y * .5f)) }
             advance(180)
             val held = read()
