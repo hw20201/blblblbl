@@ -177,16 +177,22 @@ class SuspendedChecks(unittest.TestCase):
         paths=set(subprocess.check_output(['git','diff','--name-only',baseline],cwd=R,text=True).splitlines())
         paths.update(subprocess.check_output(['git','ls-files','--others','--exclude-standard'],cwd=R,text=True).splitlines())
         # Everything outside this explicit experiment scope, including ALL native/core, VPN,
-        # accessibility, config-centre, navigation, background and build files, must stay unchanged.
+        # accessibility, config-centre, navigation and background, must stay unchanged.
+        # The separately approved test package may change ONLY these two exact version fields.
         allowed={
             '.github/workflows/shortcut-glass-debug.yml',
             'SHORTCUT_GLASS_ACTIONS_README.md',
+            'app/build.gradle.kts',
             'app/src/main/java/com/github/mihomo/android/ui/glass/LiquidGlassSurface.kt',
             'app/src/main/java/com/github/mihomo/android/ui/glass/ShortcutDockGlass.kt',
             'app/src/test/java/com/github/mihomo/android/ui/glass/ShortcutGlassLevelPolicyTest.kt',
             'scripts/check_shortcut_suspended.py',
         }
         self.assertFalse(paths-allowed,'Out-of-scope modifications: '+', '.join(sorted(paths-allowed)))
+        original=subprocess.check_output(['git','show',baseline+':app/build.gradle.kts'],cwd=R,text=True)
+        expected=original.replace('versionCode = 37','versionCode = 39').replace(
+            'versionName = "1.0.32-with-suspended"','versionName = "1.0.34"')
+        self.assertEqual((R/'app/build.gradle.kts').read_text(),expected,'Only approved 1.0.34/code39 version bump is allowed')
 
     def test_lint_baseline_remains_single_authorized_issue(self):
         baseline=ET.parse(R/'app/lint-baseline.xml').getroot().findall('issue')
