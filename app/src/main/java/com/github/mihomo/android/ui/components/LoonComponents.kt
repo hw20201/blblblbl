@@ -419,17 +419,17 @@ fun LoonShortcutCard(
         }
     val cardShape = resolveShortcutCardShape(RoundedCornerShape(GlassRadius.card),
         LocalShortcutTunedMaterialEnabled.current, LocalShortcutOpticalFollowupEnabled.current)
-    val glassEnabled = GlassDefaults.enabled
+    val useGlassSurface = GlassDefaults.enabled
     val glassPlaneModifier = pressModifier.shortcutNativeSuspension(
         shape = cardShape, dark = LocalGlassTokens.current.isDark, reordering = isReordering,
         // Legacy comparison motion already owns a caster. Edit mode does not install it.
-        enabled = glassEnabled && (LocalShortcutDockLensEnabled.current || !experimental),
+        enabled = useGlassSurface && (LocalShortcutDockLensEnabled.current || !experimental),
         lift = { if (experimental) touchMotion.refraction().lift else 0f }
     )
     // One caster moves WITH the glass plane; never leave a filled ground/slot duplicate.
     // B enters direct manipulation only after a held contact; short vertical motion remains scrollable.
     Box(slotModifier) {
-        if (glassEnabled) {
+        if (useGlassSurface) {
             GlassSurface(
                 modifier = glassPlaneModifier,
                 shape = cardShape,

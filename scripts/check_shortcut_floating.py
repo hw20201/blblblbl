@@ -92,7 +92,7 @@ class FloatingFixChecks(unittest.TestCase):
         self.assertIn('clip = false', S)
         self.assertIn('shape = cardShape', C)
         self.assertIn('resolveShortcutCardShape', read('ui/glass/GlassSurface.kt'))
-        self.assertIn('glassEnabled && (LocalShortcutDockLensEnabled.current || !experimental)', C)
+        self.assertIn('useGlassSurface && (LocalShortcutDockLensEnabled.current || !experimental)', C)
         self.assertNotIn('shortcutSuspensionShadow', G)
         for forbidden in ['drawRect', 'Bitmap', 'createBlurEffect', 'drawOutline', 'withFrameNanos']:
             self.assertNotIn(forbidden, S)

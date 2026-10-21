@@ -119,18 +119,30 @@ class ShortcutDashboardPickupGestureTest {
         val dir = File("build/outputs/shortcut-floating-edit").also { it.mkdirs() }
         save(screenshot(), dir, "before.png")
         compose.mainClock.autoAdvance = false
-        card.performTouchInput {
-            down(center)
-            moveTo(center + Offset(2f, 0f), delayMillis = 650)
-            moveTo(center + Offset(120f, 24f), delayMillis = 80)
+        // Input timestamps alone do not advance the long-press coroutine while the
+        // Compose clock is paused. Dispatch down before advancing both clocks.
+        // Root coordinates remain stable when the dragged card itself moves.
+        val root = compose.onRoot()
+        root.performTouchInput { down(rest.center) }
+        compose.mainClock.advanceTimeBy(650); compose.waitForIdle()
+        root.performTouchInput {
+            advanceEventTime(650)
+            moveTo(rest.center + Offset(2f, 0f), delayMillis = 16)
         }
+        compose.mainClock.advanceTimeBy(32); compose.waitForIdle()
+        root.performTouchInput { moveTo(rest.center + Offset(120f, 24f), delayMillis = 80) }
         compose.mainClock.advanceTimeBy(160); compose.waitForIdle()
+        // Flush the placement frame after the final input's snapshot/recomposition.
+        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
         assertTrue("edit reorder moves the actual card", card.fetchSemanticsNode().boundsInRoot.center.x > rest.center.x + 80f)
         // Capture the production edit path for hardware pixel/outline acceptance elsewhere.
         save(screenshot(), dir, "dragging.png")
-        card.performTouchInput { cancel() }
+        root.performTouchInput { cancel() }
         compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
         compose.mainClock.autoAdvance = true
+        val cancelled = card.fetchSemanticsNode().boundsInRoot
+        assertEquals("cancel restores the original horizontal slot", rest.center.x, cancelled.center.x, 1f)
+        assertEquals("cancel restores the original vertical slot", rest.center.y, cancelled.center.y, 1f)
         compose.runOnIdle {
             assertEquals("cancel cannot navigate", 0, fixture.profilesClicks)
             assertEquals("cancel cannot change VPN", 0, fixture.vpnToggles)
