@@ -135,8 +135,7 @@ fun GlassSurface(
     }
 
     val tunedMaterial = shortcutContactFrost && LocalShortcutTunedMaterialEnabled.current
-    val effectiveShape = if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
-        else if (tunedMaterial) ShortcutTunedCardShape else shape
+    val effectiveShape = resolveShortcutCardShape(shape, tunedMaterial, LocalShortcutOpticalFollowupEnabled.current)
     val dockLens = LocalShortcutDockLensEnabled.current
     if (shortcutContactFrost && shortcutDockLens && dockLens) {
         ShortcutDockGlassSurface(modifier, effectiveShape, lens, tokens, shortcutRefraction, content)

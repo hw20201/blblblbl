@@ -136,7 +136,7 @@ internal fun rememberShortcutTouchMotion(
     val input = remember(variant, enabled, tuned) { TouchInput() }
     val pickupCallback by rememberUpdatedState(onPickupChanged)
     fun currentTarget(x: Float, y: Float): ShortcutTouchPose {
-        val legacy = shortcutTouchTarget(variant, x, y, tuned)
+        val legacy = if (jelly) shortcutSuspendedTilt(x, y) else shortcutTouchTarget(variant, x, y, tuned)
         if (!contactFollow) return legacy
         return legacy.copy(scale = when (variant) {
             ShortcutTouchVariant.GentleFloat -> .997f
@@ -336,7 +336,8 @@ internal fun rememberShortcutTouchMotion(
     val directJellyLayer = Modifier.graphicsLayer {
         translationX = travelX(); translationY = travelY()
         rotationX = visiblePitch(); rotationY = visibleRoll()
-        cameraDistance = 100.dp.toPx(); shadowElevation = 0f; clip = false
+        cameraDistance = shortcutSuspendedCameraDp(size.width / density) * density
+        shadowElevation = 0f; clip = false
     }.onGloballyPositioned { input.planeCoordinates = it }
     val activeVisualModifier = if (jelly && frozenPose == null) directJellyLayer else visualModifier
     return ShortcutTouchMotion(gestureModifier, activeVisualModifier) {
@@ -346,6 +347,7 @@ internal fun rememberShortcutTouchMotion(
             if (animate || contactFollow) input.x else 0f, if (animate || contactFollow) input.y else 0f,
             frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
             contact = if (contactFollow) contactValue() else 0f,
-            contactFollow = contactFollow)
+            contactFollow = contactFollow,
+            pitchDegrees = visiblePitch(), rollDegrees = visibleRoll())
     }
 }

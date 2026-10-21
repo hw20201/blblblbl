@@ -18,6 +18,10 @@ import kotlin.math.sin
 /** Local comparison switch. No saved preferences or production settings are migrated. */
 internal val LocalShortcutTunedMaterialEnabled = staticCompositionLocalOf { true }
 
+/** Shared by the material clip and the native shadow; never cast the wrapper rectangle. */
+internal fun resolveShortcutCardShape(fallback: Shape, tuned: Boolean, followup: Boolean): Shape =
+    if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else fallback
+
 /** Same rounded-rectangle superellipse as the native optics, not a circular second clip. */
 internal object ShortcutTunedCardShape : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {

@@ -111,6 +111,37 @@ class ShortcutDashboardPickupGestureTest {
         }
     }
 
+    @Test fun editReorderCancelKeepsClicksVpnAndSavedOrderUntouched() {
+        val fixture = render()
+        compose.onNodeWithText("Edit").performClick()
+        val card = compose.onNodeWithTag("shortcut-card-Profiles")
+        val rest = card.fetchSemanticsNode().boundsInRoot
+        val dir = File("build/outputs/shortcut-floating-edit").also { it.mkdirs() }
+        save(screenshot(), dir, "before.png")
+        compose.mainClock.autoAdvance = false
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(2f, 0f), delayMillis = 650)
+            moveTo(center + Offset(120f, 24f), delayMillis = 80)
+        }
+        compose.mainClock.advanceTimeBy(160); compose.waitForIdle()
+        assertTrue("edit reorder moves the actual card", card.fetchSemanticsNode().boundsInRoot.center.x > rest.center.x + 80f)
+        // Capture the production edit path for hardware pixel/outline acceptance elsewhere.
+        save(screenshot(), dir, "dragging.png")
+        card.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+        compose.mainClock.autoAdvance = true
+        compose.runOnIdle {
+            assertEquals("cancel cannot navigate", 0, fixture.profilesClicks)
+            assertEquals("cancel cannot change VPN", 0, fixture.vpnToggles)
+            assertEquals("cancel cannot persist a reorder", 0, fixture.orderWrites)
+        }
+        save(screenshot(), dir, "cancelled.png")
+        compose.onNodeWithText("Done").performClick()
+        card.performTouchInput { click(center) }
+        compose.runOnIdle { assertEquals("click is restored after editing", 1, fixture.profilesClicks) }
+    }
+
     @Test fun tapOnProfilesInvokesOnlyProfilesNavigation() {
         val fixture = render()
         compose.onNodeWithTag("shortcut-card-Profiles").performTouchInput { click(center) }
@@ -136,7 +167,8 @@ class ShortcutDashboardPickupGestureTest {
         compose.runOnIdle { assertTrue("blank-origin drag scrolls Dashboard", fixture.scroll.value > 0) }
     }
 
-    private data class Fixture(val scroll: ScrollState, var profilesClicks: Int = 0, var vpnToggles: Int = 0)
+    private data class Fixture(val scroll: ScrollState, var profilesClicks: Int = 0,
+        var vpnToggles: Int = 0, var orderWrites: Int = 0)
     private fun render(variant: ShortcutTouchVariant = ShortcutTouchVariant.FingerTilt): Fixture {
         GlassDefaults.enabled = true; GlassDefaults.palette = GlassPalettes.CREAM
         val fixture = Fixture(ScrollState(0))
@@ -158,7 +190,7 @@ class ShortcutDashboardPickupGestureTest {
                                     onToggleVpn = { fixture.vpnToggles++ }, onModeSelected = {}, onSelectProxy = { _, _ -> },
                                     onHealthCheck = {}, onNavigateToProfiles = { fixture.profilesClicks++ },
                                     onNavigateToAppRouting = {}, onNavigateToLogs = {}, onUpdateVisibleShortcuts = {},
-                                    onUpdateShortcutOrder = {}, glassScene = cardScene)
+                                    onUpdateShortcutOrder = { fixture.orderWrites++ }, glassScene = cardScene)
                             }
                         }
                     }

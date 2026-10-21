@@ -50,6 +50,11 @@ import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.LocalShortcutBlurEnabled
+import com.github.mihomo.android.ui.glass.LocalGlassTokens
+import com.github.mihomo.android.ui.glass.LocalShortcutDockLensEnabled
+import com.github.mihomo.android.ui.glass.LocalShortcutOpticalFollowupEnabled
+import com.github.mihomo.android.ui.glass.LocalShortcutTunedMaterialEnabled
+import com.github.mihomo.android.ui.glass.resolveShortcutCardShape
 import com.github.mihomo.android.ui.glass.glassTextPrimary
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.glassPalette
@@ -385,6 +390,8 @@ fun LoonShortcutCard(
     /** Disable only the Gaussian filter for same-material visual comparisons. */
     blurEnabled: Boolean = LocalShortcutBlurEnabled.current,
     onPickupChanged: (Boolean) -> Unit = {},
+    /** Edit/reorder owns translation only; this card owns its one shaped shadow. */
+    isReordering: Boolean = false,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
@@ -410,13 +417,22 @@ fun LoonShortcutCard(
             haptic.lightTick()
             onClick()
         }
-    // No fixed ground duplicate: only this plane moves; the slot owns hit testing.
+    val cardShape = resolveShortcutCardShape(RoundedCornerShape(GlassRadius.card),
+        LocalShortcutTunedMaterialEnabled.current, LocalShortcutOpticalFollowupEnabled.current)
+    val glassEnabled = GlassDefaults.enabled
+    val glassPlaneModifier = pressModifier.shortcutNativeSuspension(
+        shape = cardShape, dark = LocalGlassTokens.current.isDark, reordering = isReordering,
+        // Legacy comparison motion already owns a caster. Edit mode does not install it.
+        enabled = glassEnabled && (LocalShortcutDockLensEnabled.current || !experimental),
+        lift = { if (experimental) touchMotion.refraction().lift else 0f }
+    )
+    // One caster moves WITH the glass plane; never leave a filled ground/slot duplicate.
     // B enters direct manipulation only after a held contact; short vertical motion remains scrollable.
     Box(slotModifier) {
-        if (GlassDefaults.enabled) {
+        if (glassEnabled) {
             GlassSurface(
-                modifier = pressModifier,
-                shape = RoundedCornerShape(GlassRadius.card),
+                modifier = glassPlaneModifier,
+                shape = cardShape,
                 lens = lens,
                 blurEnabled = blurEnabled,
                 shortcutContactFrost = true,

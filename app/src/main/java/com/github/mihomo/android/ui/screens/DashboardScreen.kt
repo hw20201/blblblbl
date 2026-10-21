@@ -422,10 +422,13 @@ fun DashboardScreen(
                                     }
                                     .zIndex(if (isBeingDragged) 100f else if (pickedUpShortcutId == item.id) 50f else 1f)
                                     .graphicsLayer {
-                                        val scale = if (isBeingDragged) 1.06f else 1f
+                                        // The wrapper moves/scales only. Its default rectangle
+                                        // must NEVER cast a shadow behind the rounded glass card.
+                                        val scale = if (isBeingDragged) 1.025f else 1f
                                         scaleX = scale
                                         scaleY = scale
-                                        shadowElevation = if (isBeingDragged) 24f else 0f
+                                        shadowElevation = 0f
+                                        clip = false
                                     }
 
                                 if (isEditingShortcuts) {
@@ -500,6 +503,7 @@ fun DashboardScreen(
                                 subtitle = item.subtitle,
                                 icon = item.icon,
                                 isEditing = isEditingShortcuts,
+                                isReordering = isBeingDragged,
                                 lens = glassScene,
                                 onPickupChanged = { picked ->
                                     if (picked) pickedUpShortcutId = item.id

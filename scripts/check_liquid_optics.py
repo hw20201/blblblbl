@@ -78,11 +78,27 @@ class LiquidOpticsTests(unittest.TestCase):
                 output = tuple(c*(1-fres*.18)+c*fres*.18 for c in rgb)
                 for a,b in zip(output,rgb): self.assertAlmostEqual(a,b)
 
-    def test_business_gestures_layout_not_modified(self):
-        changed = subprocess.check_output(['git','diff','--name-only','c91a27b22ee43aeb2dad36c2f41c225b2cf2fcab'], cwd=ROOT, text=True).splitlines()
-        production = [p for p in changed if '/src/main/' in p]
-        self.assertEqual(set(pathlib.Path(p).name for p in production),
-                         {'ShortcutRefractiveOptics.kt','GlassBackground.kt','StructuredMeshWallpaper.kt','CardBackdrop.kt'})
+    def test_shortcut_fix_scope_preserves_core_background_and_replay(self):
+        # This is a current-main regression gate, not the obsolete four-file experiment
+        # allowlist from c91a27b (which already failed on unmodified c4451af).
+        base = 'c4451affba509e18289c7ddcf11095f4a201d03b'
+        prefix = 'app/src/main/java/com/github/mihomo/android/'
+        allowed = {prefix + p for p in [
+            'ui/components/LoonComponents.kt', 'ui/components/ShortcutTouchMotion.kt',
+            'ui/components/ShortcutSuspension.kt', 'ui/screens/DashboardScreen.kt',
+            'ui/glass/GlassSurface.kt', 'ui/glass/ShortcutTunedShape.kt',
+            'ui/glass/ShortcutDockGlass.kt', 'ui/glass/ShortcutMeshOptics.kt',
+            'ui/glass/ShortcutSurfaceLighting.kt']}
+        changed = set(subprocess.check_output(['git','diff','--name-only',base,'--','app/src/main'], cwd=ROOT, text=True).splitlines())
+        changed.update(subprocess.check_output(['git','ls-files','--others','--exclude-standard','app/src/main'], cwd=ROOT, text=True).splitlines())
+        self.assertFalse(changed - allowed, 'Unexpected production modifications: ' + repr(changed - allowed))
+        for relative in ['ui/glass/CardBackdrop.kt', 'ui/glass/ShortcutRefractiveOptics.kt',
+                         'ui/glass/GlassBackground.kt', 'ui/glass/StructuredMeshWallpaper.kt',
+                         'ui/glass/NavigationLens.kt', 'ui/glass/NavigationLensBar.kt',
+                         'service/MihomoVpnService.kt']:
+            path = prefix + relative
+            before = subprocess.check_output(['git','show',base+':'+path], cwd=ROOT)
+            self.assertEqual(before, (ROOT/path).read_bytes(), path)
         replay = (GLASS/'CardBackdrop.kt').read_text()
         self.assertIn('setPolyToPoly(scene, 0, local, 0, 4)', replay)
         self.assertIn('SHORTCUT_BACKDROP_OVERSCAN_DP', replay)

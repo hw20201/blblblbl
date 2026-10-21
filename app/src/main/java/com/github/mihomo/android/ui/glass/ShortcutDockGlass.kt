@@ -12,7 +12,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.*
-import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
@@ -48,35 +47,6 @@ internal val SHORTCUT_DOCK_LENS_SHADER = NAVIGATION_LENS_SHADER
 private class ShortcutDockEffectCache {
     var key: List<Float> = emptyList()
     var effect: androidx.compose.ui.graphics.RenderEffect? = null
-}
-
-/** A soft outline-only penumbra at rest: no filled duplicate card or native elevated tilt caster. */
-internal fun Modifier.shortcutSuspensionShadow(shape: Shape, dark: Boolean): Modifier = drawWithCache {
-    val outline = shape.createOutline(size, layoutDirection, this)
-    val path = when (outline) {
-        is Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
-        is Outline.Generic -> outline.path
-        is Outline.Rectangle -> Path().apply { addRect(outline.rect) }
-    }
-    // Cached fine-step Gaussian falloff (24 sub-dp strokes), not four hard contour bands.
-    // No per-frame blur pass/bitmap and no elevated tilted native caster.
-    val penumbra = (24 downTo 1).map { step ->
-        val radiusDp = step * .25f
-        val nextDp = radiusDp + .25f
-        val a = kotlin.math.exp(-radiusDp * radiusDp / (2f * 2.2f * 2.2f))
-        val b = kotlin.math.exp(-nextDp * nextDp / (2f * 2.2f * 2.2f))
-        (radiusDp * 2f).dp.toPx() to ((a - b) * if (dark) .18f else .12f)
-    }
-    onDrawBehind {
-        // Exclude the glass interior: a transparent card must not reveal an opaque shadow slab.
-        clipPath(path, ClipOp.Difference) {
-            translate(0f, 1.25.dp.toPx()) {
-                penumbra.forEach { (width, alpha) ->
-                    drawOutline(outline, Color.Black.copy(alpha = alpha), style = Stroke(width))
-                }
-            }
-        }
-    }
 }
 
 /** Shortcut body using the same scene-dependent refraction/dispersion as the bottom thumb.
@@ -154,16 +124,24 @@ internal fun ShortcutDockGlassSurface(
                 .85f to Color.Transparent,
                 1f to Color.White.copy(alpha = if (tokens.isDark) .03f else .08f)
             )
-            val edge = Brush.verticalGradient(
-                0f to Color.White.copy(alpha = (if (tokens.isDark) .28f else .35f) * level.rimAlpha),
-                .45f to Color.White.copy(alpha = .025f),
-                1f to Color(0xFF91B8EF).copy(alpha = if (tokens.isDark) .16f else .10f)
-            )
+            val edgeStroke = Stroke(1.2.dp.toPx())
+            val center = Offset(size.width * .5f, size.height * .5f)
+            val extent = maxOf(size.width, size.height) * .55f
             onDrawBehind {
                 if (!replay) drawRect(fallback)
                 drawRect(Color.White.copy(alpha = if (replay) level.shellAlpha else .10f))
                 drawRect(sheen)
-                drawOutline(outline, edge, style = Stroke(.9.dp.toPx()))
+                // Live angles invalidate drawing only, not the cached outline or RenderEffect.
+                val pose = refraction()
+                val direction = shortcutSurfaceLightDirection(pose.pitchDegrees, pose.rollDegrees)
+                val lighting = Brush.linearGradient(
+                    0f to Color.White.copy(alpha = (if (tokens.isDark) .32f else .38f) * level.rimAlpha),
+                    .40f to Color.Transparent,
+                    .65f to Color.Transparent,
+                    1f to Color(0xFF14253E).copy(alpha = (if (tokens.isDark) .12f else .08f) * level.rimAlpha),
+                    start = center + direction * extent, end = center - direction * extent
+                )
+                drawOutline(outline, lighting, style = edgeStroke)
             }
         })
         Box(Modifier.matchParentSize(), content = content)
