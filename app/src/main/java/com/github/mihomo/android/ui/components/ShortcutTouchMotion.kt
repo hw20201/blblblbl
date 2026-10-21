@@ -200,12 +200,12 @@ internal fun rememberShortcutTouchMotion(
     val directlyManipulated = input.dragging || (jelly && input.pressed)
     val dragSpec = if (directlyManipulated || !animate) snap<Float>()
         else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
-    val travelActive = animate && directlyManipulated
+    val travelActive = animate && input.dragging
     val dragX = animateFloatAsState(if (travelActive) input.dragX else 0f, dragSpec, label = "shortcut_drag_x")
     val dragY = animateFloatAsState(if (travelActive) input.dragY else 0f, dragSpec, label = "shortcut_drag_y")
     // Read input live inside long-lived pointerInput, not a captured composition Boolean.
-    fun travelX(): Float = if (!animate) 0f else if (input.dragging || (jelly && input.pressed)) input.dragX else dragX.value
-    fun travelY(): Float = if (!animate) 0f else if (input.dragging || (jelly && input.pressed)) input.dragY else dragY.value
+    fun travelX(): Float = if (!animate) 0f else if (input.dragging) input.dragX else dragX.value
+    fun travelY(): Float = if (!animate) 0f else if (input.dragging) input.dragY else dragY.value
     val gestureModifier = Modifier.onGloballyPositioned { input.slotCoordinates = it }
         .pointerInput(input, enabled, jelly, animate) {
         if (!enabled) return@pointerInput
@@ -346,6 +346,7 @@ internal fun rememberShortcutTouchMotion(
             if (animate || contactFollow) input.x else 0f, if (animate || contactFollow) input.y else 0f,
             frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
             contact = if (contactFollow) contactValue() else 0f,
-            contactFollow = contactFollow)
+            contactFollow = contactFollow,
+            depression = if (variant == ShortcutTouchVariant.FingerTilt) visibleLift() else 0f)
     }
 }

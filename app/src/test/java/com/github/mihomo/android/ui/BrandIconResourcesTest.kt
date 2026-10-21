@@ -88,9 +88,9 @@ class BrandIconResourcesTest {
         )
         assertEquals(R.drawable.ic_zz_notification_nexus_v107, notification.smallIcon.resId)
         assertEquals(service.packageName, notification.smallIcon.resPackage)
-        assertEquals("com.github.mihomo.android", service.packageName)
+        assertEquals("com.github.mihomo.android.draftglass", service.packageName)
         assertEquals(R.mipmap.ic_launcher, service.applicationInfo.icon)
-        assertEquals("Nexus", notification.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals(service.getString(R.string.app_name), notification.extras.getString(Notification.EXTRA_TITLE))
         assertNotNull(notification.getLargeIcon())
         assertNotNull(notification.extras.get(Notification.EXTRA_LARGE_ICON))
         val cachedBitmap = ReflectionHelpers.callInstanceMethod<android.graphics.Bitmap>(

@@ -2,6 +2,7 @@ package com.github.mihomo.android.ui.glass
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -49,12 +50,19 @@ fun rememberNavigationLens(): NavigationLensState {
 }
 
 /** Record only the scene sibling below the dock: never include the dock in its own input. */
-fun Modifier.recordNavigationScene(state: NavigationLensState): Modifier {
+fun Modifier.recordNavigationScene(state: NavigationLensState, underlay: NavigationLensState? = null): Modifier {
     if (Build.VERSION.SDK_INT < 31) return this
     return onGloballyPositioned { state.origin = it.positionInRoot() }
         .drawWithContent {
             if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) {
-                state.scene.record { this@drawWithContent.drawContent() }
+                state.scene.record {
+                    if (underlay != null) {
+                        translate(underlay.origin.x - state.origin.x, underlay.origin.y - state.origin.y) {
+                            drawLayer(underlay.scene)
+                        }
+                    }
+                    this@drawWithContent.drawContent()
+                }
                 drawLayer(state.scene)
             } else {
                 drawContent()
@@ -191,6 +199,7 @@ fun NavigationGlassSurface(
     strength: LensStrength = LensStrength.STANDARD,
     expansionProgress: () -> Float = { 0f },
     refractionAmount: () -> Float = { 1f },
+    frosted: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = glassPalette
@@ -199,12 +208,15 @@ fun NavigationGlassSurface(
     val shader = remember {
         if (Build.VERSION.SDK_INT >= 33) RuntimeShader(NAVIGATION_LENS_SHADER) else null
     }
-    // Shader-only refraction on API 33+. API 31/32 replay a clear translucent scene;
-    // no Gaussian blur or global scene scaling is substituted for unsupported AGSL.
+    // Navigation stays clear; only explicitly frosted title/utility capsules diffuse the scene.
+    // API 31/32 retain blur for those capsules without substituting a scaled fake lens.
     // A faint palette tint over the sampled backdrop; the material is carried by the rim, not by an
     // opaque fill, so this stays low enough that the scene still shows through.
     val responsiveEdge = lens != null && Build.VERSION.SDK_INT >= 33
-    val fill = Color.White.copy(alpha = if (responsiveEdge) 0.08f
+    val fill = if (frosted) {
+        // Pinned titles must stay readable when a node label passes immediately beneath them.
+        if (palette.isDark) palette.base.copy(alpha = .62f) else Color.White.copy(alpha = .52f)
+    } else Color.White.copy(alpha = if (responsiveEdge) 0.08f
         else if (palette.isDark) 0.10f else 0.18f)
 
     Box(
@@ -234,9 +246,14 @@ fun NavigationGlassSurface(
                             shader.setFloatUniform("cornerRadius", cornerRadius.value)
                             // RenderEffect snapshots shader uniforms: create it AFTER setting them.
                             // Only this small lens layer invalidates, not the dock's icons or labels.
-                            renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "scene")
-                                .asComposeRenderEffect()
+                            val lensEffect = RenderEffect.createRuntimeShaderEffect(shader, "scene")
+                            renderEffect = (if (frosted) RenderEffect.createChainEffect(lensEffect,
+                                RenderEffect.createBlurEffect(12f * density, 12f * density, Shader.TileMode.CLAMP))
+                                else lensEffect).asComposeRenderEffect()
                         }
+                    } else if (frosted && Build.VERSION.SDK_INT >= 31) {
+                        renderEffect = RenderEffect.createBlurEffect(12f * density, 12f * density,
+                            Shader.TileMode.CLAMP).asComposeRenderEffect()
                     }
                 }
                 .drawWithContent {

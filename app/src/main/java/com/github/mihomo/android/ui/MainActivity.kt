@@ -866,6 +866,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     2 -> SettingsScreen(
+                        glassScene = cardScene,
                         scrollState = settingsScrollState,
                         tunStack = tunStack,
                         bootOnStartup = bootOnStartup,

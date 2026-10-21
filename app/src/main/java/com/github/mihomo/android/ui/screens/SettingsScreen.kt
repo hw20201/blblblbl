@@ -22,6 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import com.github.mihomo.android.ui.glass.NavigationLensState
+import com.github.mihomo.android.ui.glass.rememberNavigationLens
+import com.github.mihomo.android.ui.glass.recordNavigationScene
+import com.github.mihomo.android.ui.glass.PageTitleGlass
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,7 +72,8 @@ fun SettingsScreen(
     onNavigateToConfigurationCenter: () -> Unit,
     onNavigateToLogs: () -> Unit,
     onNavigateToAppearance: () -> Unit = {},
-    onNavigateToDns: () -> Unit = {}
+    onNavigateToDns: () -> Unit = {},
+    glassScene: NavigationLensState? = null
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -91,33 +98,16 @@ fun SettingsScreen(
         coreVersion = withContext(Dispatchers.IO) { ClashCore.getCoreVersion() }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
-            .padding(top = 10.dp)
-    ) {
-        // iOS Large Title Header
-        Text(
-            text = AppStrings.get("settings_title", lang),
-            color = LoonTextPrimary,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.6).sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-
-        // Scrollable content area
+    val titleScene = rememberNavigationLens()
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
+    Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+            modifier = Modifier.fillMaxSize()
+                .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
                 .bounceOverscroll()
                 .verticalScroll(scrollState)
-                .padding(bottom = 120.dp)
+                .padding(top = headerInset + 12.dp, bottom = 120.dp)
         ) {
             // Section 1: 网络与核心 (Network & Core)
             CupertinoGroupedSection(
@@ -322,6 +312,13 @@ fun SettingsScreen(
                     showChevron = true,
                     onClick = { showResetDialog = true }
                 )
+            }
+        }
+        Box(Modifier.onSizeChanged { headerHeightPx = it.height }.statusBarsPadding().padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 12.dp)
+            ) {
+            PageTitleGlass(titleScene) {
+                Text(AppStrings.get("settings_title", lang), color = LoonTextPrimary,
+                    fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
             }
         }
     }

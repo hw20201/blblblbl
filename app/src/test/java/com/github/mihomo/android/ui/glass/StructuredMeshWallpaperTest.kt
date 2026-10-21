@@ -4,17 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StructuredMeshWallpaperTest {
-    @Test fun cellsKeepColourAcrossTheWholePageRatherThanClumpingIntoOneCorner() {
+    @Test fun defaultLightUsesThreeBroadCalmFieldsInsteadOfFifteenBusyCells() {
         val cells = structuredMeshCells(GlassPalettes.CREAM, IceLavenderMesh)
-        assertEquals(15, cells.size)
-        assertEquals(5, cells.map { it.y }.distinct().size)
-        cells.chunked(3).forEach { row ->
-            assertTrue(row.first().x < .2f)
-            assertTrue(row.last().x > .8f)
-        }
-        assertTrue(cells.first().y < .15f && cells.last().y > .85f)
-        assertTrue(cells.map { it.color }.distinct().size >= 6)
-        assertTrue(cells.all { it.radius in .30f.. .42f && it.color.alpha <= .91f })
+        assertEquals(3, cells.size)
+        assertTrue(cells.first().x < .2f && cells[1].x > .8f)
+        assertTrue(cells.first().y < .25f && cells.last().y > .9f)
+        assertEquals(3, cells.map { it.color }.distinct().size)
+        assertTrue(cells.all { it.radius >= .7f && it.color.alpha < .6f })
     }
 
     @Test fun customThemeKeepsItsActualColoursInsteadOfUsingTheDefaultBlueField() {

@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.kr328.clash.core.model.Proxy
@@ -42,6 +44,38 @@ class ProxiesGlassRenderingTest {
     @After fun resetGlass() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+    }
+
+    @Test fun draftPolicyTitleStaysPinnedWhileNodesScrollBehindIt() {
+        GlassDefaults.enabled = true
+        val proxies = (0..40).map { Proxy("Node $it", delay = 40 + it) }
+        compose.setContent {
+            MihomoTheme(ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                    ProvideGlassTheme {
+                        val backdrop = rememberNavigationLens()
+                        Box(Modifier.fillMaxSize()) {
+                            Box(Modifier.fillMaxSize().recordNavigationScene(backdrop)) {
+                                NexusGlassBackground {}
+                            }
+                            val group = ProxyGroup("select", proxies, "Node 0")
+                            ProxiesScreen(groups = listOf("Test"), groupMap = mapOf("Test" to group),
+                                currentGroup = group, selectedGroupName = "Test", currentViewMode = "TABS",
+                                onViewModeChanged = {}, onShowGroupIconsChanged = {}, onSelectGroup = {},
+                                onSelectProxy = { _, _ -> }, onHealthCheck = {}, glassScene = backdrop)
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val before = compose.onNodeWithText("策略").fetchSemanticsNode().boundsInRoot
+        saveScreenshot("draft-policy-before-scroll")
+        compose.onNodeWithTag("policy-node-list").performScrollToIndex(15)
+        compose.waitForIdle()
+        assertEquals(before, compose.onNodeWithText("策略").fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithText("Node 15").assertIsDisplayed()
+        saveScreenshot("draft-policy-after-scroll")
     }
 
     @Test fun strategyCardsRenderAndRemainSelectableInLightDarkAndEveryColumnCount() {

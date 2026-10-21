@@ -28,6 +28,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import com.github.mihomo.android.ui.glass.PageTitleGlass
+import com.github.mihomo.android.ui.glass.rememberNavigationLens
+import com.github.mihomo.android.ui.glass.recordNavigationScene
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,71 +143,19 @@ fun ProxiesScreen(
     }
 
     val lang = LocalAppLanguage.current
+    val titleScene = rememberNavigationLens()
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(top = 16.dp)
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
         ) {
-            // Top Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = AppStrings.get("proxies_title", lang),
-                    color = LoonTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Health check button (Pure Lightning Bolt with Animation, no text, no circle background)
-                IconButton(
-                    onClick = {
-                        if (selectedGroupName.isNotBlank()) {
-                            onHealthCheck(selectedGroupName)
-                        } else if (visibleGroups.isNotEmpty()) {
-                            onHealthCheck(visibleGroups.first())
-                        }
-                    },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    AnimatedSpeedTestIcon(
-                        isTesting = isAnyTesting,
-                        tint = LoonTextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // 3-Dots Settings Dialog Trigger (•••)
-                IconButton(
-                    onClick = { showOptionsMenu = true },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "更多设置",
-                        tint = LoonTextPrimary
-                    )
-                }
-            }
-        }
-
         // Settings BottomSheet (Smooth, modern, non-cluttered bottom sheet)
         if (showOptionsMenu) {
             ModalBottomSheet(
@@ -353,66 +306,12 @@ fun ProxiesScreen(
         // MODE 1: TABS VIEW (High-Performance, Butter Smooth)
         // =====================================================================
         if (!isListMode) {
-            // Group Selector Tabs (Scrollable)
-            if (visibleGroups.isNotEmpty()) {
-                LazyRow(
-                    state = groupRowState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(visibleGroups.size, key = { visibleGroups[it] }) { index ->
-                        val groupName = visibleGroups[index]
-                        val isSelected = groupName == selectedGroupName
-                        val groupIconUrl = groupIcons[groupName]
-
-                        ProxyGlassCard(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = 0.5.dp,
-                                    color = if (isSelected) IosBlue else LoonCardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .iosPressable { onSelectGroup(groupName) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) IosBlue else LoonCard,
-                            accent = if (isSelected) IosBlue else null
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (showGroupIcons && !groupIconUrl.isNullOrBlank()) {
-                                    RemoteIcon(
-                                        url = groupIconUrl,
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .padding(end = 6.dp),
-                                        contentDescription = groupName
-                                    )
-                                }
-                                Text(
-                                    text = groupName,
-                                    color = if (isSelected && !GlassDefaults.enabled) Color.White
-                                        else if (isSelected) IosBlue else LoonTextPrimary,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
             val proxies = currentGroup?.proxies ?: emptyList()
 
             if (proxies.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                        .fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -431,15 +330,14 @@ fun ProxiesScreen(
 
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                        .fillMaxSize()
                 ) {
                     LazyColumn(
                         state = activeTabState,
-                        modifier = Modifier
+                        modifier = Modifier.testTag("policy-node-list")
                             .fillMaxSize()
                             .bounceOverscroll(),
-                        contentPadding = PaddingValues(bottom = 110.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(
@@ -484,8 +382,7 @@ fun ProxiesScreen(
             if (groups.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                        .fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -497,15 +394,14 @@ fun ProxiesScreen(
             } else {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                        .fillMaxSize()
                 ) {
                     LazyColumn(
                         state = listModeState,
                         modifier = Modifier
                             .fillMaxSize()
                             .bounceOverscroll(),
-                        contentPadding = PaddingValues(bottom = 110.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         visibleGroups.forEach { groupName ->
@@ -599,23 +495,117 @@ fun ProxiesScreen(
         }
     }
 
-        // Top smooth gradient fade (positioned at the very top of the screen, above content)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .height(18.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            LoonBg,
-                            LoonBg.copy(alpha = 0.5f),
-                            Color.Transparent
-                        )
+        // No screen-width scrim: the small title capsule samples the live scrolling list.
+        Column(Modifier.onSizeChanged { headerHeightPx = it.height }.fillMaxWidth().statusBarsPadding()
+            .padding(horizontal = 20.dp).padding(top = 12.dp)
+            ) {
+            // Top Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                PageTitleGlass(titleScene) { Text(
+                    text = AppStrings.get("proxies_title", lang),
+                    color = LoonTextPrimary,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold
+                ) }
+            }
+
+            PageTitleGlass(titleScene, contentPadding = PaddingValues(horizontal = 2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Health check button (Pure Lightning Bolt with Animation, no text, no circle background)
+                IconButton(
+                    onClick = {
+                        if (selectedGroupName.isNotBlank()) {
+                            onHealthCheck(selectedGroupName)
+                        } else if (visibleGroups.isNotEmpty()) {
+                            onHealthCheck(visibleGroups.first())
+                        }
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    AnimatedSpeedTestIcon(
+                        isTesting = isAnyTesting,
+                        tint = LoonTextPrimary,
+                        modifier = Modifier.size(20.dp)
                     )
-                )
-        )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // 3-Dots Settings Dialog Trigger (•••)
+                IconButton(
+                    onClick = { showOptionsMenu = true },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "更多设置",
+                        tint = LoonTextPrimary
+                    )
+                }
+            }
+            }
+        }
+
+            // Group Selector Tabs (Scrollable)
+            if (visibleGroups.isNotEmpty()) {
+                LazyRow(
+                    state = groupRowState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(visibleGroups.size, key = { visibleGroups[it] }) { index ->
+                        val groupName = visibleGroups[index]
+                        val isSelected = groupName == selectedGroupName
+                        val groupIconUrl = groupIcons[groupName]
+
+                        PageTitleGlass(
+                            lens = titleScene,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(
+                                    width = 0.5.dp,
+                                    color = if (isSelected) IosBlue else LoonCardBorder,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .iosPressable { onSelectGroup(groupName) }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (showGroupIcons && !groupIconUrl.isNullOrBlank()) {
+                                    RemoteIcon(
+                                        url = groupIconUrl,
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .padding(end = 6.dp),
+                                        contentDescription = groupName
+                                    )
+                                }
+                                Text(
+                                    text = groupName,
+                                    color = if (isSelected && !GlassDefaults.enabled) Color.White
+                                        else if (isSelected) IosBlue else LoonTextPrimary,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
     }
 }
 

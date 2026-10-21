@@ -24,13 +24,22 @@ internal val LocalShortcutDockLensEnabled = staticCompositionLocalOf { true }
 internal const val SHORTCUT_DOCK_MARGIN_DP = 8f
 
 /** Exactly the dock's optical kernel, with an overscan origin and finite larger input only.
- * No second lens approximation, contact dent, Gaussian pass, magnification or duplicate projection.
+ * No Gaussian pass or stretched static image. Mode B adds a local contact normal to the live lens.
  */
 internal val SHORTCUT_DOCK_LENS_SHADER = NAVIGATION_LENS_SHADER
     .replace("uniform float2 viewport;", "uniform float2 viewport;\nuniform float2 inputOrigin;\nuniform float2 inputViewport;")
-    .replace("uniform float aberration;", "uniform float aberration;\nuniform float chromaticSamples;")
+    .replace("uniform float aberration;", "uniform float aberration;\nuniform float chromaticSamples;\nuniform float depression;\nuniform float2 contactPoint;")
     .replace("float2 q = p - viewport * 0.5;", "float2 q = (p - inputOrigin) - viewport * 0.5;")
     .replace("float2 hi = viewport - float2(0.5);", "float2 hi = inputViewport - float2(0.5);")
+    .replace("float2 base = clamp(p - normal * bend, lo, hi);", """
+        // A shallow Gaussian indentation changes the live scene normal locally at the finger.
+        // The slab's perspective tilt puts the pressed edge away and its opposite edge forward.
+        float2 localContact = (p - inputOrigin) / viewport - contactPoint;
+        float distance2 = dot(localContact, localContact);
+        float2 contactNormal = localContact * exp(-distance2 * 15.0);
+        float2 dent = contactNormal * depression * 16.0 * density;
+        float2 base = clamp(p - normal * bend + dent, lo, hi);
+    """)
     .replace(
         """        half4 cr = scene.eval(clamp(base + normal * ca, lo, hi));
         half4 cb = scene.eval(clamp(base - normal * ca, lo, hi));
@@ -61,16 +70,16 @@ internal fun Modifier.shortcutSuspensionShadow(shape: Shape, dark: Boolean): Mod
     // Cached fine-step Gaussian falloff (24 sub-dp strokes), not four hard contour bands.
     // No per-frame blur pass/bitmap and no elevated tilted native caster.
     val penumbra = (24 downTo 1).map { step ->
-        val radiusDp = step * .25f
-        val nextDp = radiusDp + .25f
-        val a = kotlin.math.exp(-radiusDp * radiusDp / (2f * 2.2f * 2.2f))
-        val b = kotlin.math.exp(-nextDp * nextDp / (2f * 2.2f * 2.2f))
-        (radiusDp * 2f).dp.toPx() to ((a - b) * if (dark) .18f else .12f)
+        val radiusDp = step * .40f
+        val nextDp = radiusDp + .40f
+        val a = kotlin.math.exp(-radiusDp * radiusDp / (2f * 3.5f * 3.5f))
+        val b = kotlin.math.exp(-nextDp * nextDp / (2f * 3.5f * 3.5f))
+        (radiusDp * 2f).dp.toPx() to ((a - b) * if (dark) .22f else .18f)
     }
     onDrawBehind {
         // Exclude the glass interior: a transparent card must not reveal an opaque shadow slab.
         clipPath(path, ClipOp.Difference) {
-            translate(0f, 1.25.dp.toPx()) {
+            translate(0f, 3.dp.toPx()) {
                 penumbra.forEach { (width, alpha) ->
                     drawOutline(outline, Color.Black.copy(alpha = alpha), style = Stroke(width))
                 }
@@ -113,7 +122,7 @@ internal fun ShortcutDockGlassSurface(
             Box(Modifier.matchParentSize().then(overscan)
                 .onGloballyPositioned { origin = it.positionInRoot(); coordinates = it }
                 .graphicsLayer {
-                    refraction() // observe live pose even when the pointer stops moving
+                    val contact = refraction() // observe pose without a separate animation clock
                     if (Build.VERSION.SDK_INT >= 33 && shader != null) {
                         val strength = level.strength
                         val key = listOf(size.width, size.height, density, level.ordinal.toFloat())
@@ -132,6 +141,8 @@ internal fun ShortcutDockGlassSurface(
                             effectCache.effect = RenderEffect.createRuntimeShaderEffect(shader, "scene").asComposeRenderEffect()
                             effectCache.key = key
                         }
+                        shader.setFloatUniform("depression", contact.depression.coerceIn(0f, 1f))
+                        shader.setFloatUniform("contactPoint", (contact.x + 1f) * .5f, (contact.y + 1f) * .5f)
                         renderEffect = effectCache.effect
                     }
                 }

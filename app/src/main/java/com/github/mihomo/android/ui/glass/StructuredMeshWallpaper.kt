@@ -10,6 +10,12 @@ internal val LocalStructuredMeshEnabled = staticCompositionLocalOf { true }
 internal fun structuredMeshCells(palette: GlassPaletteSpec, baseBlobs: List<GlassBlob>): List<GlassBlob> {
     if (baseBlobs.isEmpty()) return emptyList()
     val custom = palette.key.startsWith("custom:")
+    if (!custom && !palette.isDark) return listOf(
+        GlassBlob(Color(0x8589B5E3), .08f, .20f, .78f),
+        GlassBlob(Color(0x709B9DD9), .94f, .60f, .84f),
+        GlassBlob(Color(0x4887C9D2), .12f, .94f, .72f)
+    )
+
     // Cool-only default field: don't import orange/green preset accents into glass.
     // Custom palettes remain user-owned; dark cells use restrained blue/violet/cyan.
     val darkColours = listOf(0xFF203652, 0xFF303052, 0xFF19414A,

@@ -47,6 +47,16 @@ class LensOpticsTest {
         assertNotNull(effect)
     }
 
+    @Test
+    fun draftShortcutContactKernelCompilesAndAcceptsLocalPressUniforms() {
+        val shader = RuntimeShader(SHORTCUT_DOCK_LENS_SHADER)
+        shader.setFloatUniform("depression", .8f)
+        shader.setFloatUniform("contactPoint", .15f, .75f)
+        assertTrue(SHORTCUT_DOCK_LENS_SHADER.contains("scene.eval"))
+        assertTrue(SHORTCUT_DOCK_LENS_SHADER.contains("contactNormal * depression"))
+        assertNotNull(RenderEffect.createRuntimeShaderEffect(shader, "scene"))
+    }
+
     private fun assertStrength(
         strength: LensStrength,
         displacement: Float,

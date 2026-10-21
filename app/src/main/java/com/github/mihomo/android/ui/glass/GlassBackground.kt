@@ -99,7 +99,7 @@ fun NexusGlassBackground(
                         val radius = (if (structured) size.minDimension else diag) * blob.radius
                         // Custom monochromatic fields need a little more travel now that
                         // the bevel no longer invents relief contrast or a white Fresnel rim.
-                        val travel = if (custom) 1.5f else 1f
+                        val travel = if (custom) 1.5f else .28f
                         val x = if (structured) blob.x + (pose.x - .5f) * .16f * travel else pose.x
                         val y = if (structured) blob.y + (pose.y - .5f) * .08f * travel else pose.y
                         translate(size.width * x, size.height * y) {

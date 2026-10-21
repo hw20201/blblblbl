@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -43,6 +44,9 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.mihomo.android.data.DashboardData
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
+import com.github.mihomo.android.ui.glass.PageTitleGlass
+import com.github.mihomo.android.ui.glass.rememberNavigationLens
+import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.components.*
@@ -191,6 +195,9 @@ fun DashboardScreen(
         OutboundIpSheet(isVpnRunning = isRunning, onDismiss = { showOutboundIp = false })
     }
 
+    val titleScene = rememberNavigationLens()
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
     val isDarkTheme = LocalLoonColors.current.isDark
     // With glass enabled the shared backdrop already provides the colour field, so the screen
     // itself must stay transparent or it would paint over it.
@@ -224,67 +231,13 @@ fun DashboardScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
                     .background(topBgBrush)
-                    .statusBarsPadding()
                     .bounceOverscroll()
                     .verticalScroll(state = scrollState, enabled = draggedId == null && pickedUpShortcutId == null)
                     .padding(horizontal = 20.dp)
-                    .padding(top = 16.dp, bottom = 110.dp)
+                    .padding(top = headerInset + 12.dp, bottom = 110.dp)
             ) {
-                // Header: NEXUS (LOON style) & Mode Selector + iOS Switch
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 18.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "NEXUS",
-                            color = LoonOrange,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.5.sp
-                        )
-
-                        // Top Right iOS Cupertino Switch (aligned directly with NEXUS title)
-                        CupertinoSwitch(
-                            checked = isRunning || isStarting,
-                            onCheckedChange = { onToggleVpn() }
-                        )
-                    }
-
-                    Box(modifier = Modifier.padding(top = 2.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { showModeBottomSheet = true }
-                                .padding(vertical = 3.dp, horizontal = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = when (currentMode) {
-                                    TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
-                                    TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
-                                    TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
-                                },
-                                color = LoonOrangeLight,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                tint = LoonOrangeLight,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-
                 // Dual Traffic Cards Row (Upload & Download)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -574,6 +527,66 @@ fun DashboardScreen(
                     }
                 }
             }
+
+                // Header: NEXUS (LOON style) & Mode Selector + iOS Switch
+                Column(
+                    modifier = Modifier
+                        .onSizeChanged { headerHeightPx = it.height }
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 12.dp, bottom = 12.dp)
+
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PageTitleGlass(titleScene) { Text(
+                            text = "NEXUS",
+                            color = LoonOrange,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.5.sp
+                        ) }
+
+                        // Top Right iOS Cupertino Switch (aligned directly with NEXUS title)
+                        CupertinoSwitch(
+                            checked = isRunning || isStarting,
+                            onCheckedChange = { onToggleVpn() }
+                        )
+                    }
+
+                    PageTitleGlass(titleScene, modifier = Modifier.padding(top = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showModeBottomSheet = true }
+                                .padding(vertical = 3.dp, horizontal = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = when (currentMode) {
+                                    TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
+                                    TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
+                                    TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
+                                },
+                                color = LoonOrangeLight,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = LoonOrangeLight,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
 
             // =========================================================================
             // In-Place Quick Node Selector BottomSheet (Full 92% height, smooth expansion)

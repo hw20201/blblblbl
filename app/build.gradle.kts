@@ -102,6 +102,9 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            // Isolated disposable UI draft; never replaces the owner's installed production app.
+            applicationIdSuffix = ".draftglass"
+            versionNameSuffix = "-draft-glass"
         }
     }
 
