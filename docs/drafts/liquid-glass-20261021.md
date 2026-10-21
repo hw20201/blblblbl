@@ -73,3 +73,52 @@ separate application ID, version suffix and diagnostics launcher manifest checke
 Package remains `com.github.mihomo.android.draftglass`, label `Nexus Glass DRAFT`,
 versionCode 37, versionName `1.0.32-with-suspended-draft-glass-candidate2`.
 No merge, release or production package replacement is authorized.
+
+## Candidate 3: blank first/second tab report
+
+The owner supplied a vivo Android 16 screenshot showing a surviving bottom dock
+but no Policy title/controls/content, and reported the Dashboard behaved likewise.
+This is a visible-content failure, not evidence of another process crash.
+
+Source inspection identified an unbounded-recording defect. All three pager pages
+are kept composed. Each local scene draws the full-window background after translating
+by `underlay.origin - page.origin`. That translation deliberately cancels the page's
+offset to sample the correct screen location, but without a clip it also lets an
+off-screen page replay the opaque background across the active viewport. A later
+page can consequently cover the earlier page's foreground. The screenshot is
+consistent with this mechanism; the exact vivo GPU output cannot be reproduced on
+this host.
+
+The correction clips each recorded GraphicsLayer to its local dimensions, clips
+recording commands before drawing the translated underlay, and bounds each pager
+page. The normal record-once/draw-layer path is retained (no double foreground draw).
+Live lens sampling, Mode B, pinned headings, separate draft identity, diagnostic
+launcher and VPN/native libraries are retained. This is a corrected candidate,
+not a claim that the vivo hardware path has been validated.
+
+New tests exercise the actual MainActivity pager in light and dark: Dashboard
+heading and shortcut content, Policy heading and real empty state, Settings heading
+and TUN controls, then return to Dashboard. PixelCopy images must contain sharp
+foreground content above the dock; semantics alone cannot pass the assertion.
+A separate RecordingCanvas contract check requires a bounded 100x100 source even
+when a full-window underlay is recorded. These host checks do not execute a vivo GPU.
+
+Candidate 3 verification completed:
+
+- `assembleDebug`: successful.
+- Targeted suite: 12 tests passed, zero failures/errors/skips. Includes both
+  full-pager theme tests, source-bounds contract, existing launcher/diagnostics,
+  populated Policy glass rendering and navigation lens rendering checks.
+- Inspected final `dark-dashboard.png`, `dark-policy.png` and `light-settings.png`
+  under `app/build/reports/draft-pages/`: Dashboard title/cards, Policy heading/
+  empty state/actions, and Settings heading/control rows are visibly present.
+  No real subscription was added to the host test account.
+- APK ZIP integrity, v2 signature and 16-KB ZIP alignment passed.
+- APK: `Nexus-Glass-DRAFT-arm64-candidate3-20261021.apk`, 53,253,864 bytes;
+  SHA-256 `ea7c2e9c7448a8226b50828fefb4dc9bbfec15c15ec23b5e41aef5b1bf7258bf`.
+- Package `com.github.mihomo.android.draftglass`, label `Nexus Glass DRAFT`,
+  versionCode 37, versionName `1.0.32-with-suspended-draft-glass-candidate3`;
+  arm64 only, debug signed. Diagnostic launcher retained.
+
+These are host API35 checks and inspected captures, not a confirmed vivo Android16
+fix, real-device shader/performance validation, or VPN connection test.

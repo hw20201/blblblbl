@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -741,203 +742,208 @@ class MainActivity : ComponentActivity() {
                 beyondViewportPageCount = 2,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                when (page) {
-                    0 -> {
-                        val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
-                            ?: (parsedProfile.groups[mainProxyGroupName]?.proxies ?: emptyList())
-                        val mainGroupProxies = rawProxies.map { p ->
-                            val scopedKey = "$mainProxyGroupName:${p.name}"
-                            val d = delayCache[p.name] ?: delayCache[scopedKey]
-                            if (d != null) p.copy(delay = d) else p
-                        }
-                        val currentMainActiveNode = (liveGroupMap[mainProxyGroupName]?.now
-                            ?: parsedProfile.groups[mainProxyGroupName]?.now
-                            ?: settingsManager.getSelectedNode(mainProxyGroupName)
-                            ?: activeNodeName).ifBlank { parsedProfile.activeNode }
-                        DashboardScreen(
-                            scrollState = dashboardScrollState,
-                            vpnState = vpnState,
-                            requestMonitoringEnabled = requestMonitoringEnabled,
-                            currentMode = tunnelMode,
-                            activeProfileName = DashboardData.activeProfile(profiles, selectedProfileId)?.name ?: "未选择配置",
-                            mainGroupName = mainProxyGroupName,
-                            mainGroupProxies = mainGroupProxies,
-                            activeNodeName = currentMainActiveNode,
-                            totalNodes = parsedProfile.totalNodes,
-                            totalRules = parsedProfile.totalRules,
-                            visibleShortcuts = visibleShortcuts,
-                            shortcutOrder = shortcutOrder,
-                            onToggleVpn = { handleToggleVpn() },
-                            onModeSelected = { newMode ->
-                                tunnelMode = newMode
-                                settingsManager.tunnelMode = newMode.value
-                            },
-                            onSelectProxy = { group, proxy -> handleSelectProxy(mainProxyGroupName, proxy) },
-                            onHealthCheck = { group -> runSpeedTestForGroup(group) },
-                            onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
-                            onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
-                            onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
-                            onNavigateToRules = { currentSubScreen = SubScreen.RULES },
-                            onNavigateToDns = { currentSubScreen = SubScreen.DNS },
-                            onNavigateToRequests = { currentSubScreen = SubScreen.REQUESTS },
-                            onNavigateToNetworkShare = { currentSubScreen = SubScreen.NETWORK_SHARE },
-                            onUpdateVisibleShortcuts = { updated ->
-                                visibleShortcuts = updated
-                                settingsManager.visibleShortcuts = updated
-                            },
-                            onUpdateShortcutOrder = { updated ->
-                                shortcutOrder = updated
-                                settingsManager.shortcutOrder = updated
-                            },
-                            glassScene = cardScene
-                        )
-                    }
-                    1 -> {
-                        val computedGroupMap = remember(parsedProfile.groups, liveGroupMap, delayCache.toMap()) {
-                            parsedProfile.groups.mapValues { (gName, baseGroup) ->
-                                val live = liveGroupMap[gName]
-                                val liveProxyMap = live?.proxies?.associateBy { it.name } ?: emptyMap()
-                                val savedNode = settingsManager.getSelectedNode(gName)
-                                val resolvedNow = if (!savedNode.isNullOrBlank() && baseGroup.proxies.any { it.name == savedNode }) {
-                                    savedNode
-                                } else {
-                                    live?.now?.ifBlank { baseGroup.now } ?: baseGroup.now
-                                }
-                                baseGroup.copy(
-                                    now = resolvedNow,
-                                    proxies = baseGroup.proxies.map { bp ->
-                                        val p = liveProxyMap[bp.name] ?: bp
-                                        val scopedKey = "$gName:${bp.name}"
-                                        val cached = delayCache[bp.name] ?: delayCache[scopedKey]
-                                        if (cached != null) p.copy(delay = cached) else p
-                                    }
-                                )
+                // Keep precomposed neighbours (including glass display lists) within
+                // their own page. Titles still overlay and sample their local scroll scene.
+                Box(Modifier.fillMaxSize().clipToBounds()) {
+                    when (page) {
+                        0 -> {
+                            val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
+                                ?: (parsedProfile.groups[mainProxyGroupName]?.proxies ?: emptyList())
+                            val mainGroupProxies = rawProxies.map { p ->
+                                val scopedKey = "$mainProxyGroupName:${p.name}"
+                                val d = delayCache[p.name] ?: delayCache[scopedKey]
+                                if (d != null) p.copy(delay = d) else p
                             }
+                            val currentMainActiveNode = (liveGroupMap[mainProxyGroupName]?.now
+                                ?: parsedProfile.groups[mainProxyGroupName]?.now
+                                ?: settingsManager.getSelectedNode(mainProxyGroupName)
+                                ?: activeNodeName).ifBlank { parsedProfile.activeNode }
+                            DashboardScreen(
+                                scrollState = dashboardScrollState,
+                                vpnState = vpnState,
+                                requestMonitoringEnabled = requestMonitoringEnabled,
+                                currentMode = tunnelMode,
+                                activeProfileName = DashboardData.activeProfile(profiles, selectedProfileId)?.name ?: "未选择配置",
+                                mainGroupName = mainProxyGroupName,
+                                mainGroupProxies = mainGroupProxies,
+                                activeNodeName = currentMainActiveNode,
+                                totalNodes = parsedProfile.totalNodes,
+                                totalRules = parsedProfile.totalRules,
+                                visibleShortcuts = visibleShortcuts,
+                                shortcutOrder = shortcutOrder,
+                                onToggleVpn = { handleToggleVpn() },
+                                onModeSelected = { newMode ->
+                                    tunnelMode = newMode
+                                    settingsManager.tunnelMode = newMode.value
+                                },
+                                onSelectProxy = { group, proxy -> handleSelectProxy(mainProxyGroupName, proxy) },
+                                onHealthCheck = { group -> runSpeedTestForGroup(group) },
+                                onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
+                                onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
+                                onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
+                                onNavigateToRules = { currentSubScreen = SubScreen.RULES },
+                                onNavigateToDns = { currentSubScreen = SubScreen.DNS },
+                                onNavigateToRequests = { currentSubScreen = SubScreen.REQUESTS },
+                                onNavigateToNetworkShare = { currentSubScreen = SubScreen.NETWORK_SHARE },
+                                onUpdateVisibleShortcuts = { updated ->
+                                    visibleShortcuts = updated
+                                    settingsManager.visibleShortcuts = updated
+                                },
+                                onUpdateShortcutOrder = { updated ->
+                                    shortcutOrder = updated
+                                    settingsManager.shortcutOrder = updated
+                                },
+                                glassScene = cardScene
+                            )
                         }
-                        val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
+                        1 -> {
+                            val computedGroupMap = remember(parsedProfile.groups, liveGroupMap, delayCache.toMap()) {
+                                parsedProfile.groups.mapValues { (gName, baseGroup) ->
+                                    val live = liveGroupMap[gName]
+                                    val liveProxyMap = live?.proxies?.associateBy { it.name } ?: emptyMap()
+                                    val savedNode = settingsManager.getSelectedNode(gName)
+                                    val resolvedNow = if (!savedNode.isNullOrBlank() && baseGroup.proxies.any { it.name == savedNode }) {
+                                        savedNode
+                                    } else {
+                                        live?.now?.ifBlank { baseGroup.now } ?: baseGroup.now
+                                    }
+                                    baseGroup.copy(
+                                        now = resolvedNow,
+                                        proxies = baseGroup.proxies.map { bp ->
+                                            val p = liveProxyMap[bp.name] ?: bp
+                                            val scopedKey = "$gName:${bp.name}"
+                                            val cached = delayCache[bp.name] ?: delayCache[scopedKey]
+                                            if (cached != null) p.copy(delay = cached) else p
+                                        }
+                                    )
+                                }
+                            }
+                            val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
 
-                        ProxiesScreen(
+                            ProxiesScreen(
+                                glassScene = cardScene,
+                                groups = proxyGroups,
+                                groupMap = computedGroupMap,
+                                groupIcons = parsedProfile.groupIcons,
+                                currentGroup = effectiveCurrentGroup,
+                                selectedGroupName = selectedGroupName,
+                                currentViewMode = proxiesViewMode,
+                                showGroupIcons = showGroupIcons,
+                                nodeColumns = nodeColumns,
+                                tabsListState = proxiesTabsListState,
+                                listModeState = proxiesListModeState,
+                                groupRowState = proxiesGroupRowState,
+                                expandedGroups = proxiesExpandedGroups,
+                                perGroupTabStates = proxiesPerGroupTabStates,
+                                onViewModeChanged = { mode ->
+                                    proxiesViewMode = mode
+                                    settingsManager.proxiesViewMode = mode
+                                },
+                                onShowGroupIconsChanged = { show ->
+                                    showGroupIcons = show
+                                    settingsManager.showGroupIcons = show
+                                },
+                                onNodeColumnsChanged = { cols ->
+                                    nodeColumns = cols
+                                    settingsManager.nodeColumns = cols
+                                },
+                                onSelectGroup = { gName ->
+                                    selectedGroupName = gName
+                                    val savedNode = settingsManager.getSelectedNode(gName)
+                                    if (vpnState.status == VpnState.Status.RUNNING) {
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val gData = ClashCore.queryGroup(gName)
+                                            withContext(Dispatchers.Main) {
+                                                currentGroupData = gData
+                                            }
+                                        }
+                                    } else {
+                                        val gData = parsedProfile.groups[gName]
+                                        val effectiveNow = if (savedNode != null && gData?.proxies?.any { it.name == savedNode } == true) savedNode else (gData?.now ?: "")
+                                        currentGroupData = gData?.copy(now = effectiveNow)
+                                    }
+                                },
+                                onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
+                                onHealthCheck = { group -> runSpeedTestForGroup(group) },
+                                testingNodes = testingNodes,
+                                onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) }
+                            )
+                        }
+                        2 -> SettingsScreen(
                             glassScene = cardScene,
-                            groups = proxyGroups,
-                            groupMap = computedGroupMap,
-                            groupIcons = parsedProfile.groupIcons,
-                            currentGroup = effectiveCurrentGroup,
-                            selectedGroupName = selectedGroupName,
-                            currentViewMode = proxiesViewMode,
-                            showGroupIcons = showGroupIcons,
-                            nodeColumns = nodeColumns,
-                            tabsListState = proxiesTabsListState,
-                            listModeState = proxiesListModeState,
-                            groupRowState = proxiesGroupRowState,
-                            expandedGroups = proxiesExpandedGroups,
-                            perGroupTabStates = proxiesPerGroupTabStates,
-                            onViewModeChanged = { mode ->
-                                proxiesViewMode = mode
-                                settingsManager.proxiesViewMode = mode
+                            scrollState = settingsScrollState,
+                            tunStack = tunStack,
+                            bootOnStartup = bootOnStartup,
+                            allowLan = allowLan,
+                            fakeIpEnabled = fakeIpEnabled,
+                            hapticEnabled = hapticEnabled,
+                            shortcutTouchVariant = shortcutTouchVariant,
+                            onShortcutTouchVariantChanged = { variant ->
+                                shortcutTouchVariant = variant
+                                settingsManager.shortcutTouchVariant = variant
                             },
-                            onShowGroupIconsChanged = { show ->
-                                showGroupIcons = show
-                                settingsManager.showGroupIcons = show
+                            shortcutGlassLevel = shortcutGlassLevel,
+                            onShortcutGlassLevelChanged = { level ->
+                                shortcutGlassLevel = level
+                                settingsManager.shortcutGlassLevel = level
                             },
-                            onNodeColumnsChanged = { cols ->
-                                nodeColumns = cols
-                                settingsManager.nodeColumns = cols
+                            ipv6Enabled = ipv6Enabled,
+                            tunMtu = tunMtu,
+                            mipsCongestionController = mipsCongestionController,
+                            themeMode = currentThemeMode,
+                            onTunStackChanged = { stack ->
+                                tunStack = stack
+                                settingsManager.tunStack = stack
+                                restartTunnelForSettings()
                             },
-                            onSelectGroup = { gName ->
-                                selectedGroupName = gName
-                                val savedNode = settingsManager.getSelectedNode(gName)
+                            onBootOnStartupChanged = { enabled ->
+                                bootOnStartup = enabled
+                                settingsManager.bootOnStartup = enabled
+                            },
+                            onAllowLanChanged = { enabled ->
+                                allowLan = enabled
+                                settingsManager.allowLan = enabled
                                 if (vpnState.status == VpnState.Status.RUNNING) {
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        val gData = ClashCore.queryGroup(gName)
-                                        withContext(Dispatchers.Main) {
-                                            currentGroupData = gData
-                                        }
+                                        val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                        val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                        ClashCore.load(conf)
                                     }
-                                } else {
-                                    val gData = parsedProfile.groups[gName]
-                                    val effectiveNow = if (savedNode != null && gData?.proxies?.any { it.name == savedNode } == true) savedNode else (gData?.now ?: "")
-                                    currentGroupData = gData?.copy(now = effectiveNow)
                                 }
                             },
-                            onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
-                            onHealthCheck = { group -> runSpeedTestForGroup(group) },
-                            testingNodes = testingNodes,
-                            onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) }
+                            onHapticEnabledChanged = { enabled ->
+                                hapticEnabled = enabled
+                                settingsManager.hapticEnabled = enabled
+                            },
+                            onIpv6EnabledChanged = { enabled ->
+                                ipv6Enabled = enabled
+                                settingsManager.ipv6Enabled = enabled
+                                restartTunnelForSettings()
+                            },
+                            onTunMtuChanged = { value ->
+                                tunMtu = TunTuning.normalizeMtu(value)
+                                settingsManager.tunMtu = tunMtu
+                                restartTunnelForSettings()
+                            },
+                            onMipsCongestionControllerChanged = { value ->
+                                mipsCongestionController = TunTuning.normalizeCongestionController(value)
+                                settingsManager.mipsCongestionController = mipsCongestionController
+                                restartTunnelForSettings()
+                            },
+                            onNavigateToConfigurationCenter = {
+                                overrideTargetProfile = null
+                                overrideTargetProfileId = null
+                                fromConfigurationCenter = false
+                                currentSubScreen = SubScreen.CONFIGURATION_CENTER
+                            },
+                            onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
+                            onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
+                            onNavigateToDns = { currentSubScreen = SubScreen.DNS }
                         )
                     }
-                    2 -> SettingsScreen(
-                        glassScene = cardScene,
-                        scrollState = settingsScrollState,
-                        tunStack = tunStack,
-                        bootOnStartup = bootOnStartup,
-                        allowLan = allowLan,
-                        fakeIpEnabled = fakeIpEnabled,
-                        hapticEnabled = hapticEnabled,
-                        shortcutTouchVariant = shortcutTouchVariant,
-                        onShortcutTouchVariantChanged = { variant ->
-                            shortcutTouchVariant = variant
-                            settingsManager.shortcutTouchVariant = variant
-                        },
-                        shortcutGlassLevel = shortcutGlassLevel,
-                        onShortcutGlassLevelChanged = { level ->
-                            shortcutGlassLevel = level
-                            settingsManager.shortcutGlassLevel = level
-                        },
-                        ipv6Enabled = ipv6Enabled,
-                        tunMtu = tunMtu,
-                        mipsCongestionController = mipsCongestionController,
-                        themeMode = currentThemeMode,
-                        onTunStackChanged = { stack ->
-                            tunStack = stack
-                            settingsManager.tunStack = stack
-                            restartTunnelForSettings()
-                        },
-                        onBootOnStartupChanged = { enabled ->
-                            bootOnStartup = enabled
-                            settingsManager.bootOnStartup = enabled
-                        },
-                        onAllowLanChanged = { enabled ->
-                            allowLan = enabled
-                            settingsManager.allowLan = enabled
-                            if (vpnState.status == VpnState.Status.RUNNING) {
-                                lifecycleScope.launch(Dispatchers.IO) {
-                                    val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
-                                    val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                    ClashCore.load(conf)
-                                }
-                            }
-                        },
-                        onHapticEnabledChanged = { enabled ->
-                            hapticEnabled = enabled
-                            settingsManager.hapticEnabled = enabled
-                        },
-                        onIpv6EnabledChanged = { enabled ->
-                            ipv6Enabled = enabled
-                            settingsManager.ipv6Enabled = enabled
-                            restartTunnelForSettings()
-                        },
-                        onTunMtuChanged = { value ->
-                            tunMtu = TunTuning.normalizeMtu(value)
-                            settingsManager.tunMtu = tunMtu
-                            restartTunnelForSettings()
-                        },
-                        onMipsCongestionControllerChanged = { value ->
-                            mipsCongestionController = TunTuning.normalizeCongestionController(value)
-                            settingsManager.mipsCongestionController = mipsCongestionController
-                            restartTunnelForSettings()
-                        },
-                        onNavigateToConfigurationCenter = {
-                            overrideTargetProfile = null
-                            overrideTargetProfileId = null
-                            fromConfigurationCenter = false
-                            currentSubScreen = SubScreen.CONFIGURATION_CENTER
-                        },
-                        onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
-                        onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
-                        onNavigateToDns = { currentSubScreen = SubScreen.DNS }
-                    )
                 }
-            }
+
+            } // bounded pager page
 
             var lastActiveSubScreen by remember { mutableStateOf<SubScreen?>(null) }
             LaunchedEffect(currentSubScreen) {

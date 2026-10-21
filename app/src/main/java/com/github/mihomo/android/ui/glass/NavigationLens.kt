@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -46,6 +47,9 @@ class NavigationLensState internal constructor(internal val scene: GraphicsLayer
 @Composable
 fun rememberNavigationLens(): NavigationLensState {
     val layer = rememberGraphicsLayer()
+    // Pager neighbours are composed off-screen. A translated full-window underlay must
+    // never enlarge a page's recorded source beyond that page's own viewport.
+    layer.clip = true
     return remember(layer) { NavigationLensState(layer) }
 }
 
@@ -56,13 +60,18 @@ fun Modifier.recordNavigationScene(state: NavigationLensState, underlay: Navigat
         .drawWithContent {
             if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) {
                 state.scene.record {
-                    if (underlay != null) {
-                        translate(underlay.origin.x - state.origin.x, underlay.origin.y - state.origin.y) {
-                            drawLayer(underlay.scene)
+                    clipRect {
+                        if (underlay != null) {
+                            translate(underlay.origin.x - state.origin.x, underlay.origin.y - state.origin.y) {
+                                drawLayer(underlay.scene)
+                            }
                         }
+                        this@drawWithContent.drawContent()
                     }
-                    this@drawWithContent.drawContent()
                 }
+                // Replay the bounded display list, not an unbounded translated underlay.
+                // Retain Compose's record-once/draw-layer path so nested child layers
+                // have a single parent and the glass receives live foreground content.
                 drawLayer(state.scene)
             } else {
                 drawContent()
