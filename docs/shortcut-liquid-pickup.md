@@ -1,60 +1,51 @@
-# 快捷玻璃与 B 模式抬升补丁
+# 1.0.28（34）快捷玻璃抬升对比版
 
-## 基准与范围
+## 与另一个 28 的关系
 
-- 仓库：https://github.com/hw20201/blblblbl
-- 精确基准：`76b59078963f8ef8de976c2ed9d5018654de4653`（main / 1.0.27）。
-- 这是源码候选补丁，不是已通过真机验收的 APK；不推送 GitHub、不发布版本。
-- 目标是白天、黑夜都能看出实际抬升，不是只给黑夜模式加描边。
+本分支 `review/liquid-pickup-76b5907` 独立基于 1.0.27 的精确提交 `76b59078963f8ef8de976c2ed9d5018654de4653`，应用用户提供的 `shortcut-liquid-pickup.patch`，再追加下面的审查修正。它不基于已有的 1.0.28（32）或 1.0.29（33），不修改那些分支、Draft 或 main，也不创建 PR。
 
-## 改动
+应用内仍显示 **1.0.28**；内部 `versionCode` 为 **34**，高于已有的 32 和 33，以允许使用相同发布签名覆盖安装。不同对比包使用同一包名，不能并排安装；系统通常不允许直接降级安装低版本号，请勿为对比而贸然卸载含有配置的应用。
 
-1. **B 模式真正上移**：调校版从 0dp 改为 -8dp；接触跟手时由 0.998 倍收缩改为 1.015 倍轻微放大。关闭接触跟随的对照路径为 1.018 倍。
-2. **跟手更易辨认**：横向最大倾角 3.2°、纵向 2.8°，持按倾角重定向 48ms，抬升 95ms；回落阻尼 0.86。A/C 的参数及 85ms 按压时长保留。
-3. **离地层次**：独立的原位地面投影在外层槽位绘制，玻璃本体单独上移；平坦投影层阴影高度从很弱的约 0.2dp 提高到按压时约 10.2dp，避免把倾斜顶点直接当投影高度产生长影。
-4. **点击不跟着漂**：手势与 clickable 放到固定外层槽位；子卡片仅执行视觉变换，原有两列布局、编辑排序、竖滑优先和横向锁定逻辑不改。
-5. **玻璃材质**：保留共享背景显示列表与单条 AGSL 折射链，适配 Backdrop 的镜片边缘曲线；补充窄方向性镜面反光，反光随倾角和抬升响应，黑夜补一条克制的冷色回光。中部不覆盖白色蒙层，文字和图标不进入模糊/折射。
-6. **折射同步**：实际 pitch/roll 传入 shader，跟手材质不再使用与卡片姿态不一致的九度触点估计；夹紧到 ±9° 光学范围。保留已有四角 homography 世界锚定，避免二次投影。
-7. **低版本**：API33+ 使用真实 AGSL 背景折射；API31/32 保留模糊降级，API26–30/低内存保留已有静态材质降级。B 的实际上移不依赖 AGSL。
+## 这版改了什么
 
-## 网上选型与“引入”的准确含义
+B（FingerTilt）在浅色和深色下都上移 8dp。接触跟手时放大至 1.015 倍；关闭接触跟随的调校路径为 1.018 倍。横向最大倾角 3.2°、纵向 2.8°，持按倾角重定向 48ms、抬升 95ms，回落阻尼 0.86。A/C 的动作参数和 85ms 按压时长保留。
 
-比较了 Kyant0/AndroidLiquidGlass（Backdrop）、PrismalAGSL、Cloudy 和 QWEA0/Liquid-Glass-Android。
+原位地面投影与移动玻璃本体分层。手势、点击和测试标记位于固定外层槽位；内层只执行视觉变换，保留两列布局、编辑删除、纵向滚动优先和横向锁定逻辑。
 
-首选参考：[Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)，版本 2.0.1 / `65ab177e90e5c1d8c62e70cf7755841982da65f6`，Apache-2.0。
+背景继续使用共享显示列表和单条 AGSL 折射链，保留四角 homography 世界锚定，不做二次投影或第二套背景捕获。镜片曲线与窄方向性边缘反光随按压响应；文字和图标不进入背景模糊或折射。
 
-**本补丁不是完整接入 Backdrop Maven 依赖。** Nexus 使用 Kotlin 2.1.0 / Compose 1.7.5，而 Backdrop 2.0.1 上游构建使用 Kotlin 2.4.10 / Compose 1.12.0；直接添加最新版会引入编译器/Compose 迁移风险。此版只引入明确署名的镜片曲线源码适配，将其放进现有真实背景折射管线，不为几个快捷块升级全项目 UI 工具链、不重复捕获或叠加第二套 shader。完整的库接入仍需单独迁移与构建验收。
+API33+ 使用完整 AGSL 路径，API31/32 保留原有模糊降级，更低版本或轻量环境保留已有静态降级。实际上移不依赖 AGSL。
 
-其他项目：
-- https://github.com/styropyr0/PrismalAGSL ：Compose/AGSL，但同样需要核对 Kotlin metadata。
-- https://github.com/skydoves/Cloudy ：含玻璃和 blur；当前版本工具链更高，不能把旧 blur 版本当成已有 liquidGlass API。
-- https://github.com/QWEA0/Liquid-Glass-Android ：View/XML 优先，不适合为现有 Compose 卡片额外包 AndroidView。
+## 审查后追加的修正
 
-授权：`THIRD_PARTY_NOTICES.md`、`third_party/backdrop/LICENSE`，保留上游来源与修改说明。
+原补丁将新的姿态角与 `contactMode` 共用开关，存在两个实际问题：A/C 的接触路径会丢失原触点法线；非接触跟随的 B 路径可能把实际姿态和旧九度触点估计叠加。
 
-## 验证边界
+现在通过默认关闭的 `poseFollow` / `poseMode` 独立选择：只有启用动态效果的 tuned B + optical followup 使用实际动画姿态；A/C 和旧路径保留原触点法线，不混算。pitch 采用 `-Compose rotationX` 的光学存储约定，shader 再取负，净方向与原补丁实际 B 姿态一致；不是未经验证地反转法线。
 
-已执行：
-- `git diff --check`。
-- `python3 scripts/check_shortcut_pickup.py`：9 组静态/数值检查，包括 B 位移、手势代码不变、uniform 成对绑定、独立投影、镜片曲线单调/有界、24dp 采样余量、授权及业务改动边界。
-- 使用 Gradle 内置 Kotlin 2.3.21 PSI 解析器检查修改的 Kotlin 文件：这是语法检查，不是类型检查/Android 编译。
-- 干净基准上的 `git am` 重放与最终文件树一致性检查（见交付验证结果）。
+新增四组真实 Compose 回归测试，覆盖四角触点、48ms 重定向、释放重按连续性、其他路径、减少动态效果与冻结预览。原有浅色/深色实际前景上移、槽位固定、复位及点击测试保留。
 
-新增 Android 回归用例：`ShortcutVisiblePickupTest` 的浅色/深色实际快捷组合测试，检查实际前景 >=6dp 上移、释放复位、槽位不移、点击有效；同步修改 B 数值和原先“所有模式不竖移/都收缩”的过期断言。
+## 第三方适配的准确含义
 
-**未通过本地 Android 构建或 Robolectric 测试。** 执行 `./gradlew --offline --no-daemon -Dorg.gradle.jvmargs=-Xmx384m testDebugUnitTest` 时，离线环境缺 AGP 9.0.1，项目配置阶段失败；不是测试通过，也不是已证实代码编译失败。此环境也未准备 Android SDK。不安装重型 SDK、不触发远端签名构建。
+[Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) 2.0.1，提交 `65ab177e90e5c1d8c62e70cf7755841982da65f6`，Apache-2.0。只适配其 `Shaders.kt` 中的 `circleMap(x) = 1 - sqrt(1 - x*x)` 镜片边缘曲线和法线/光照方向高光思路，放入现有有界单通道折射。
 
-尚需：在正常构建机执行 detekt/testDebugUnitTest/assembleDebug，并在真机浅色/深色检验折射、抬升、触控清晰区、GPU 兼容及帧率。CPU/语法检查不能证明视觉效果已经满意。
+这**不是完整接入 Backdrop Maven 库**。上游版本目录为 Kotlin 2.4.10 / Compose 1.12.0，本项目现有配置为 Kotlin 2.1.0 / Compose 1.7.5；本次不升级全项目工具链、不添加二进制依赖。上游曲线、版本目录与完整许可证已核对，许可证与仓库内副本逐字节一致。署名见 `THIRD_PARTY_NOTICES.md`，完整文本见 `third_party/backdrop/LICENSE`。
 
-## 应用与撤销
+## 构建和验收边界
+
+原始候选补丁交付时，另一环境缺 AGP/SDK，只有静态和语法检查；该限制不是本次环境状态。本次已找到完整 Android SDK 36、build-tools 36.0.0、AGP 9.0.1 缓存和 JDK21，使用实际 Android 构建与 Robolectric Native Graphics 测试。
+
+本次构建门禁为静态/数值检查、`detekt`、完整 `testDebugUnitTest`、`assembleRelease`；签名通过 main 上现有、未修改的 workflow，以精确 source SHA 检出本分支。仅在这些门禁及独立 APK 身份/签名/ABI/native 校验通过后创建新的 GitHub Draft。具体结果以该 Draft 的 CI 链接、验证记录和 APK 哈希为准，本文不预先宣称执行成功。
+
+验证命令（使用正确 SDK 路径）：
 
 ```sh
-git switch -c ui/shortcut-liquid-pickup 76b59078963f8ef8de976c2ed9d5018654de4653
-git am /path/to/shortcut-liquid-pickup.patch
 python3 scripts/check_shortcut_pickup.py
-./gradlew detekt testDebugUnitTest assembleDebug
+ANDROID_HOME=/home/ubuntu/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+  ./gradlew detekt testDebugUnitTest assembleRelease --no-configuration-cache
 ```
 
-若中断应用：`git am --abort`。成功合入后如需撤销，使用 `git revert <此补丁提交>`。
+本地没有发布签名凭据时 `assembleRelease` 产物为未签名候选，不能当成最终交付包；最终交付必须来自现有 Release-key CI。
 
-不修改 VPN、订阅、安全、原生库、背景配色或版本号；后续其他 UI 提交不能盲目重复应用此补丁。
+不修改 VPN、订阅、安全、原生库、背景配色、依赖或签名工作流。仅版本元数据从 1.0.27（31）改为 1.0.28（34），静态门禁精确限制只允许这两个构建字段变化。
+
+Robolectric 渲染/交互检查不能替代真机 GPU、帧率、发热、电量或主观视觉验收；本版用于用户继续比较观感与手感，不宣称视觉效果已获满意验收。

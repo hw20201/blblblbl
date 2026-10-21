@@ -63,6 +63,7 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     uniform float2 touch;
     uniform float pitch;
     uniform float roll;
+    uniform float poseMode;
     uniform float contact;
     uniform float contactMode;
     float2 bounded(float2 p) { return clamp(p, float2(0.5), inputViewport - float2(0.5)); }
@@ -131,9 +132,11 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         float2 normal = sdfNormal(dp);
         // Android/Compose and this backdrop both use downward +Y. No second Y inversion.
         // Actual Compose pose, not an unrelated nine-degree touch estimate, drives the
-        // optical normal during contact-follow. Legacy fixtures retain their old mapping.
-        float tx = clamp(pitch * 0.017453293 - touch.y * motionLift * 0.15707963 * (1.0 - contactMode), -0.15707963, 0.15707963);
-        float ty = clamp(roll * 0.017453293 + touch.x * motionLift * 0.15707963 * (1.0 - contactMode), -0.15707963, 0.15707963);
+        // tuned B normal only. Contact dent mode is independent: A/C keep their old
+        // touch normals and legacy B never adds a second tilt contribution.
+        // pitch is stored in optical convention (-Compose rotationX).
+        float tx = clamp(mix(-touch.y * motionLift * 0.15707963, -pitch * 0.017453293, poseMode), -0.15707963, 0.15707963);
+        float ty = clamp(mix(touch.x * motionLift * 0.15707963, roll * 0.017453293, poseMode), -0.15707963, 0.15707963);
         float3 surface = normalize(float3(sin(ty), -sin(tx) * cos(ty), cos(tx) * cos(ty)));
         float3 transmitted = refract(float3(0.0, 0.0, -1.0), surface, 1.0 / max(ior, 1.001));
         float2 tiltOffset = transmitted.xy / max(-transmitted.z, 0.15) * (thick + distortion * 80.0 * 0.62105263) * density;
@@ -224,6 +227,7 @@ internal class ShortcutRefractiveOptics {
         shader.setFloatUniform("touch", r.x, r.y)
         shader.setFloatUniform("pitch", r.pitch)
         shader.setFloatUniform("roll", r.roll)
+        shader.setFloatUniform("poseMode", if (r.poseFollow) 1f else 0f)
         shader.setFloatUniform("contact", r.contact)
         shader.setFloatUniform("contactMode", if (r.contactFollow) 1f else 0f)
         effect = RenderEffect.createRuntimeShaderEffect(shader, "backdrop").asComposeRenderEffect()

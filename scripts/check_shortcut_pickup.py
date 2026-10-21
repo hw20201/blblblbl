@@ -51,6 +51,13 @@ class PickupValidation(unittest.TestCase):
         self.assertIn('pitch',declared); self.assertIn('roll',declared)
         self.assertNotIn('uv += (projected - c)',shader)
 
+    def test_actual_pose_is_isolated_from_legacy_contact_mapping(self):
+        self.assertIn('uniform float poseMode;', OPTICS)
+        self.assertIn('mix(-touch.y * motionLift * 0.15707963, -pitch * 0.017453293, poseMode)', OPTICS)
+        self.assertIn('mix(touch.x * motionLift * 0.15707963, roll * 0.017453293, poseMode)', OPTICS)
+        self.assertIn('poseFollow = tuned && followup && variant == ShortcutTouchVariant.FingerTilt', MOTION)
+        self.assertIn('pitch = if (animate) -rx.value else 0f', MOTION)
+
     def test_ground_is_independent_of_plane(self):
         self.assertIn('Box(modifier = slotModifier)',CARD)
         self.assertIn('planeSize.then(touchMotion.visualModifier)',CARD)
@@ -101,6 +108,11 @@ class PickupValidation(unittest.TestCase):
 
     def test_no_vpn_native_or_dependency_changes(self):
         changed=subprocess.check_output(['git','diff','--name-only','76b59078963f8ef8de976c2ed9d5018654de4653'],cwd=ROOT,text=True).splitlines()
-        self.assertFalse(any('/service/' in p or '/data/' in p or p.startswith('native/') or p.endswith('.gradle.kts') for p in changed))
+        self.assertFalse(any('/service/' in p or '/data/' in p or p.startswith('native/') for p in changed))
+        for path in (p for p in changed if p.endswith('.gradle.kts')):
+            self.assertEqual(path, 'app/build.gradle.kts')
+            previous = subprocess.check_output(['git','show','76b5907:'+path],cwd=ROOT,text=True)
+            expected = previous.replace('versionCode = 31', 'versionCode = 34').replace('versionName = "1.0.27"', 'versionName = "1.0.28"')
+            self.assertEqual(expected, (ROOT/path).read_text(), 'Only authorized version fields may change; dependencies and build gates stay intact')
 
 if __name__=='__main__': unittest.main(verbosity=2)

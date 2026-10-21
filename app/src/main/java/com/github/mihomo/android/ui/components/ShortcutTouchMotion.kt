@@ -326,7 +326,8 @@ internal fun rememberShortcutTouchMotion(
             frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
             contact = if (contactFollow) contactValue() else 0f,
             contactFollow = contactFollow,
-            pitch = if (animate && variant == ShortcutTouchVariant.FingerTilt) rx.value else 0f,
-            roll = if (animate && variant == ShortcutTouchVariant.FingerTilt) ry.value else 0f)
+            pitch = if (animate) -rx.value else 0f,
+            roll = if (animate) ry.value else 0f,
+            poseFollow = tuned && followup && variant == ShortcutTouchVariant.FingerTilt && animate)
     }, groundShadowModifier = groundShadow)
 }

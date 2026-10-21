@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 /** Lift in [0, 1], touch direction in [-1, 1]; neutral touch is the card centre. */
 data class ShortcutRefraction(val lift: Float = 0f, val x: Float = 0f, val y: Float = 0f,
     val frostLift: Float = lift, val contact: Float = 0f, val contactFollow: Boolean = false,
-    val pitch: Float = 0f, val roll: Float = 0f)
+    val pitch: Float = 0f, val roll: Float = 0f, val poseFollow: Boolean = false)
 
 /**
  * Reuse the already-diffuse shared mesh: no Gaussian pass, capture or per-card clock.
