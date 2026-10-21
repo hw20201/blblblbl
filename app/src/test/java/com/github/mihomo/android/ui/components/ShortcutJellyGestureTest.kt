@@ -100,7 +100,7 @@ class ShortcutJellyGestureTest {
             val displacement = moved - before
             assertTrue("direction $index locks and translates the real foreground", displacement.getDistance() > .5f)
             assertTrue("direction $index follows its signed drag", displacement.x * direction.x + displacement.y * direction.y > 0f)
-            assertTrue("radial translation stays within the 4dp cap", displacement.getDistance() <= 4.6f)
+            assertTrue("radial translation stays within the 2dp cap", displacement.getDistance() <= 2.1f)
             assertEquals("slot hit rectangle remains fixed", slotRest, card.fetchSemanticsNode().boundsInRoot)
             val completedPickups = List(index) { listOf(true, false) }.flatten()
             compose.runOnIdle {

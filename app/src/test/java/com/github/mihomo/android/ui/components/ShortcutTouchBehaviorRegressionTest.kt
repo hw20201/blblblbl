@@ -231,7 +231,7 @@ class ShortcutTouchBehaviorRegressionTest {
         compose.runOnIdle { assertEquals("next ordinary tap still activates", 1, clicks) }
     }
 
-    @Test fun downAndSmallJitterDoNotLockUntilHorizontalIntentIsClear() {
+    @Test fun downAndSmallJitterDoNotLockUntilHeldPickupIntentIsClear() {
         val pickups = mutableListOf<Boolean>()
         compose.setContent {
             val motion = rememberShortcutTouchMotion(ShortcutTouchVariant.FingerTilt, enabled = true,
@@ -245,7 +245,9 @@ class ShortcutTouchBehaviorRegressionTest {
         compose.runOnIdle { assertTrue("down must not announce pickup", pickups.isEmpty()) }
         card.performTouchInput { moveTo(center + Offset(4f, 1f), delayMillis = 40) }
         compose.runOnIdle { assertTrue("small jitter must not lock parent", pickups.isEmpty()) }
-        card.performTouchInput { moveTo(center + Offset(70f, 1f), delayMillis = 80) }
+        // Explicit hold-before-pickup retains eight-direction ownership. Ordinary horizontal
+        // follow yielding to vertical slop is covered independently with a real scroll parent.
+        card.performTouchInput { moveTo(center + Offset(70f, 1f), delayMillis = 600) }
         compose.runOnIdle { assertEquals(listOf(true), pickups) }
         card.performTouchInput { moveTo(center + Offset(70f, 80f), delayMillis = 80) }
         compose.runOnIdle { assertEquals("horizontal owner survives vertical drift", listOf(true), pickups) }

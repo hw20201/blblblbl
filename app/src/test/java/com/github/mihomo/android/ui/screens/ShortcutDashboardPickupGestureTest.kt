@@ -68,8 +68,11 @@ class ShortcutDashboardPickupGestureTest {
             assertEquals("down must not navigate", 0, fixture.profilesClicks)
             assertEquals("stationary press does not itself move the viewport", initial, fixture.scroll.value)
         }
-        // Establish clear horizontal intent before the diagonal continuation locks pickup.
-        card.performTouchInput { moveTo(center + Offset(100f, 0f), delayMillis = 120) }
+        // B requires an explicit hold-before-pickup to own every direction; ordinary
+        // horizontal follow must leave vertical scrolling available. A/C retain their timing.
+        card.performTouchInput {
+            moveTo(center + Offset(100f, 0f), delayMillis = if (variant == ShortcutTouchVariant.FingerTilt) 600 else 120)
+        }
         card.performTouchInput { moveTo(center + Offset(140f, 140f), delayMillis = 120) }
         compose.mainClock.advanceTimeBy(150); compose.waitForIdle()
         save(screenshot(), dir, "$name-moved-held.png")
@@ -86,6 +89,30 @@ class ShortcutDashboardPickupGestureTest {
         compose.runOnIdle {
             assertEquals("normal tap after release", 1, fixture.profilesClicks)
             assertEquals("only profile navigation fires", 0, fixture.vpnToggles)
+        }
+    }
+
+    @Test fun bOrdinaryHorizontalFollowThenVerticalSlopScrollsDashboardWithoutNavigation() {
+        val fixture = render(ShortcutTouchVariant.FingerTilt)
+        val card = compose.onNodeWithTag("shortcut-card-Profiles")
+        val before = fixture.scroll.value
+        assertTrue("fixture really has scrollable content", fixture.scroll.maxValue > 0)
+        card.performTouchInput {
+            down(center)
+            moveTo(center + Offset(60f, -2f), delayMillis = 80)
+        }
+        compose.waitForIdle()
+        card.performTouchInput {
+            // A later pause must not upgrade ordinary follow into an explicit held pickup.
+            moveTo(center + Offset(60f, -40f), delayMillis = 650)
+            moveTo(center + Offset(60f, -100f), delayMillis = 80)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("ordinary follow hands vertical slop to real Dashboard", fixture.scroll.value > before)
+            assertEquals("follow-to-scroll must not navigate", 0, fixture.profilesClicks)
+            assertEquals("follow-to-scroll must not toggle VPN", 0, fixture.vpnToggles)
         }
     }
 

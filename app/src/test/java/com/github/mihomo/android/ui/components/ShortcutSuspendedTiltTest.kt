@@ -19,6 +19,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.math.cos
 import kotlin.math.hypot
 
 /** Measures real foreground contraction and fixed hit bounds on the production card.
@@ -47,7 +48,9 @@ class ShortcutSuspendedTiltTest {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     LoonShortcutCard(Modifier.size(190.dp, 118.dp), "Tilt", "", icon = {
                         // Foreground descendant inherits the glass plane's actual graphics transform.
-                        Box(Modifier.size(26.dp).onGloballyPositioned { coordinates = it })
+                        // A longer probe resolves the gentler 3-degree tilt without weakening
+                        // the original >.05px contraction assertion or its recovery tolerance.
+                        Box(Modifier.requiredSize(80.dp).onGloballyPositioned { coordinates = it })
                     }, onClick = { clicks++ })
                 }
             }
@@ -83,6 +86,8 @@ class ShortcutSuspendedTiltTest {
                 val unchanged = if (x==.5f) 0 else 2
                 assertTrue("$choice $x/$y must actually tilt foreground: $l vs $rest",
                     rest[contracted]-l[contracted]>.05f)
+                val expectedLength = rest[contracted] * cos(Math.toRadians(3.0 * .8)).toFloat()
+                assertEquals("actual foreground uses the gentler 3-degree gain", expectedLength, l[contracted], .005f)
                 assertEquals("orthogonal axis must retain size",rest[unchanged],l[unchanged],.02f)
                 assertEquals("fixed hit area survives tilt",restSlot,card.fetchSemanticsNode().boundsInRoot)
                 card.performTouchInput { up() }
@@ -93,7 +98,7 @@ class ShortcutSuspendedTiltTest {
                 }
             }
             val targets=listOf(0f to -.8f,0f to .8f,-.8f to 0f,.8f to 0f)
-                .map { (x,y) -> shortcutTouchTarget(ShortcutTouchVariant.FingerTilt,x,y) }
+                .map { (x,y) -> shortcutJellyTiltTarget(x,y) }
             assertTrue("target pitch signs oppose",targets[0].rotationX*targets[1].rotationX<0f)
             assertTrue("target roll signs oppose",targets[2].rotationY*targets[3].rotationY<0f)
             compose.mainClock.autoAdvance = true

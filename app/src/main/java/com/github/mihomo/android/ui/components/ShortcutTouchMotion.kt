@@ -112,9 +112,15 @@ internal class ShortcutTouchMotion(
 internal fun shortcutHorizontalIntent(dx: Float, dy: Float, touchSlop: Float): Boolean =
     abs(dx) > max(0f, touchSlop) * 1.25f && abs(dx) > abs(dy) * 1.5f
 
-/** B keeps the 4dp travel radius in every direction; diagonals never exceed it. */
+/** Visual gain only: never use this pose to normalize the optical contact point. */
+internal fun shortcutJellyTiltTarget(x: Float, y: Float): ShortcutTouchPose = ShortcutTouchPose(
+    rotationX = -y.coerceIn(-1f, 1f) * 3f,
+    rotationY = x.coerceIn(-1f, 1f) * 3f
+)
+
+/** B has a small radial give, not a second drag surface; diagonals share the same cap. */
 internal fun shortcutJellyTravel(delta: Offset, limit: Float): Offset {
-    val raw = delta * .09f
+    val raw = delta * .045f
     val length = raw.getDistance()
     return if (length > limit && length > 0f) raw * (limit / length) else raw
 }
@@ -136,7 +142,7 @@ internal fun rememberShortcutTouchMotion(
     val input = remember(variant, enabled, tuned) { TouchInput() }
     val pickupCallback by rememberUpdatedState(onPickupChanged)
     fun currentTarget(x: Float, y: Float): ShortcutTouchPose {
-        val legacy = shortcutTouchTarget(variant, x, y, tuned)
+        val legacy = if (jelly) shortcutJellyTiltTarget(x, y) else shortcutTouchTarget(variant, x, y, tuned)
         if (!contactFollow) return legacy
         return legacy.copy(scale = when (variant) {
             ShortcutTouchVariant.GentleFloat -> .997f
@@ -215,6 +221,7 @@ internal fun rememberShortcutTouchMotion(
                 if (down.isConsumed) return@awaitEachGesture
                 input.pressed = true
                 var horizontallyLocked = false
+                var heldPickup = false
                 fun update(position: Offset) {
                     // Intent stays in the unmoving slot; do not feed a rotating plane back
                     // into its own tilt target. Optical contact uses the actual plane instead.
@@ -232,7 +239,7 @@ internal fun rememberShortcutTouchMotion(
                 }
                 update(down.position)
                 try {
-                    val maxDragX = 4.dp.toPx()
+                    val maxDragX = (if (jelly) 2.dp else 4.dp).toPx()
                     // Initial pass wins before verticalScroll's Main-pass slop detector.
                     // A normal tap stays unconsumed; the first slop-crossing move cancels click.
                     while (true) {
@@ -257,16 +264,17 @@ internal fun rememberShortcutTouchMotion(
                         // hold then drag can pick B up in any direction; horizontal intent stays fast.
                         val heldForDrag = change.uptimeMillis - down.uptimeMillis >= viewConfiguration.longPressTimeoutMillis
                         val jellyIntent = jelly && heldForDrag && delta.getDistance() > viewConfiguration.touchSlop
+                        val verticalSlop = abs(delta.y) > viewConfiguration.touchSlop
+                        val ordinaryJellyYield = jelly && !heldPickup && verticalSlop
+                        val unlockedVerticalIntent = !horizontallyLocked && verticalSlop && abs(delta.y) > abs(delta.x) / 1.5f
                         if (!horizontallyLocked && jellyIntent) {
                             horizontallyLocked = true
+                            heldPickup = true
                             input.dragging = true
                             pickupCallback(true)
-                        } else if (!horizontallyLocked && shortcutHorizontalIntent(delta.x, delta.y, viewConfiguration.touchSlop)) {
-                            horizontallyLocked = true
-                            input.dragging = true
-                            pickupCallback(true)
-                        } else if (!horizontallyLocked && abs(delta.y) > viewConfiguration.touchSlop &&
-                            abs(delta.y) > abs(delta.x) / 1.5f) {
+                        } else if (ordinaryJellyYield || unlockedVerticalIntent) {
+                            // Ordinary B follow can yield even after horizontal slop. Only an
+                            // explicit hold-before-pickup owns all eight directions until release.
                             // Let the parent's Main-pass scroll detector process this move first.
                             // Then cancel any still-waiting clickable at Final: without a scroll
                             // parent (or at a boundary), a vertical drag must not become a tap.
@@ -275,6 +283,12 @@ internal fun rememberShortcutTouchMotion(
                             awaitPointerEvent(PointerEventPass.Final).changes
                                 .firstOrNull { it.id == down.id }?.consume()
                             break
+                        } else if (!horizontallyLocked && shortcutHorizontalIntent(delta.x, delta.y, viewConfiguration.touchSlop)) {
+                            horizontallyLocked = true
+                            input.dragging = true
+                            // Ordinary B follows visually but must leave the parent's slop
+                            // detector alive. Only explicit held pickup disables page scroll.
+                            if (!jelly) pickupCallback(true)
                         }
                         if (jelly && animate) {
                             val travel = shortcutJellyTravel(delta, maxDragX)
@@ -285,18 +299,18 @@ internal fun rememberShortcutTouchMotion(
                             // This pointer node is outside the visual graphicsLayer: stable anchor,
                             // no feedback from the moved card, no exit when the finger leaves it.
                             // Legacy A/C preserve their horizontal-only pickup. B keeps the
-                            // radial 4dp travel computed above, including diagonal/vertical drift.
+                            // radial 2dp give computed above, including diagonal/vertical drift.
                             if (!jelly) {
                                 input.dragX = (delta.x * 0.09f).coerceIn(-maxDragX, maxDragX)
                                 input.dragY = 0f
                             }
-                            change.consume()
+                            if (!jelly || heldPickup) change.consume()
                         }
                         update(change.position)
                     }
                 } finally {
                     input.reset()
-                    if (horizontallyLocked) pickupCallback(false)
+                    if (horizontallyLocked && (!jelly || heldPickup)) pickupCallback(false)
                 }
             }
         } finally { input.reset() }

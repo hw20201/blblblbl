@@ -86,8 +86,9 @@ class ShortcutContactFollowPreviewTest {
             assertEquals("down does not toggle VPN", 0, fixture.vpn)
             assertEquals(initial, fixture.scroll.value)
         }
-        // Horizontal intent crosses slop and locks the gesture; subsequent vertical travel must not become module drag.
-        card.performTouchInput { moveTo(Offset(center.x * 2f * .72f, center.y * 2f * .48f), delayMillis = 180) }
+        // Explicit hold-before-pickup locks the optical path in all directions. Ordinary
+        // horizontal follow yielding to page scroll is exercised by the Dashboard gesture tests.
+        card.performTouchInput { moveTo(Offset(center.x * 2f * .72f, center.y * 2f * .48f), delayMillis = 600) }
         compose.mainClock.advanceTimeBy(180); compose.waitForIdle()
         save(screenshot(), dir, "$theme-contact-B-horizontal-right.png")
         card.performTouchInput { moveTo(Offset(center.x * 2f * .72f, center.y * 2f * .73f), delayMillis = 140) }
