@@ -41,19 +41,30 @@ internal val LocalShortcutBlurEnabled = staticCompositionLocalOf { true }
 /** Map the untransformed scene into this plane, including inverse scale/perspective, not
  * merely a top-left translation. No capture/readback and no change to navigation's recorder.
  */
-internal fun DrawScope.replayCardScene(lens: NavigationLensState, coordinates: LayoutCoordinates?, origin: Offset, anchored: Boolean) {
+internal class SceneReplayScratch {
+    val local = FloatArray(8)
+    val scene = FloatArray(8)
+    val matrix = Matrix()
+}
+
+internal fun DrawScope.replayCardScene(lens: NavigationLensState, coordinates: LayoutCoordinates?, origin: Offset,
+    anchored: Boolean, scratch: SceneReplayScratch) {
     val plane = coordinates?.takeIf { anchored && it.isAttached }
     val hasScene = lens.scene.size.width > 0 && lens.scene.size.height > 0
     if (plane != null && hasScene) {
         // Four forward-projected coplanar corners define the true 2D homography.
         // Inverting a full 3D matrix with an assumed root z=0 is not equivalent.
-        val local = floatArrayOf(0f, 0f, size.width, 0f, size.width, size.height, 0f, size.height)
-        val scene = FloatArray(8)
+        // Per-surface scratch avoids two arrays and a native Matrix allocation on every
+        // scroll/press frame. Recompute all projected corners: Mode B remains live.
+        val local = scratch.local
+        local[0] = 0f; local[1] = 0f; local[2] = size.width; local[3] = 0f
+        local[4] = size.width; local[5] = size.height; local[6] = 0f; local[7] = size.height
+        val scene = scratch.scene
         for (i in 0..3) {
             val p = plane.localToRoot(Offset(local[i * 2], local[i * 2 + 1])) - lens.origin
             scene[i * 2] = p.x; scene[i * 2 + 1] = p.y
         }
-        val matrix = Matrix()
+        val matrix = scratch.matrix
         if (scene.all { it.isFinite() } && matrix.setPolyToPoly(scene, 0, local, 0, 4)) {
             drawContext.canvas.save()
             try {
@@ -84,6 +95,7 @@ internal fun BoxScope.CardBackdrop(
     val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val replayScratch = remember { SceneReplayScratch() }
     val opticalReplay = softMeshRim && shaderEnabled
     val followup = tunedMaterial && LocalShortcutOpticalFollowupEnabled.current
     val bend = LocalShortcutRefractionEnabled.current
@@ -144,9 +156,9 @@ internal fun BoxScope.CardBackdrop(
                 if (softMeshRim) {
                     // The outer GlassSurface clips the rounded result AFTER filtering,
                     // not its sampling neighbourhood. Input has a finite explicit extent.
-                    clipRect { replayCardScene(lens, coordinates, origin, anchored = followup) }
+                    clipRect { replayCardScene(lens, coordinates, origin, anchored = followup, scratch = replayScratch) }
                 } else {
-                    replayCardScene(lens, coordinates, origin, false)
+                    replayCardScene(lens, coordinates, origin, false, replayScratch)
                 }
             } else {
                 drawRect(fallback)

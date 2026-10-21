@@ -122,3 +122,47 @@ Candidate 3 verification completed:
 
 These are host API35 checks and inspected captures, not a confirmed vivo Android16
 fix, real-device shader/performance validation, or VPN connection test.
+
+
+## Candidate 4: conservative scroll-allocation polish
+
+The owner confirmed Candidate 3 displays all content on the Android 16 vivo X200
+mini and meets the visual requirements, with slight scroll stutter remaining.
+This pass preserves the working clipping/recording hierarchy and appearance.
+It does not change A/B/C motion parameters; a separately requested follow-up on
+shortcut press/motion behavior is intentionally outside this candidate.
+
+Two small hot-path changes avoid repeated native/managed allocation:
+
+- Navigation/title glass caches its native effect graph while geometry and optical
+  uniforms are unchanged. A new recorded frame remains a live input; it does not
+  need a new RenderEffect. Every geometry, density, expansion/refraction, strength,
+  radius or frost-mode change still refreshes the uniform snapshot. The Gaussian
+  filter node is also retained while its density/mode is unchanged.
+- Each shortcut/card replay owns reusable corner arrays and a native Matrix instead
+  of creating two arrays and a Matrix per anchored draw. Projected corners and the
+  inverse mapping are still recomputed for every draw, so Mode B tilt/press and
+  moving-scene alignment are not frozen or quantized.
+
+No shader equation, glass quality, blur radius, animation cadence, page layout,
+mesh background, native VPN library or diagnostic behavior was reduced/changed.
+These reduce specific allocation work, not a measured guarantee of smoothness.
+No physical vivo frame trace, FPS or jank percentage is available on this host.
+
+Candidate 4 validation:
+
+- assembleDebug and the focused API35 native suite succeeded with configuration
+  cache disabled (the existing verifyNativeLibraries task is not cache-serializable).
+- 27 targeted tests passed; zero failures/errors/skips. Includes light/dark full
+  pager visibility, return-to-dashboard, launcher/diagnostics, glass rendering,
+  gestures, bounds, and the three new allocation/reusable-geometry contracts.
+- In the cache test, 240 unchanged-optics scene updates reuse the same one native
+  effect; changes to each relevant optical/geometry property invalidate it.
+- Inspected the eight generated light/dark pager captures; page content remains
+  visible. These host renders do not certify the vivo GPU's smoothness.
+- APK ZIP CRC, v2 debug signature and 16-KB ZIP alignment passed.
+- APK size: 53,257,452 bytes; SHA-256:
+  `6202a7843af281b45ecae2079fdc61d068ce09efc784b47028e8f94a2f8a7fc5`.
+- Package remains `com.github.mihomo.android.draftglass`; label `Nexus Glass DRAFT`;
+  versionCode 37; versionName `1.0.32-with-suspended-draft-glass-candidate4`;
+  arm64 only, debug signed. Native library content is unchanged from Candidate 3.

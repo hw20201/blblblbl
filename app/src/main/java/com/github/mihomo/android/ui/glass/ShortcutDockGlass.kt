@@ -111,6 +111,7 @@ internal fun ShortcutDockGlassSurface(
     val margin = (SHORTCUT_DOCK_MARGIN_DP * density).roundToInt()
     var origin by remember { mutableStateOf(Offset.Zero) }
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val replayScratch = remember { SceneReplayScratch() }
     val effectCache = remember(shader) { ShortcutDockEffectCache() }
     Box(modifier.clip(shape)) {
         if (replay && lens != null) {
@@ -149,7 +150,7 @@ internal fun ShortcutDockGlassSurface(
                 .drawWithContent {
                     refraction()
                     if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) {
-                        clipRect { replayCardScene(lens, coordinates, origin, anchored = true) }
+                        clipRect { replayCardScene(lens, coordinates, origin, anchored = true, scratch = replayScratch) }
                     } else {
                         drawRect(if (tokens.isDark) Color(0xFF151D2C) else Color(0xFFDCE5F6))
                     }

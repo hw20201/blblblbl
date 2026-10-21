@@ -104,7 +104,7 @@ android {
             isMinifyEnabled = false
             // Isolated disposable UI draft; never replaces the owner's installed production app.
             applicationIdSuffix = ".draftglass"
-            versionNameSuffix = "-draft-glass-candidate3"
+            versionNameSuffix = "-draft-glass-candidate4"
         }
     }
 

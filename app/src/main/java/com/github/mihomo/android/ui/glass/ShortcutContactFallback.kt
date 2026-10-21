@@ -43,6 +43,7 @@ private class ContactFeather {
 internal fun BoxScope.ShortcutContactFallback(lens: NavigationLensState, refraction: () -> ShortcutRefraction) {
     var origin by remember { mutableStateOf(Offset.Zero) }
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val replayScratch = remember { SceneReplayScratch() }
     val feather = remember { ContactFeather() }
     Box(Modifier.matchParentSize()
         .onGloballyPositioned { origin = it.positionInRoot(); coordinates = it }
@@ -60,7 +61,7 @@ internal fun BoxScope.ShortcutContactFallback(lens: NavigationLensState, refract
             clipRect(bounds.left, bounds.top, bounds.right, bounds.bottom) {
                 val save = canvas.saveLayer(bounds, null)
                 try {
-                    replayCardScene(lens, coordinates, origin, anchored = true)
+                    replayCardScene(lens, coordinates, origin, anchored = true, scratch = replayScratch)
                     canvas.drawRect(bounds, feather.paint(x, y, radius, r.contact))
                 } finally { canvas.restoreToCount(save) }
             }

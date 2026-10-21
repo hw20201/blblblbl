@@ -189,6 +189,27 @@ internal const val NAVIGATION_LENS_SHADER = """
     }
 """
 
+/** Geometry/optics only: changing the recorded scene does not change the effect graph.
+ * Native effects snapshot the shader uniforms, so every optical change remains in this key.
+ */
+internal data class NavigationLensEffectKey(
+    val width: Float, val height: Float, val density: Float, val opticalScale: Float,
+    val strength: LensStrength, val cornerRadius: Float, val frosted: Boolean
+)
+
+internal class NavigationLensEffectCache {
+    private var key: NavigationLensEffectKey? = null
+    private var effect: androidx.compose.ui.graphics.RenderEffect? = null
+
+    fun getOrCreate(next: NavigationLensEffectKey,
+        create: () -> androidx.compose.ui.graphics.RenderEffect
+    ): androidx.compose.ui.graphics.RenderEffect {
+        val previous = effect
+        if (key == next && previous != null) return previous
+        return create().also { effect = it; key = next }
+    }
+}
+
 /** The shell expansion strengthens edge refraction; the scene is never globally scaled. */
 internal fun lensRefractionScale(expansion: Float): Float = 1f + 0.2f * expansion.coerceIn(0f, 1f)
 
@@ -217,6 +238,12 @@ fun NavigationGlassSurface(
     val shader = remember {
         if (Build.VERSION.SDK_INT >= 33) RuntimeShader(NAVIGATION_LENS_SHADER) else null
     }
+    val effectCache = remember(shader) { NavigationLensEffectCache() }
+    val frostEffect = remember(density, frosted) {
+        if (frosted && Build.VERSION.SDK_INT >= 31)
+            RenderEffect.createBlurEffect(12f * density, 12f * density, Shader.TileMode.CLAMP)
+        else null
+    }
     // Navigation stays clear; only explicitly frosted title/utility capsules diffuse the scene.
     // API 31/32 retain blur for those capsules without substituting a scaled fake lens.
     // A faint palette tint over the sampled backdrop; the material is carried by the rim, not by an
@@ -244,25 +271,27 @@ fun NavigationGlassSurface(
                 .graphicsLayer {
                     if (Build.VERSION.SDK_INT >= 33 && shader != null) {
                         if (size.width > 0f && size.height > 0f) {
-                            shader.setFloatUniform("viewport", size.width, size.height)
-                            shader.setFloatUniform("density", density)
                             val opticalScale = lensRefractionScale(expansionProgress()) * refractionAmount().coerceIn(0f, 1f)
-                            shader.setFloatUniform("displacement", strength.displacementDp * opticalScale)
-                            shader.setFloatUniform("bevel", strength.bevelDp)
-                            shader.setFloatUniform("saturation", strength.saturation)
-                            shader.setFloatUniform("aberration", strength.aberrationDp * opticalScale)
-                            shader.setFloatUniform("rimGain", strength.rimGain)
-                            shader.setFloatUniform("cornerRadius", cornerRadius.value)
-                            // RenderEffect snapshots shader uniforms: create it AFTER setting them.
-                            // Only this small lens layer invalidates, not the dock's icons or labels.
-                            val lensEffect = RenderEffect.createRuntimeShaderEffect(shader, "scene")
-                            renderEffect = (if (frosted) RenderEffect.createChainEffect(lensEffect,
-                                RenderEffect.createBlurEffect(12f * density, 12f * density, Shader.TileMode.CLAMP))
-                                else lensEffect).asComposeRenderEffect()
+                            val key = NavigationLensEffectKey(size.width, size.height, density,
+                                opticalScale, strength, cornerRadius.value, frosted)
+                            renderEffect = effectCache.getOrCreate(key) {
+                                shader.setFloatUniform("viewport", size.width, size.height)
+                                shader.setFloatUniform("density", density)
+                                shader.setFloatUniform("displacement", strength.displacementDp * opticalScale)
+                                shader.setFloatUniform("bevel", strength.bevelDp)
+                                shader.setFloatUniform("saturation", strength.saturation)
+                                shader.setFloatUniform("aberration", strength.aberrationDp * opticalScale)
+                                shader.setFloatUniform("rimGain", strength.rimGain)
+                                shader.setFloatUniform("cornerRadius", cornerRadius.value)
+                                // Snapshot only when geometry/optics change. A moving live scene
+                                // remains the input; scrolling does not require a new native graph.
+                                val lensEffect = RenderEffect.createRuntimeShaderEffect(shader, "scene")
+                                (if (frostEffect != null) RenderEffect.createChainEffect(lensEffect, frostEffect)
+                                    else lensEffect).asComposeRenderEffect()
+                            }
                         }
                     } else if (frosted && Build.VERSION.SDK_INT >= 31) {
-                        renderEffect = RenderEffect.createBlurEffect(12f * density, 12f * density,
-                            Shader.TileMode.CLAMP).asComposeRenderEffect()
+                        renderEffect = frostEffect?.asComposeRenderEffect()
                     }
                 }
                 .drawWithContent {
