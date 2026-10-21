@@ -15,7 +15,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -54,8 +59,9 @@ fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned
         ShortcutTouchVariant.GentleFloat -> ShortcutTouchPose(
             scale = 0.997f, rotationX = -ny * 0.75f, rotationY = nx * 0.75f)
         ShortcutTouchVariant.FingerTilt -> if (tuned) ShortcutTouchPose(
-            // Preserve the named Lab B choice and damping while making its visual response subtle.
-            scale = 1.003f, rotationX = -ny * 1.25f, rotationY = nx * 1.25f
+            // Lift the whole glass plane; a damped pitch follows the finger without fighting scroll.
+            scale = 1.018f, offsetYDp = -8f,
+            rotationX = -ny * 2.8f, rotationY = nx * 3.2f
         ) else ShortcutTouchPose(
             scale = 0.975f, offsetXDp = nx * 2f, offsetYDp = -4f + ny * 2f,
             rotationX = -ny * 4f, rotationY = nx * 4f)
@@ -96,7 +102,8 @@ private class TouchInput {
 internal class ShortcutTouchMotion(
     val gestureModifier: Modifier,
     val visualModifier: Modifier,
-    val refraction: () -> ShortcutRefraction
+    val refraction: () -> ShortcutRefraction,
+    val groundShadowModifier: Modifier = Modifier
 ) {
     val modifier: Modifier = gestureModifier.then(visualModifier)
 }
@@ -124,14 +131,14 @@ internal fun rememberShortcutTouchMotion(
         if (!contactFollow) return legacy
         return legacy.copy(scale = when (variant) {
             ShortcutTouchVariant.GentleFloat -> .997f
-            ShortcutTouchVariant.FingerTilt -> .998f
+            ShortcutTouchVariant.FingerTilt -> 1.015f
             ShortcutTouchVariant.BuoyantSpring -> .996f
         })
     }
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 0.88f
-        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.78f else 0.76f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 0.86f else 0.76f
         ShortcutTouchVariant.BuoyantSpring -> 0.55f
     }
     val target = when {
@@ -141,15 +148,21 @@ internal fun rememberShortcutTouchMotion(
         else -> ShortcutTouchPose()
     }
     // Compose's animation clock applies the system duration scale, including slow scales.
-    val spec = if (input.pressed) tween<Float>(85) else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
+    val pressDuration = if (variant == ShortcutTouchVariant.FingerTilt && tuned) 95 else 85
+    val spec = if (input.pressed) tween<Float>(pressDuration) else spring(dampingRatio = damping, stiffness = Spring.StiffnessMedium)
+    // Retarget tilt rapidly while the finger travels; the slower pickup only runs once.
+    val followSpec = if (input.pressed && variant == ShortcutTouchVariant.FingerTilt && tuned)
+        tween<Float>(48) else spec
     val scale = animateFloatAsState(target.scale, spec, label = "shortcut_scale")
-    val dx = animateFloatAsState(target.offsetXDp, spec, label = "shortcut_x")
+    val dx = animateFloatAsState(target.offsetXDp, followSpec, label = "shortcut_x")
     val dy = animateFloatAsState(target.offsetYDp, spec, label = "shortcut_y")
-    val rx = animateFloatAsState(target.rotationX, spec, label = "shortcut_rx")
-    val ry = animateFloatAsState(target.rotationY, spec, label = "shortcut_ry")
+    val rx = animateFloatAsState(target.rotationX, followSpec, label = "shortcut_rx")
+    val ry = animateFloatAsState(target.rotationY, followSpec, label = "shortcut_ry")
     val liftTarget = when {
         !animate -> 0f
-        frozenPose != null -> (abs(1f - frozenPose.scale) / abs(1f - currentTarget(0f, 0f).scale).coerceAtLeast(.0001f)).coerceIn(0f, 1f)
+        frozenPose != null -> if (variant == ShortcutTouchVariant.FingerTilt && tuned)
+            (-frozenPose.offsetYDp / 8f).coerceIn(0f, 1f) else
+            (abs(1f - frozenPose.scale) / abs(1f - currentTarget(0f, 0f).scale).coerceAtLeast(.0001f)).coerceIn(0f, 1f)
         input.pressed -> 1f
         else -> 0f
     }
@@ -166,7 +179,7 @@ internal fun rememberShortcutTouchMotion(
         else animatedContact.value.coerceIn(0f, 1f)
     val maximumLift = when (variant) {
         ShortcutTouchVariant.GentleFloat -> 1.5f
-        ShortcutTouchVariant.FingerTilt -> if (tuned) 1.5f else 4f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) 8f else 4f
         ShortcutTouchVariant.BuoyantSpring -> 1.5f
     }
     fun visibleLift(): Float = when {
@@ -252,6 +265,23 @@ internal fun rememberShortcutTouchMotion(
             }
         } finally { input.reset() }
     }
+    // Draw separately under the plane in the original slot; never inside the tilted clip.
+    val groundShadow = if (variant == ShortcutTouchVariant.FingerTilt && tuned && followup)
+        Modifier.drawBehind {
+            val amount = visibleLift()
+            if (amount > 0.001f) {
+                val inset = 5.dp.toPx()
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(
+                        Color(0xFF8EACD0).copy(alpha = 0.20f * amount),
+                        Color(0xFF101526).copy(alpha = 0.46f * amount)
+                    )),
+                    topLeft = Offset(inset, 4.dp.toPx()),
+                    size = Size((size.width - 2f * inset).coerceAtLeast(0f), (size.height - 2.dp.toPx()).coerceAtLeast(0f)),
+                    cornerRadius = CornerRadius(30.dp.toPx())
+                )
+            }
+        } else Modifier
     val visualModifier = Modifier.graphicsLayer {
         val immediate = animate && input.pressed && frozenPose == null
         val targetScale = currentTarget(0f, 0f).scale
@@ -270,7 +300,9 @@ internal fun rememberShortcutTouchMotion(
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         // Keep the ground shadow flat. Native round-rect outlines otherwise use
         // tilted vertex Z as extra caster height, producing very long penumbrae.
-        shadowElevation = if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
+        shadowElevation = if (variant == ShortcutTouchVariant.FingerTilt && tuned)
+            (1.2f + visibleLift() * 9f).dp.toPx()
+            else if (contactFollow) (.8f - .6f * contactValue()).dp.toPx()
             else ((if (animate) 0.45f else 0f) + visibleLift() * 1.1f).dp.toPx()
         shape = if (tuned && followup) ShortcutFollowupCardShape else if (tuned) ShortcutTunedCardShape else RoundedCornerShape(18.dp)
         clip = false
@@ -280,7 +312,7 @@ internal fun rememberShortcutTouchMotion(
         cameraDistance = (if (tuned) 800f * (118f / 190f) else 16f).dp.toPx()
         clip = false
     }
-    return ShortcutTouchMotion(gestureModifier, visualModifier) {
+    return ShortcutTouchMotion(gestureModifier, visualModifier, refraction = {
         // Shader touch uniforms are normalized card-local coordinates, not tilt angles.
         // Feed the actual finger position so every press location produces a consistent lens.
         // Keep that point through release while lift animates down; reset() only clears pressed.
@@ -293,6 +325,8 @@ internal fun rememberShortcutTouchMotion(
             // Contact starts clear: unlike the bevel kick, frost follows actual separation.
             frostLift = if (contactFollow) SHORTCUT_CONTACT_REST_SOFTNESS else if (animate) lift.value.coerceIn(0f, 1f) else 0f,
             contact = if (contactFollow) contactValue() else 0f,
-            contactFollow = contactFollow)
-    }
+            contactFollow = contactFollow,
+            pitch = if (animate && variant == ShortcutTouchVariant.FingerTilt) rx.value else 0f,
+            roll = if (animate && variant == ShortcutTouchVariant.FingerTilt) ry.value else 0f)
+    }, groundShadowModifier = groundShadow)
 }

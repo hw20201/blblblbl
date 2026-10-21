@@ -33,6 +33,8 @@ internal object ShortcutFollowupParameters {
 internal val ShortcutFollowupCardShape = RoundedCornerShape(ShortcutTunedParameters.lengthDp(60f).dp)
 
 /** Latest material snapshot; corrected sampling coordinates and physical-pixel grain.
+ * Lens-edge profile adapted from Backdrop, Copyright 2025 Kyant (Apache-2.0).
+ * Modified for Nexus bounded refraction; see THIRD_PARTY_NOTICES.md and third_party/backdrop/LICENSE.
  * The original 1.0.26 shader remains intact as a reproducible before reference.
  */
 internal const val SHORTCUT_REFRACTIVE_SHADER = """
@@ -41,6 +43,7 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     uniform float2 inputOrigin;
     uniform float2 inputViewport;
     uniform float bend;
+    uniform float dark;
     uniform float density;
     uniform float radius;
     uniform float exponent;
@@ -58,6 +61,8 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
     uniform float lift;
     uniform float motionLift;
     uniform float2 touch;
+    uniform float pitch;
+    uniform float roll;
     uniform float contact;
     uniform float contactMode;
     float2 bounded(float2 p) { return clamp(p, float2(0.5), inputViewport - float2(0.5)); }
@@ -113,14 +118,22 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         // Smooth saturation avoids the hard plateau in min(raw, cap).
         float maxDisplacement = 8.5 * 0.62105263;
         float rawDisplacement = edgeFactor * distortion * 80.0 * 0.62105263 * (1.0 + motionLift * 0.45 * (1.0 - contactMode));
+        // Backdrop (Kyant, Apache-2.0) lens profile: circleMap(x)=1-sqrt(1-x*x).
+        // Only the normalised curve is adapted: preserve our scene sampling, finite
+        // displacement cap, contact dent and single AGSL pass (no second capture).
+        float lensT = clamp(1.0 - depth / max(edgeWidth, 0.01), 0.0, 1.0);
+        float lensCurve = 1.0 - sqrt(max(0.0, 1.0 - lensT * lensT));
         float dispDp = maxDisplacement * (1.0 - exp(-rawDisplacement / maxDisplacement));
+        dispDp *= mix(0.74, 1.0, lensCurve);
         float rimLimit = min(edgeWidth * 0.6, 18.0 * 0.62105263);
         float rimRaw = edgeStrength * distortion * 80.0 * 0.62105263 * (1.0 - 1.0 / max(ior, 1.001)) * 2.0;
         dispDp += rimLimit * (1.0 - exp(-rimRaw / max(rimLimit, 0.001))) * rim;
         float2 normal = sdfNormal(dp);
         // Android/Compose and this backdrop both use downward +Y. No second Y inversion.
-        float tx = -touch.y * motionLift * 0.15707963;
-        float ty = touch.x * motionLift * 0.15707963;
+        // Actual Compose pose, not an unrelated nine-degree touch estimate, drives the
+        // optical normal during contact-follow. Legacy fixtures retain their old mapping.
+        float tx = clamp(pitch * 0.017453293 - touch.y * motionLift * 0.15707963 * (1.0 - contactMode), -0.15707963, 0.15707963);
+        float ty = clamp(roll * 0.017453293 + touch.x * motionLift * 0.15707963 * (1.0 - contactMode), -0.15707963, 0.15707963);
         float3 surface = normalize(float3(sin(ty), -sin(tx) * cos(ty), cos(tx) * cos(ty)));
         float3 transmitted = refract(float3(0.0, 0.0, -1.0), surface, 1.0 / max(ior, 1.001));
         float2 tiltOffset = transmitted.xy / max(-transmitted.z, 0.15) * (thick + distortion * 80.0 * 0.62105263) * density;
@@ -129,6 +142,8 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         // The footprint is compact and never paints an invented glow or texture.
         float2 dentOffset = contactDelta / contactRadius * contactMask * 1.4 * density;
         float2 uv = p + (tiltOffset * mix(1.0, 0.12, contactMode) + dentOffset) * bend;
+        // The replay layer already inverse-projects the background into the tilted
+        // card plane. Only refract it here; a second homography would drift the scene.
         off *= bend;
         float chroma = clamp(dispersion * 0.02, 0.0, 0.35);
         half4 base = sampleBlur(uv + off * (1.0 - 0.2 * chroma), sigma);
@@ -147,6 +162,16 @@ internal const val SHORTCUT_REFRACTIVE_SHADER = """
         if (fres > 0.001 && bend > 0.0) {
             half3 reflection = backdrop.eval(bounded(uv - off * 0.35)).rgb;
             base.rgb = mix(base.rgb, reflection, fres * facing * 0.18 * bend);
+        }
+        // Directional specular rim, not an opaque fill: visible on light AND dark scenes.
+        // Inspired by Backdrop's normal/light-dot highlight; amplitude follows pickup.
+        float2 lightDirection = normalize(float2(-0.55 + sin(ty) * 3.0, -0.83 - sin(tx) * 3.0));
+        float lightFacing = clamp(dot(normal, lightDirection), 0.0, 1.0);
+        float glint = pow(rim, 6.0) * pow(lightFacing, 3.0) * (0.065 + motionLift * 0.17);
+        base.rgb = mix(base.rgb, half3(base.a), glint);
+        if (dark > 0.5) {
+            float coolReturn = pow(rim, 7.0) * clamp(normal.y * 0.5 + 0.1, 0.0, 1.0) * (0.03 + motionLift * 0.09);
+            base.rgb = mix(base.rgb, half3(0.38, 0.62, 0.88) * base.a, coolReturn);
         }
         return base;
     }
@@ -169,7 +194,9 @@ internal class ShortcutRefractiveOptics {
         val margin = marginPx.takeIf { it.isFinite() }?.coerceIn(0f, 64f * d) ?: 0f
         fun bounded(v: Float, min: Float = 0f) = if (v.isFinite()) v.coerceIn(min, 1f) else 0f
         val r = refraction.copy(lift = bounded(refraction.lift), x = bounded(refraction.x, -1f),
-            y = bounded(refraction.y, -1f), frostLift = bounded(refraction.frostLift), contact = bounded(refraction.contact))
+            y = bounded(refraction.y, -1f), frostLift = bounded(refraction.frostLift), contact = bounded(refraction.contact),
+            pitch = (refraction.pitch.takeIf { it.isFinite() } ?: 0f).coerceIn(-8f, 8f),
+            roll = (refraction.roll.takeIf { it.isFinite() } ?: 0f).coerceIn(-8f, 8f))
         val next = Cache(w, h, d, margin, dark, bend, r)
         if (next == cache) return effect
         val params = ShortcutFollowupParameters.resolve(w / d, h / d, d)
@@ -177,6 +204,7 @@ internal class ShortcutRefractiveOptics {
         shader.setFloatUniform("inputOrigin", margin, margin)
         shader.setFloatUniform("inputViewport", w + margin * 2f, h + margin * 2f)
         shader.setFloatUniform("bend", if (bend) 1f else 0f)
+        shader.setFloatUniform("dark", if (dark) 1f else 0f)
         shader.setFloatUniform("density", d)
         shader.setFloatUniform("radius", params.radiusDp)
         shader.setFloatUniform("exponent", params.squircle)
@@ -194,6 +222,8 @@ internal class ShortcutRefractiveOptics {
         shader.setFloatUniform("lift", r.frostLift)
         shader.setFloatUniform("motionLift", r.lift)
         shader.setFloatUniform("touch", r.x, r.y)
+        shader.setFloatUniform("pitch", r.pitch)
+        shader.setFloatUniform("roll", r.roll)
         shader.setFloatUniform("contact", r.contact)
         shader.setFloatUniform("contactMode", if (r.contactFollow) 1f else 0f)
         effect = RenderEffect.createRuntimeShaderEffect(shader, "backdrop").asComposeRenderEffect()

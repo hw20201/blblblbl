@@ -397,16 +397,9 @@ fun LoonShortcutCard(
         frozenPose = previewPose,
         onPickupChanged = onPickupChanged
     )
-    val basePressModifier = modifier
-        .height(118.dp)
-        .testTag("shortcut-card-$title")
-    val pressModifier = if (touchVariant == null || isEditing) {
-        basePressModifier.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
-            haptic.lightTick()
-            onClick()
-        }
-    } else {
-        basePressModifier
+    val experimental = touchVariant != null && !isEditing
+    val slotModifier = if (experimental) {
+        modifier.height(118.dp).testTag("shortcut-card-$title")
             .then(touchMotion.gestureModifier)
             .clickable(
                 interactionSource = experimentalInteractions,
@@ -416,36 +409,50 @@ fun LoonShortcutCard(
                 haptic.lightTick()
                 onClick()
             }
-            .then(touchMotion.visualModifier)
-    }
-
-    // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.
-    if (GlassDefaults.enabled) {
-        GlassSurface(
-            modifier = pressModifier,
-            shape = RoundedCornerShape(GlassRadius.card),
-            lens = lens,
-            blurEnabled = blurEnabled,
-            shortcutContactFrost = true,
-            shortcutRefraction = touchMotion.refraction
-        ) {
-            ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+    } else modifier.height(118.dp).testTag("shortcut-card-$title")
+    val planeSize = Modifier.fillMaxWidth().height(118.dp)
+    val pressModifier = if (experimental) {
+        planeSize.then(touchMotion.visualModifier)
+    } else {
+        planeSize.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+            haptic.lightTick()
+            onClick()
         }
-        return
     }
 
-    Surface(
-        modifier = pressModifier
-            .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
-            .clip(RoundedCornerShape(18.dp))
-            .border(
-                width = 0.5.dp,
-                color = LoonCardBorder,
-                shape = RoundedCornerShape(18.dp)
-            ),
-        color = LoonCard
-    ) {
-        ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+    // The outer slot owns position/z-index; the glass child alone moves upward.
+    // The independent underlay stays in place to show physical separation in both themes.
+    Box(modifier = slotModifier) {
+        if (GlassDefaults.enabled && touchVariant == ShortcutTouchVariant.FingerTilt && !isEditing) {
+            Box(Modifier.matchParentSize().then(touchMotion.groundShadowModifier))
+        }
+        // Glass branch keeps the exact same geometry so the dashboard grid is unaffected.
+        if (GlassDefaults.enabled) {
+            GlassSurface(
+                modifier = pressModifier,
+                shape = RoundedCornerShape(GlassRadius.card),
+                lens = lens,
+                blurEnabled = blurEnabled,
+                shortcutContactFrost = true,
+                shortcutRefraction = touchMotion.refraction
+            ) {
+                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+            }
+        } else {
+            Surface(
+                modifier = pressModifier
+                    .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
+                    .clip(RoundedCornerShape(18.dp))
+                    .border(
+                        width = 0.5.dp,
+                        color = LoonCardBorder,
+                        shape = RoundedCornerShape(18.dp)
+                    ),
+                color = LoonCard
+            ) {
+                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+            }
+        }
     }
 }
 

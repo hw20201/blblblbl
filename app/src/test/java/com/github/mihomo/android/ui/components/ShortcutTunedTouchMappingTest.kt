@@ -34,20 +34,22 @@ import kotlin.math.abs
 class ShortcutTunedTouchMappingTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun tunedFingerTiltUsesSubtleLabBPoseAndDirectionalRotations() {
+    @Test fun tunedFingerTiltRisesAndFollowsFingerInEitherTheme() {
         val center = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, 0f, 0f, tuned = true)
-        assertEquals(1.003f, center.scale, 0f)
+        assertEquals(1.018f, center.scale, 0f)
         assertEquals(0f, center.offsetXDp, 0f)
-        assertEquals(0f, center.offsetYDp, 0f)
+        assertEquals(-8f, center.offsetYDp, 0f)
         listOf(-1f, 1f).forEach { x ->
             val pose = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, x, 0f, tuned = true)
             assertEquals(0f, pose.rotationX, 0f)
-            assertEquals(1.25f * x, pose.rotationY, 0f)
+            assertEquals(3.2f * x, pose.rotationY, 0f)
+            assertEquals(-8f, pose.offsetYDp, 0f)
         }
         listOf(-1f, 1f).forEach { y ->
             val pose = shortcutTouchTarget(ShortcutTouchVariant.FingerTilt, 0f, y, tuned = true)
-            assertEquals(-1.25f * y, pose.rotationX, 0f)
+            assertEquals(-2.8f * y, pose.rotationX, 0f)
             assertEquals(0f, pose.rotationY, 0f)
+            assertEquals(-8f, pose.offsetYDp, 0f)
         }
     }
 
