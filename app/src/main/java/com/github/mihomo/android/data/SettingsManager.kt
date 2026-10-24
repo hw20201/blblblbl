@@ -3,7 +3,12 @@ package com.github.mihomo.android.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.github.mihomo.android.ui.components.ShortcutTouchVariant
+import com.github.mihomo.android.ui.glass.GlassOptics
+import com.github.mihomo.android.ui.glass.GlassSettings
+import com.github.mihomo.android.ui.glass.GlassSurfaceCategory
 import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 enum class PerAppProxyMode {
     DISABLED, WHITELIST, BLACKLIST
@@ -23,7 +28,18 @@ enum class ThemeMode {
 private const val KEY_GLASS_PALETTE = "glass_palette"
 private const val DEFAULT_GLASS_PALETTE = "cream"
 
+private val glassSettingsJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
 class SettingsManager(context: Context) {
+    private companion object {
+        const val KEY_GLASS_SETTINGS = "glass_settings_v1"
+        const val KEY_SHORTCUT_GLASS_LEVEL = "shortcut_glass_level"
+        const val KEY_SHORTCUT_GLASS_REFRACTION = "shortcut_glass_refraction_dp"
+        const val KEY_SHORTCUT_GLASS_DISPERSION = "shortcut_glass_dispersion_dp"
+        const val KEY_SHORTCUT_GLASS_EDGE_WIDTH = "shortcut_glass_edge_width_dp"
+        const val KEY_SHORTCUT_GLASS_EDGE_LIGHT = "shortcut_glass_edge_light"
+    }
+
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
 
     var selectedProfileId: String?
@@ -182,9 +198,45 @@ class SettingsManager(context: Context) {
         get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
         set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
 
-    var shortcutGlassLevel: ShortcutGlassLevel
-        get() = ShortcutGlassLevel.fromPreference(prefs.getString("shortcut_glass_level", null))
-        set(value) = prefs.edit().putString("shortcut_glass_level", value.name).apply()
+    /** Glass effects live under one typed JSON preference; legacy split keys migrate on first write. */
+    var glassSettings: GlassSettings
+        get() {
+            val raw = prefs.getString(KEY_GLASS_SETTINGS, null)
+            if (raw.isNullOrBlank()) return legacyGlassSettings()
+            return runCatching { glassSettingsJson.decodeFromString<GlassSettings>(raw).clamped() }
+                .getOrElse { legacyGlassSettings() }
+        }
+        set(value) {
+            val safe = value.clamped()
+            prefs.edit()
+                .putString(KEY_GLASS_SETTINGS, glassSettingsJson.encodeToString(safe))
+                .remove(KEY_SHORTCUT_GLASS_LEVEL)
+                .remove(KEY_SHORTCUT_GLASS_REFRACTION)
+                .remove(KEY_SHORTCUT_GLASS_DISPERSION)
+                .remove(KEY_SHORTCUT_GLASS_EDGE_WIDTH)
+                .remove(KEY_SHORTCUT_GLASS_EDGE_LIGHT)
+                .apply()
+        }
+
+    fun resetGlassSettings() { glassSettings = GlassSettings.DEFAULT }
+
+    private fun legacyGlassSettings(): GlassSettings {
+        val hasOldShortcutOptics = listOf(
+            KEY_SHORTCUT_GLASS_REFRACTION, KEY_SHORTCUT_GLASS_DISPERSION,
+            KEY_SHORTCUT_GLASS_EDGE_WIDTH, KEY_SHORTCUT_GLASS_EDGE_LIGHT
+        ).any(prefs::contains)
+        val oldOptics = if (hasOldShortcutOptics) GlassOptics(
+            refractionDp = prefs.getFloat(KEY_SHORTCUT_GLASS_REFRACTION, GlassOptics.DEFAULT_REFRACTION_DP),
+            dispersionDp = prefs.getFloat(KEY_SHORTCUT_GLASS_DISPERSION, GlassOptics.DEFAULT_DISPERSION_DP),
+            edgeWidthDp = prefs.getFloat(KEY_SHORTCUT_GLASS_EDGE_WIDTH, GlassOptics.DEFAULT_EDGE_WIDTH_DP),
+            edgeLightMultiplier = prefs.getFloat(KEY_SHORTCUT_GLASS_EDGE_LIGHT, GlassOptics.DEFAULT_EDGE_LIGHT_MULTIPLIER)
+        ).clamped() else null
+        val level = ShortcutGlassLevel.fromPreference(prefs.getString(KEY_SHORTCUT_GLASS_LEVEL, null))
+        return GlassSettings.DEFAULT.copy(
+            surfaceOverrides = oldOptics?.let { mapOf(GlassSurfaceCategory.SHORTCUT_CARDS to it) } ?: emptyMap(),
+            shortcutGlassLevel = level
+        )
+    }
 
     /** Selected dashboard shortcut touch motion style. Invalid stored values fall back safely. */
     var shortcutTouchVariant: ShortcutTouchVariant

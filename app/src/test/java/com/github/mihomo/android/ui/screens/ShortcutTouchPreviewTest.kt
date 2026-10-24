@@ -45,7 +45,8 @@ class ShortcutTouchPreviewTest {
     @Test fun springDark() = render(ShortcutTouchVariant.BuoyantSpring, true)
 
     private fun render(variant: ShortcutTouchVariant, dark: Boolean) {
-        val preview = mutableStateOf<ShortcutTouchPreview?>(ShortcutTouchPreview("Nodes", ShortcutTouchPose()))
+        val rest = shortcutLiveRestingPose(variant)
+        val preview = mutableStateOf<ShortcutTouchPreview?>(ShortcutTouchPreview("Nodes", rest))
         content(variant, dark, preview)
         val tag = compose.onNodeWithTag("shortcut-card-Nodes")
         compose.waitForIdle()
@@ -61,11 +62,11 @@ class ShortcutTouchPreviewTest {
         }
         val rebound = ShortcutTouchPose(
             scale = 1f + (1f - following.scale) * overshoot,
-            offsetXDp = -following.offsetXDp * overshoot,
-            offsetYDp = -following.offsetYDp * overshoot,
+            offsetXDp = rest.offsetXDp - (following.offsetXDp - rest.offsetXDp) * overshoot,
+            offsetYDp = rest.offsetYDp - (following.offsetYDp - rest.offsetYDp) * overshoot,
             rotationX = -following.rotationX * overshoot,
             rotationY = -following.rotationY * overshoot)
-        val frames = listOf(ShortcutTouchPose(), pressed, following, rebound, ShortcutTouchPose())
+        val frames = listOf(rest, pressed, following, rebound, rest)
         val baseline = screenshot()
         frames.forEachIndexed { index, pose ->
             compose.runOnIdle { preview.value = ShortcutTouchPreview("Nodes", pose) }

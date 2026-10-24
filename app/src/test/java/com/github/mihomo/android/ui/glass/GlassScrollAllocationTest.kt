@@ -15,7 +15,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class GlassScrollAllocationTest {
     private val base = NavigationLensEffectKey(180f, 64f, 1f, 1f,
-        LensStrength.STANDARD, 32f, false)
+        LensStrength.STANDARD, 32f, false, GlassOptics.DEFAULT)
 
     @Test fun stationaryOpticsReuseOneNativeEffectAcross240SceneFrames() {
         val cache = NavigationLensEffectCache()
@@ -33,7 +33,13 @@ class GlassScrollAllocationTest {
         val variants = listOf(base.copy(width = 181f), base.copy(height = 65f),
             base.copy(density = 2f), base.copy(opticalScale = 1.2f),
             base.copy(strength = LensStrength.STRONG), base.copy(cornerRadius = 24f),
-            base.copy(frosted = true))
+            base.copy(frosted = true),
+            // RuntimeShader uniforms are snapshotted into RenderEffect; each optical control
+            // must invalidate the cache or the preview can keep showing stale settings.
+            base.copy(optics = GlassOptics.DEFAULT.copy(refractionDp = 10f)),
+            base.copy(optics = GlassOptics.DEFAULT.copy(dispersionDp = 10f)),
+            base.copy(optics = GlassOptics.DEFAULT.copy(edgeWidthDp = 16f)),
+            base.copy(optics = GlassOptics.DEFAULT.copy(edgeLightMultiplier = 1.8f)))
         for (variant in variants) {
             val cache = NavigationLensEffectCache()
             val create = { RenderEffect.createOffsetEffect(0f, 0f).asComposeRenderEffect() }

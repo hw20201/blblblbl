@@ -13,7 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.SettingsManager
@@ -22,6 +25,9 @@ import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassPalettePicker
 import com.github.mihomo.android.ui.glass.GlassPaletteSpec
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.mihomo.android.ui.glass.recordNavigationScene
+import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -42,27 +48,27 @@ fun AppearanceScreen(
     val lang = LocalAppLanguage.current
     var currentLanguage by remember { mutableStateOf(settingsManager.appLanguage) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
-    ) {
-        // Cupertino Navigation Bar
-        CupertinoNavBar(
-            title = AppStrings.get("settings_appearance", lang),
-            showBackButton = true,
-            onBack = onBack
-        )
+    val titleScene = rememberNavigationLens()
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
 
-        // Scrollable content
+    // Keep one full-screen scroll surface under a pinned, genuinely translucent title capsule.
+    // Its measured inset leaves the first settings group clear of both the status bar and title.
+    Box(
+        Modifier.fillMaxSize()
+            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
+            .testTag("appearance-edge-to-edge-root")
+    ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+            modifier = Modifier.fillMaxSize()
+                .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene) else Modifier)
+                .testTag("appearance-scroll-content")
                 .bounceOverscroll()
                 .verticalScroll(rememberScrollState())
-                .padding(vertical = 12.dp),
+                .padding(
+                    top = headerInset + 12.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp
+                ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             // Section 1: 主题模式
@@ -210,6 +216,23 @@ fun AppearanceScreen(
                     }
                 )
             }
+        }
+        Box(
+            Modifier.fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .onSizeChanged { headerHeightPx = it.height }
+                .zIndex(1f)
+                .testTag("appearance-pinned-header")
+        ) {
+            CupertinoNavBar(
+                title = AppStrings.get("settings_appearance", lang),
+                showBackButton = true,
+                onBack = onBack,
+                frosted = true,
+                titleFrostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA,
+                titleLens = titleScene
+            )
         }
     }
 }

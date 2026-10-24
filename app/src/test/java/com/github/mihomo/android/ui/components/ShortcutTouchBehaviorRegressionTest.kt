@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
@@ -160,7 +161,13 @@ class ShortcutTouchBehaviorRegressionTest {
                         LoonShortcutCard(
                             modifier = Modifier.size(width = 174.dp, height = 118.dp),
                             title = "DragCapture", subtitle = "", icon = {
-                                Box(Modifier.size(1.dp).onGloballyPositioned { cardCoordinates = it })
+                                // The icon slot sits at the card's lower-right. Place its
+                                // probe at the card's visual centre so this assertion measures
+                                // bounded card travel, not perspective displacement at an edge.
+                                Box(Modifier.fillMaxSize()) {
+                                    Box(Modifier.offset(x = (-50).dp, y = (-22).dp).size(1.dp)
+                                        .onGloballyPositioned { cardCoordinates = it })
+                                }
                             }, onClick = { clicks++ }
                         )
                         LoonShortcutCard(

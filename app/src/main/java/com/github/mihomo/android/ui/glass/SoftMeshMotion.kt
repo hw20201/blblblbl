@@ -14,7 +14,7 @@ internal data class MeshPose(
 /**
  * Stateless, deterministic motion for a collection of independently-seeded soft color blobs.
  * Times below zero are treated as zero. Each blob follows a sequence of stratified targets,
- * changing targets every 33 seconds (inside the requested 24–42 second broad-motion range); quintic smootherstep eases each segment with zero
+ * changing targets every 24 seconds (inside the requested 24–42 second broad-motion range); cubic smoothstep eases each segment with zero
  * velocity at both ends. This avoids abrupt frame-to-frame changes without a short looping orbit.
  *
  * Sampling uses only integer hashing and scalar math: no Random, collections, or per-sample
@@ -31,7 +31,7 @@ internal class SoftMeshMotion(seed: Long) {
         val t = visibleTime + phase * SEGMENT_SECONDS
         val segment = floor(t / SEGMENT_SECONDS).toLong()
         val fraction = (t / SEGMENT_SECONDS - segment).toFloat()
-        val eased = fraction * fraction * fraction * (fraction * (fraction * 6f - 15f) + 10f)
+        val eased = fraction * fraction * (3f - 2f * fraction)
 
         val x = interpolate(target(safeIndex, segment, X), target(safeIndex, segment + 1L, X), eased)
         val y = interpolate(target(safeIndex, segment, Y), target(safeIndex, segment + 1L, Y), eased)
@@ -68,7 +68,7 @@ internal class SoftMeshMotion(seed: Long) {
     private fun unitFloat(bits: Long): Float = ((bits ushr 40) and 0xFFFFFFL).toFloat() / 16_777_216f
 
     private companion object {
-        const val SEGMENT_SECONDS = 33.0
+        const val SEGMENT_SECONDS = 24.0
         const val X = 0
         const val Y = 1
         const val SCALE_X = 2

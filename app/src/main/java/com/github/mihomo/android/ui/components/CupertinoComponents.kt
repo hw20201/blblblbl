@@ -18,6 +18,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -25,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -42,10 +48,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassRadius
 import com.github.mihomo.android.ui.glass.GlassSurface
+import com.github.mihomo.android.ui.glass.DEFAULT_PAGE_TITLE_FILL_ALPHA
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.mihomo.android.ui.glass.NavigationLensState
+import com.github.mihomo.android.ui.glass.PageTitleGlass
+import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -400,38 +412,35 @@ fun CupertinoNavBar(
     showBackButton: Boolean = false,
     backLabel: String? = "返回",
     onBack: (() -> Unit)? = null,
-    actions: (@Composable RowScope.() -> Unit)? = null
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    frosted: Boolean = false,
+    titleFrostedFillAlpha: Float = DEFAULT_PAGE_TITLE_FILL_ALPHA,
+    titleLens: NavigationLensState? = null,
+    showTitleCapsule: Boolean = true
 ) {
     val haptic = rememberIosHaptic()
+    val effectiveTitleFillAlpha = if (frosted) {
+        minOf(titleFrostedFillAlpha, FROSTED_PAGE_TITLE_FILL_ALPHA)
+    } else {
+        titleFrostedFillAlpha
+    }
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = LoonBg,
-        shadowElevation = 0.dp
-    ) {
+    // The toolbar is only a transparent layout layer. The title capsule is the sole
+    // glass surface; never paint a full-width strip behind the back/action controls.
+    Box(modifier = modifier.fillMaxWidth().testTag("navigation-bar-transparent-row")) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(horizontal = 8.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Left: Back button or empty placeholder
-                Box(
-                    modifier = Modifier.widthIn(min = 60.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
+                Box(modifier = Modifier.widthIn(min = 60.dp), contentAlignment = Alignment.CenterStart) {
                     if (showBackButton && onBack != null) {
                         Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    haptic.lightTick()
-                                    onBack()
-                                }
-                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
+                                haptic.lightTick()
+                                onBack()
+                            }.padding(horizontal = 6.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -442,58 +451,100 @@ fun CupertinoNavBar(
                             )
                             if (!backLabel.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = backLabel,
-                                    color = IosBlue,
-                                    fontSize = 15.5.sp,
-                                    fontWeight = FontWeight.Normal
-                                )
+                                Text(backLabel, color = IosBlue, fontSize = 15.5.sp, fontWeight = FontWeight.Normal)
                             }
                         }
                     }
                 }
 
-                // Center: Title
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = title,
-                        color = LoonTextPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.3).sp,
-                        maxLines = 1
-                    )
-                    if (!subtitle.isNullOrBlank()) {
-                        Text(
-                            text = subtitle,
-                            color = LoonTextSecondary,
-                            fontSize = 11.sp,
-                            maxLines = 1
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    val titleContent: @Composable BoxScope.() -> Unit = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = title,
+                                color = LoonTextPrimary,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = (-0.3).sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (!subtitle.isNullOrBlank()) {
+                                Text(
+                                    text = subtitle,
+                                    color = LoonTextSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    if (showTitleCapsule) {
+                        PageTitleGlass(
+                            lens = titleLens ?: rememberNavigationLens(),
+                            modifier = Modifier.widthIn(max = 240.dp).testTag("navigation-title-capsule"),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = if (subtitle.isNullOrBlank()) 8.dp else 5.dp),
+                            showRim = true,
+                            frostedFillAlpha = effectiveTitleFillAlpha,
+                            content = titleContent
                         )
+                    } else {
+                        Box(modifier = Modifier.testTag("navigation-title-plain"), content = titleContent)
                     }
                 }
 
-                // Right: Actions
-                Box(
-                    modifier = Modifier.widthIn(min = 60.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
+                Box(modifier = Modifier.widthIn(min = 60.dp), contentAlignment = Alignment.CenterEnd) {
                     if (actions != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            content = actions
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, content = actions)
                     }
                 }
             }
-
-            // Hairline separator underneath
-            HorizontalDivider(color = LoonSeparator, thickness = 0.5.dp)
+            // No divider: the page scene remains visually continuous across the title row.
         }
     }
+}
+
+/** Shared rounded glass search field for shortcut destination pages. */
+@Composable
+fun ShortcutSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(18.dp)
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = { Text(placeholder, color = LoonTextMuted, fontSize = 13.sp) },
+        leadingIcon = {
+            Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(18.dp))
+        },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
+                }
+            }
+        },
+        singleLine = true,
+        shape = shape,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = LoonCard.copy(alpha = .72f),
+            unfocusedContainerColor = LoonCard.copy(alpha = .72f),
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            focusedTextColor = LoonTextPrimary,
+            unfocusedTextColor = LoonTextPrimary,
+            cursorColor = IosBlue
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .border(1.dp, Color.White.copy(alpha = .72f), shape)
+            .testTag("shortcut-search-field")
+    )
 }
 
 // =============================================================================

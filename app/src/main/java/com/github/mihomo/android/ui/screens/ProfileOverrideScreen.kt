@@ -89,7 +89,8 @@ fun ProfileOverrideScreen(
                 ) {
                     Text("保存", color = IosBlue, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
-            }
+            },
+            frosted = true
         )
 
         LazyColumn(

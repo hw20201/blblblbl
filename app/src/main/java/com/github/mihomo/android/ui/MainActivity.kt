@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.github.mihomo.android.ui.theme.LocalAppLanguage
 import androidx.lifecycle.lifecycleScope
@@ -46,8 +48,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
-import com.github.mihomo.android.ui.glass.LocalShortcutGlassLevel
+import com.github.mihomo.android.ui.glass.GlassSettings
+import com.github.mihomo.android.ui.glass.GlassSurfaceCategory
+import com.github.mihomo.android.ui.glass.LocalGlassSettings
 import com.github.mihomo.android.ui.glass.GlassPalettes
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.glassPalette
@@ -88,7 +91,8 @@ enum class SubScreen {
     DNS,
     REQUESTS,
     NETWORK_SHARE,
-    APPEARANCE
+    APPEARANCE,
+    GLASS_EFFECTS
 }
 
 /** Persists the current sub-screen across configuration changes. */
@@ -117,6 +121,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pages draw into the system-bar areas; each screen owns its own inset handling.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         settingsManager = SettingsManager(this)
         // Restore the saved palette before the first frame so there is no flash of the default.
         GlassDefaults.palette = GlassPalettes.byKey(settingsManager.glassPaletteKey)
@@ -228,7 +234,7 @@ class MainActivity : ComponentActivity() {
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
-        var shortcutGlassLevel by remember { mutableStateOf(settingsManager.shortcutGlassLevel) }
+        var glassSettings by remember { mutableStateOf(settingsManager.glassSettings) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
         var tunMtu by remember { mutableIntStateOf(settingsManager.tunMtu) }
         var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
@@ -713,11 +719,16 @@ class MainActivity : ComponentActivity() {
             // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled },
             LocalShortcutTouchVariant provides shortcutTouchVariant,
-            LocalShortcutGlassLevel provides shortcutGlassLevel,
+            LocalGlassSettings provides glassSettings,
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
         ProvideSoftMeshMotion(paused = { pagerState.isScrollInProgress || dashboardScrollState.isScrollInProgress }) {
+        val context = LocalContext.current
+        val hasGlassTestBackgrounds = remember(context) {
+            context.resources.getIdentifier("nexus_glass_test_grid", "drawable", context.packageName) != 0
+        }
+        var glassTestBackdropVariant by remember { mutableStateOf("original") }
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
         val subScreenTransitionState = remember {
@@ -728,7 +739,8 @@ class MainActivity : ComponentActivity() {
         NexusGlassBackground(
             modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
             palette = glassPalette,
-            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier
+            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier,
+            testBackdropVariant = if (hasGlassTestBackgrounds && currentTab == 0 && currentSubScreen == null) glassTestBackdropVariant else null
         ) {
         Box(
             modifier = Modifier
@@ -793,7 +805,10 @@ class MainActivity : ComponentActivity() {
                                     shortcutOrder = updated
                                     settingsManager.shortcutOrder = updated
                                 },
-                                glassScene = cardScene
+                                glassScene = cardScene,
+                                testBackdropVariant = glassTestBackdropVariant,
+                                onTestBackdropVariantChange = { glassTestBackdropVariant = it },
+                                showTestBackdropSelector = hasGlassTestBackgrounds
                             )
                         }
                         1 -> {
@@ -882,11 +897,6 @@ class MainActivity : ComponentActivity() {
                                 shortcutTouchVariant = variant
                                 settingsManager.shortcutTouchVariant = variant
                             },
-                            shortcutGlassLevel = shortcutGlassLevel,
-                            onShortcutGlassLevelChanged = { level ->
-                                shortcutGlassLevel = level
-                                settingsManager.shortcutGlassLevel = level
-                            },
                             ipv6Enabled = ipv6Enabled,
                             tunMtu = tunMtu,
                             mipsCongestionController = mipsCongestionController,
@@ -938,7 +948,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
                             onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
-                            onNavigateToDns = { currentSubScreen = SubScreen.DNS }
+                            onNavigateToDns = { currentSubScreen = SubScreen.DNS },
+                            onNavigateToGlassEffects = { currentSubScreen = SubScreen.GLASS_EFFECTS }
                         )
                     }
                 }
@@ -1253,6 +1264,14 @@ class MainActivity : ComponentActivity() {
                                     onBack = { currentSubScreen = null }
                                 )
                             }
+                            SubScreen.GLASS_EFFECTS -> GlassEffectsScreen(
+                                settings = glassSettings,
+                                onSettingsChanged = { updated ->
+                                    glassSettings = updated.clamped()
+                                    settingsManager.glassSettings = glassSettings
+                                },
+                                onBack = { currentSubScreen = null }
+                            )
                             SubScreen.APPEARANCE -> {
                                 val activePalette = glassPalette
                                 AppearanceScreen(

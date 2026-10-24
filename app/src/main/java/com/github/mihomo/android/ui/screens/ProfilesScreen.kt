@@ -164,7 +164,8 @@ fun ProfilesScreen(
                         modifier = Modifier.size(24.dp)
                     )
                 }
-            }
+            },
+            frosted = true
         )
 
         if (profiles.isEmpty()) {
@@ -289,8 +290,8 @@ fun ProfilesScreen(
                                 )
                             }
                             .border(
-                                width = if (isSelected) 1.5.dp else 0.5.dp,
-                                color = if (isSelected) IosBlue else LoonCardBorder,
+                                width = 0.75.dp,
+                                color = LoonCardBorder.copy(alpha = .68f),
                                 shape = RoundedCornerShape(18.dp)
                             )
                             .clip(RoundedCornerShape(18.dp))
@@ -298,12 +299,12 @@ fun ProfilesScreen(
                                 haptic.selection()
                                 onSelectProfile(item)
                             },
-                        color = LoonCard
+                        color = if (isSelected) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .18f else .10f) else LoonCard.copy(alpha = .68f)
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp)
+                                .padding(horizontal = 15.dp, vertical = 14.dp)
                         ) {
                             // Top Row: Active Radio, Title, Tag & Actions
                             Row(
@@ -315,7 +316,7 @@ fun ProfilesScreen(
                                     modifier = Modifier
                                         .size(22.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) IosBlue else Color.Transparent)
+                                        .background(if (isSelected) LoonTextPrimary else Color.Transparent)
                                         .border(
                                             width = if (isSelected) 0.dp else 1.5.dp,
                                             color = if (isSelected) Color.Transparent else LoonTextMuted,
@@ -341,7 +342,7 @@ fun ProfilesScreen(
                                             text = item.name,
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) IosBlue else LoonTextPrimary,
+                                            color = LoonTextPrimary,
                                             maxLines = 1,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
@@ -350,7 +351,7 @@ fun ProfilesScreen(
                                             text = if (item.url != null) "订阅" else "本地",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium,
-                                            color = if (item.url != null) IosBlue else LoonTextSecondary
+                                            color = LoonTextSecondary
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -428,7 +429,8 @@ fun ProfilesScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(LoonBg)
+                                        .background(Color.White.copy(alpha = if (LocalLoonColors.current.isDark) .06f else .48f))
+                                        .border(0.75.dp, Color.White.copy(alpha = .72f), RoundedCornerShape(10.dp))
                                         .padding(10.dp)
                                 ) {
                                     Row(

@@ -160,7 +160,8 @@ fun LogsScreen(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-            }
+            },
+            frosted = true
         )
 
         // Expandable search bar
@@ -174,28 +175,10 @@ fun LogsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
-                OutlinedTextField(
+                ShortcutSearchField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("搜索日志关键字...", fontSize = 13.5.sp, color = LoonTextSecondary) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = LoonCard,
-                        unfocusedContainerColor = LoonCard,
-                        focusedBorderColor = IosBlue,
-                        unfocusedBorderColor = LoonCardBorder
-                    ),
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextSecondary, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
+                    placeholder = "搜索日志关键字..."
                 )
             }
         }

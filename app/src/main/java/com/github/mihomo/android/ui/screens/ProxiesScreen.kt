@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.mihomo.android.ui.glass.FROSTED_SELECTED_GLASS_TINT
 import com.github.mihomo.android.ui.glass.PageTitleGlass
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.glass.recordNavigationScene
@@ -212,12 +214,12 @@ fun ProxiesScreen(
                                         .weight(1f)
                                         .clip(RoundedCornerShape(12.dp))
                                         .border(
-                                            1.dp,
-                                            if (isSel) LoonBlue else LoonCardBorder,
+                                            0.75.dp,
+                                            LoonCardBorder.copy(alpha = if (isSel) .95f else .65f),
                                             RoundedCornerShape(12.dp)
                                         )
                                         .clickable { onViewModeChanged(mode) },
-                                    color = if (isSel) LoonEditBlueBg else LoonCard,
+                                    color = if (isSel) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .22f else .09f) else LoonCard.copy(alpha = .72f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Box(
@@ -228,7 +230,7 @@ fun ProxiesScreen(
                                             text = label,
                                             fontSize = 13.5.sp,
                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSel) LoonBlue else LoonTextPrimary
+                                            color = LoonTextPrimary
                                         )
                                     }
                                 }
@@ -256,12 +258,12 @@ fun ProxiesScreen(
                                         .weight(1f)
                                         .clip(RoundedCornerShape(12.dp))
                                         .border(
-                                            1.dp,
-                                            if (isSel) LoonBlue else LoonCardBorder,
+                                            0.75.dp,
+                                            LoonCardBorder.copy(alpha = if (isSel) .95f else .65f),
                                             RoundedCornerShape(12.dp)
                                         )
                                         .clickable { onNodeColumnsChanged(colCount) },
-                                    color = if (isSel) LoonEditBlueBg else LoonCard,
+                                    color = if (isSel) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .22f else .09f) else LoonCard.copy(alpha = .72f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Box(
@@ -272,7 +274,7 @@ fun ProxiesScreen(
                                             text = label,
                                             fontSize = 13.sp,
                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSel) LoonBlue else LoonTextPrimary
+                                            color = LoonTextPrimary
                                         )
                                     }
                                 }
@@ -509,7 +511,7 @@ fun ProxiesScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                PageTitleGlass(titleScene) { Text(
+                PageTitleGlass(titleScene, frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA) { Text(
                     text = AppStrings.get("proxies_title", lang),
                     color = LoonTextPrimary,
                     fontSize = 28.sp,
@@ -517,7 +519,8 @@ fun ProxiesScreen(
                 ) }
             }
 
-            PageTitleGlass(titleScene, contentPadding = PaddingValues(horizontal = 2.dp)) {
+            PageTitleGlass(titleScene, contentPadding = PaddingValues(horizontal = 2.dp),
+                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Health check button (Pure Lightning Bolt with Animation, no text, no circle background)
                 IconButton(
@@ -571,13 +574,11 @@ fun ProxiesScreen(
                         PageTitleGlass(
                             lens = titleScene,
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                            showRim = false,
+                            frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA,
+                            frostedTint = if (isSelected) FROSTED_SELECTED_GLASS_TINT else null,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = 0.5.dp,
-                                    color = if (isSelected) IosBlue else LoonCardBorder,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
                                 .iosPressable { onSelectGroup(groupName) }
                         ) {
                             Row(
@@ -594,8 +595,7 @@ fun ProxiesScreen(
                                 }
                                 Text(
                                     text = groupName,
-                                    color = if (isSelected && !GlassDefaults.enabled) Color.White
-                                        else if (isSelected) IosBlue else LoonTextPrimary,
+                                    color = LoonTextPrimary,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )

@@ -142,7 +142,8 @@ fun ScriptsScreen(
                         modifier = Modifier.size(22.dp)
                     )
                 }
-            }
+            },
+            frosted = true
         )
 
         if (scripts.isEmpty()) {

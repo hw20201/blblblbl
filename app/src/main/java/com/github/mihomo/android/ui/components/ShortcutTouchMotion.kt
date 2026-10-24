@@ -1,4 +1,6 @@
 package com.github.mihomo.android.ui.components
+import com.github.mihomo.android.ui.glass.GlassMotionTuning
+import com.github.mihomo.android.ui.glass.LocalGlassSettings
 
 import android.animation.ValueAnimator
 import android.database.ContentObserver
@@ -16,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +43,13 @@ import kotlin.math.sqrt
 /** Persisted comparison choices; names are stable preference values. */
 enum class ShortcutTouchVariant { GentleFloat, FingerTilt, BuoyantSpring }
 
+/** The B slab sits visibly above its slot even before contact; press tilt pivots around it. */
+internal const val FINGER_TILT_REST_FLOAT_DP = 6f
+internal val FINGER_TILT_MAX_DEGREES: Float get() = GlassMotionTuning.DEFAULT.effectiveMaxTiltDegrees()
+internal fun shortcutLiveRestingPose(variant: ShortcutTouchVariant): ShortcutTouchPose =
+    if (variant == ShortcutTouchVariant.FingerTilt) ShortcutTouchPose(offsetYDp = -FINGER_TILT_REST_FLOAT_DP)
+    else ShortcutTouchPose()
+
 /** Frozen poses are available only to deterministic local tests, not a running animation clock. */
 data class ShortcutTouchPose(
     val scale: Float = 1f,
@@ -58,7 +69,7 @@ fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned
         ShortcutTouchVariant.GentleFloat -> ShortcutTouchPose(
             scale = 0.997f, rotationX = -ny * 0.75f, rotationY = nx * 0.75f)
         ShortcutTouchVariant.FingerTilt -> if (tuned) ShortcutTouchPose(
-            // Rotate in place: perceived separation is a resting material cue, not a Y jump.
+            // Deterministic legacy-preview pose: live cards use shortcutLiveTouchTarget instead.
             scale = 1f, rotationX = -ny * 6f, rotationY = nx * 6f
         ) else ShortcutTouchPose(
             scale = 0.975f, offsetXDp = nx * 2f, offsetYDp = -4f + ny * 2f,
@@ -69,10 +80,10 @@ fun shortcutTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, tuned
 }
 
 /** Live dock-card response. Stable slot coordinates avoid transform/gesture feedback.
- * A is a quiet lift, B a balanced plate under the contact, C a buoyant lift.
- * Legacy/frozen material comparisons keep their original mapping above.
+ * A rises on press from a neutral rest; B starts elevated and tilts under the contact;
+ * C lifts farther and rebounds with a softer spring. Legacy/frozen comparisons stay unchanged.
  */
-internal fun shortcutLiveTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float): ShortcutTouchPose {
+internal fun shortcutLiveTouchTarget(variant: ShortcutTouchVariant, x: Float, y: Float, motion: GlassMotionTuning = GlassMotionTuning.DEFAULT): ShortcutTouchPose {
     // A soft centre suppresses sensor jitter; normalizing the vector caps diagonal tilt too.
     val radius = sqrt(x * x + y * y)
     val amount = ((radius - .045f) / .955f).coerceIn(0f, 1f)
@@ -80,14 +91,58 @@ internal fun shortcutLiveTouchTarget(variant: ShortcutTouchVariant, x: Float, y:
     val ny = if (radius > 0f) y / radius * amount else 0f
     return when (variant) {
         ShortcutTouchVariant.GentleFloat -> ShortcutTouchPose(
-            scale = 1.004f, offsetYDp = -1.2f, rotationX = -ny * .55f, rotationY = nx * .55f)
+            scale = 1.008f, offsetYDp = -2.8f, rotationX = -ny * .55f, rotationY = nx * .55f)
         ShortcutTouchVariant.FingerTilt -> ShortcutTouchPose(
-            // Android/CSS y-down convention: the touched edge recedes, opposite edge advances.
-            // No global lift or zoom for B; the pivot remains at the slab centre.
-            rotationX = -ny * 6f, rotationY = nx * 6f)
+            // Pivot the rigid card plane toward the pressed corner. Under Compose's y-down
+            // convention this sign pair brings the contact side forward; every child (including
+            // the two lower-right rectangles) inherits this one transform and stays in-plane.
+            offsetYDp = -FINGER_TILT_REST_FLOAT_DP,
+            rotationX = ny * motion.effectiveMaxTiltDegrees(),
+            rotationY = -nx * motion.effectiveMaxTiltDegrees())
         ShortcutTouchVariant.BuoyantSpring -> ShortcutTouchPose(
-            scale = 1.014f, offsetYDp = -3.2f, rotationX = -ny * 1.6f, rotationY = nx * 1.6f)
+            scale = 1.018f, offsetYDp = -6.2f, rotationX = -ny * 1.6f, rotationY = nx * 1.6f)
     }
+}
+
+/** Normalized screen-local pointer coordinates used as the stable tilt anchor. */
+internal fun shortcutNormalizedTiltPosition(position: Offset, size: IntSize): Offset = Offset(
+    ((position.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f),
+    ((position.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+)
+
+/**
+ * Additional, contact-anchored perspective for the clear foreground only. The outer glass plane
+ * keeps its existing touch-follow transform; this bounded residual tilt gives glyph strokes and
+ * every icon a stronger shared foreshortening, matching the supplied perspective reference.
+ */
+internal const val SHORTCUT_CONTENT_PERSPECTIVE_FRACTION = 0.42f
+
+data class ShortcutContentPerspectivePose(
+    val rotationX: Float,
+    val rotationY: Float,
+    val pivotX: Float,
+    val pivotY: Float,
+    val strength: Float
+)
+
+internal fun shortcutContentPerspectivePose(
+    x: Float,
+    y: Float,
+    baseRotationX: Float,
+    baseRotationY: Float
+): ShortcutContentPerspectivePose {
+    val nx = x.coerceIn(-1f, 1f)
+    val ny = y.coerceIn(-1f, 1f)
+    val radius = sqrt(nx * nx + ny * ny)
+    val radial = ((radius - .045f) / .955f).coerceIn(0f, 1f)
+    val strength = radial * SHORTCUT_CONTENT_PERSPECTIVE_FRACTION
+    return ShortcutContentPerspectivePose(
+        rotationX = baseRotationX * SHORTCUT_CONTENT_PERSPECTIVE_FRACTION,
+        rotationY = baseRotationY * SHORTCUT_CONTENT_PERSPECTIVE_FRACTION,
+        pivotX = ((nx + 1f) * .5f).coerceIn(0f, 1f),
+        pivotY = ((ny + 1f) * .5f).coerceIn(0f, 1f),
+        strength = strength
+    )
 }
 
 internal fun shortcutReleaseDamping(variant: ShortcutTouchVariant): Float = when (variant) {
@@ -139,7 +194,8 @@ private class TouchInput {
 internal class ShortcutTouchMotion(
     val gestureModifier: Modifier,
     val visualModifier: Modifier,
-    val refraction: () -> ShortcutRefraction
+    val refraction: () -> ShortcutRefraction,
+    val contentModifier: Modifier
 ) {
     val modifier: Modifier = gestureModifier.then(visualModifier)
 }
@@ -167,14 +223,21 @@ internal fun rememberShortcutTouchMotion(
     val followup = LocalShortcutOpticalFollowupEnabled.current
     val dockLens = LocalShortcutDockLensEnabled.current
     val refined = dockLens && tuned
+    val glassMotion = LocalGlassSettings.current.motion
     val jelly = refined && variant == ShortcutTouchVariant.FingerTilt
     val splitShadow = tuned && followup && !jelly
     val contactFollow = tuned && followup && LocalShortcutContactFollowEnabled.current && enabled && frozenPose == null
     val input = remember(variant, enabled, tuned) { TouchInput() }
     val pickupCallback by rememberUpdatedState(onPickupChanged)
-    fun currentTarget(x: Float, y: Float): ShortcutTouchPose =
-        if (refined && frozenPose == null) shortcutLiveTouchTarget(variant, x, y)
-        else shortcutTouchTarget(variant, x, y, tuned)
+    fun currentTarget(x: Float, y: Float): ShortcutTouchPose = when {
+        frozenPose != null -> shortcutTouchTarget(variant, x, y, tuned)
+        refined -> shortcutLiveTouchTarget(variant, x, y, glassMotion)
+        // B's raised resting position belongs to the live card, even when the optional
+        // refined dock-lens path is off. Keep legacy/frozen preview mappings untouched.
+        variant == ShortcutTouchVariant.FingerTilt ->
+            shortcutTouchTarget(variant, x, y, tuned).copy(offsetYDp = -FINGER_TILT_REST_FLOAT_DP)
+        else -> shortcutTouchTarget(variant, x, y, tuned)
+    }
     val animate = (LocalShortcutMotionEnabled.current ?: true) && enabled
     val damping = if (refined) shortcutReleaseDamping(variant) else when (variant) {
         ShortcutTouchVariant.GentleFloat -> 0.88f
@@ -185,13 +248,20 @@ internal fun rememberShortcutTouchMotion(
         !animate -> ShortcutTouchPose()
         frozenPose != null -> frozenPose
         input.pressed -> currentTarget(if (jelly) input.tiltX else input.x, if (jelly) input.tiltY else input.y)
-        else -> ShortcutTouchPose()
+        else -> shortcutLiveRestingPose(variant)
     }
     // Compose's animation clock applies the system duration scale, including slow scales.
     val releaseSpec = spring<Float>(
-        dampingRatio = if (refined && input.cancelled) 1f else damping,
-        stiffness = if (refined && input.cancelled) 1100f
-            else if (refined) shortcutReleaseStiffness(variant) else Spring.StiffnessMedium)
+        // B's tilted glass plane should settle promptly and without residual wobble after
+        // either release or cancellation; its touch-follow spring already uses this range.
+        dampingRatio = if (input.cancelled || variant == ShortcutTouchVariant.FingerTilt) 1f else damping,
+        stiffness = when {
+            input.cancelled && variant == ShortcutTouchVariant.FingerTilt -> 10000f
+            input.cancelled -> 1100f
+            refined -> shortcutReleaseStiffness(variant)
+            variant == ShortcutTouchVariant.FingerTilt -> 1100f
+            else -> Spring.StiffnessMedium
+        })
     // A/C lift quietly on contact. B has a fast, critically damped approach, not a
     // one-frame snap or a continually restarted tween. Release retains velocity.
     val spec = if (input.pressed) tween<Float>(if (refined && variant == ShortcutTouchVariant.BuoyantSpring) 110 else 85)
@@ -199,10 +269,10 @@ internal fun rememberShortcutTouchMotion(
     val scale = animateFloatAsState(target.scale, spec, label = "shortcut_scale")
     val dx = animateFloatAsState(target.offsetXDp, spec, label = "shortcut_x")
     val dy = animateFloatAsState(target.offsetYDp, spec, label = "shortcut_y")
-    // Direct manipulation must respond at every edge, including a stationary corner press.
-    // A continually retargeted press tween hid small tilts; held B now uses the actual pose.
+    // B follows the contact with a short, critically damped spring: responsive without a
+    // one-frame jump, including when the pointer moves while held.
     val tiltSpec = if (input.pressed && tuned && variant == ShortcutTouchVariant.FingerTilt)
-        if (refined) spring<Float>(dampingRatio = .94f, stiffness = 2200f) else snap<Float>() else spec
+        spring<Float>(dampingRatio = glassMotion.dampingRatio(), stiffness = if (refined) 2200f else Spring.StiffnessHigh) else spec
     val rx = animateFloatAsState(target.rotationX, tiltSpec, label = "shortcut_rx")
     val ry = animateFloatAsState(target.rotationY, tiltSpec, label = "shortcut_ry")
     val liftTarget = when {
@@ -223,9 +293,9 @@ internal fun rememberShortcutTouchMotion(
         else if (input.pressed) animatedContact.value.coerceAtLeast(.35f)
         else animatedContact.value.coerceIn(0f, 1f)
     val maximumLift = when (variant) {
-        ShortcutTouchVariant.GentleFloat -> 1.2f
-        ShortcutTouchVariant.FingerTilt -> if (tuned) 1.5f else 4f
-        ShortcutTouchVariant.BuoyantSpring -> 3.2f
+        ShortcutTouchVariant.GentleFloat -> 2.8f
+        ShortcutTouchVariant.FingerTilt -> if (tuned) FINGER_TILT_REST_FLOAT_DP else 4f
+        ShortcutTouchVariant.BuoyantSpring -> 6.2f
     }
     fun visibleLift(): Float = when {
         !animate -> 0f
@@ -234,8 +304,9 @@ internal fun rememberShortcutTouchMotion(
         input.pressed && frozenPose == null -> lift.value.coerceAtLeast(.35f)
         else -> lift.value.coerceIn(0f, 1f)
     }
-    // Direct manipulation tracks immediately; only release uses the selected rebound.
-    val directlyManipulated = input.dragging || (jelly && input.pressed)
+    // Releasing a held pointer preserves spring velocity; active gestures can still use the
+    // separately measured contact/drag channels without jumping the slab pose.
+    val directlyManipulated = input.dragging
     val dragSpec = if (directlyManipulated || !animate) snap<Float>()
         else releaseSpec
     val travelActive = animate && input.dragging
@@ -257,8 +328,9 @@ internal fun rememberShortcutTouchMotion(
                 fun update(position: Offset) {
                     // Intent stays in the unmoving slot; do not feed a rotating plane back
                     // into its own tilt target. Optical contact uses the actual plane instead.
-                    input.tiltX = ((position.x / size.width.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
-                    input.tiltY = ((position.y / size.height.coerceAtLeast(1)) * 2f - 1f).coerceIn(-1f, 1f)
+                    val normalizedTiltPosition = shortcutNormalizedTiltPosition(position, size)
+                    input.tiltX = normalizedTiltPosition.x
+                    input.tiltY = normalizedTiltPosition.y
                     val slot = input.slotCoordinates?.takeIf { it.isAttached }
                     val plane = input.planeCoordinates?.takeIf { it.isAttached }
                     val local = if (jelly && slot != null && plane != null)
@@ -271,6 +343,8 @@ internal fun rememberShortcutTouchMotion(
                 }
                 update(down.position)
                 try {
+                    // Keep the established four-dp pickup radius; the contact lens follows
+                    // the translated plane so its highlight stays under the finger.
                     val maxDragX = 4.dp.toPx()
                     // Initial pass wins before verticalScroll's Main-pass slop detector.
                     // A normal tap stays unconsumed; the first slop-crossing move cancels click.
@@ -341,6 +415,8 @@ internal fun rememberShortcutTouchMotion(
             }
         } finally { input.reset() }
     }
+    // Keep the glass slab on its critically damped touch-follow spring. The shader's
+    // contact point remains direct, while the physical plane eases into each tilt target.
     fun visiblePitch(): Float = if (!animate) 0f else rx.value
     fun visibleRoll(): Float = if (!animate) 0f else ry.value
     val visualModifier = Modifier.graphicsLayer {
@@ -353,7 +429,10 @@ internal fun rememberShortcutTouchMotion(
             immediate -> scale.value.coerceAtLeast(kickScale)
             else -> scale.value
         }
-        scaleX = visibleScale; scaleY = visibleScale
+        // Keep the slab's footprint isotropic: perspective comes from the 3-D rotation and
+        // matching refraction, never from squeezing one axis (which reads as a stretch).
+        scaleX = visibleScale
+        scaleY = visibleScale
         translationX = (if (animate) dx.value else 0f).dp.toPx() + travelX()
         translationY = (when { !animate -> 0f; immediate && target.offsetYDp != 0f -> dy.value.coerceAtMost(-maximumLift * .18f); else -> dy.value }).dp.toPx() + travelY()
         rotationX = if (!splitShadow) visiblePitch() else 0f
@@ -372,12 +451,36 @@ internal fun rememberShortcutTouchMotion(
         clip = false
     }
     val directJellyLayer = Modifier.graphicsLayer {
-        translationX = travelX(); translationY = travelY()
+        translationX = travelX()
+        translationY = travelY() + if (animate && frozenPose == null && variant == ShortcutTouchVariant.FingerTilt)
+            -FINGER_TILT_REST_FLOAT_DP.dp.toPx() else 0f
         rotationX = visiblePitch(); rotationY = visibleRoll()
+        // Keep the measured card bounds stable; the rotations and shader normals carry the tilt.
+        scaleX = 1f
+        scaleY = 1f
         cameraDistance = 100.dp.toPx(); shadowElevation = 0f; clip = false
     }.onGloballyPositioned { input.planeCoordinates = it }
     val activeVisualModifier = if (jelly && frozenPose == null) directJellyLayer else visualModifier
-    return ShortcutTouchMotion(gestureModifier, activeVisualModifier) {
+    val contentPerspectiveModifier = if (variant == ShortcutTouchVariant.FingerTilt && enabled) {
+        Modifier.graphicsLayer {
+            // Use the last live contact while the root plane springs back. The nested projection
+            // inherits the same spring values as the glass, so it never introduces a second clock.
+            val contactX = if (frozenPose != null && !input.pressed) {
+                (-frozenPose.rotationY / glassMotion.effectiveMaxTiltDegrees().coerceAtLeast(.001f)).coerceIn(-1f, 1f)
+            } else input.tiltX
+            val contactY = if (frozenPose != null && !input.pressed) {
+                (frozenPose.rotationX / glassMotion.effectiveMaxTiltDegrees().coerceAtLeast(.001f)).coerceIn(-1f, 1f)
+            } else input.tiltY
+            val projection = shortcutContentPerspectivePose(contactX, contactY, rx.value, ry.value)
+            rotationX = projection.rotationX
+            rotationY = projection.rotationY
+            transformOrigin = TransformOrigin(projection.pivotX, projection.pivotY)
+            cameraDistance = 100.dp.toPx()
+            clip = false
+        }
+    } else Modifier
+    return ShortcutTouchMotion(gestureModifier, activeVisualModifier, {
+
         scale.value; dx.value; dy.value; rx.value; ry.value
         input.dragX; input.dragY; dragX.value; dragY.value
         ShortcutRefraction(visibleLift(),
@@ -386,5 +489,5 @@ internal fun rememberShortcutTouchMotion(
             contact = if (contactFollow) contactValue() else 0f,
             contactFollow = contactFollow,
             depression = if (variant == ShortcutTouchVariant.FingerTilt) visibleLift() else 0f)
-    }
+    }, contentPerspectiveModifier)
 }

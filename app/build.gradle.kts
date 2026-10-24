@@ -65,8 +65,8 @@ android {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "1.0.32-with-suspended"
+        versionCode = 53
+        versionName = "1.0.34-with-suspended"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -104,7 +104,7 @@ android {
             isMinifyEnabled = false
             // Isolated disposable UI draft; never replaces the owner's installed production app.
             applicationIdSuffix = ".draftglass"
-            versionNameSuffix = "-draft-glass-candidate7"
+            versionNameSuffix = "-draft-glass-candidate12-reference-paced"
         }
     }
 
@@ -116,7 +116,7 @@ android {
         isMinifyEnabled = false
         isShrinkResources = false
         applicationIdSuffix = ".draftglass"
-        versionNameSuffix = "-draft-glass-candidate7-touch-glass-performance"
+        versionNameSuffix = "-draft-glass-candidate12-reference-paced-performance"
         signingConfig = signingConfigs.getByName("debug")
         matchingFallbacks += listOf("release")
     }
@@ -124,6 +124,21 @@ android {
         java.srcDir("src/debug/java")
         res.srcDir("src/debug/res")
         manifest.srcFile("src/debug/AndroidManifest.xml")
+    }
+
+    // Explicitly opt-in, side-by-side R8 experiment. This is not the production release:
+    // it has its own package id and a disposable debug signature so it can be installed
+    // alongside both the owner's app and the performance candidate for device diagnosis.
+    // Build only with :app:assembleR8Test; never promote without device validation.
+    buildTypes.create("r8Test") {
+        initWith(buildTypes.getByName("release"))
+        isDebuggable = false
+        isMinifyEnabled = true
+        isShrinkResources = true
+        applicationIdSuffix = ".r8test"
+        versionNameSuffix = "-r8-experiment"
+        signingConfig = signingConfigs.getByName("debug")
+        matchingFallbacks += listOf("release")
     }
 
     compileOptions {

@@ -51,6 +51,10 @@ class ShortcutContactFollowMotionTest {
             val node = compose.onNodeWithTag("contact")
             val frame = compose.onNodeWithTag("slot")
             val original = node.fetchSemanticsNode().boundsInRoot
+            val slotBounds = frame.fetchSemanticsNode().boundsInRoot
+            if (choice == ShortcutTouchVariant.FingerTilt) {
+                assertTrue("B begins visibly floated above its stable slot", original.center.y < slotBounds.center.y - 5f)
+            }
             compose.mainClock.autoAdvance = false
             frame.performTouchInput { down(center) }
             compose.waitForIdle()
@@ -62,6 +66,7 @@ class ShortcutContactFollowMotionTest {
             compose.mainClock.advanceTimeBy(120); compose.waitForIdle()
             val pressed = node.fetchSemanticsNode().boundsInRoot
             if (choice == ShortcutTouchVariant.FingerTilt) {
+                assertEquals("B centre press preserves its raised resting pose", original.center.y, pressed.center.y, .6f)
                 assertEquals("B centre press does not resize the plane", original.width, pressed.width, .01f)
             } else {
                 assertTrue("A/C retain contraction", pressed.width < original.width)

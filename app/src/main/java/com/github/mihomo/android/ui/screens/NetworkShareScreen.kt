@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,9 +31,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.LanCredentials
 import com.github.mihomo.android.service.VpnState
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.mihomo.android.ui.components.bounceOverscroll
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassRadius
+import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.theme.*
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -96,34 +101,24 @@ fun NetworkShareScreen(
         Toast.makeText(context, "已复制 $label 到剪贴板", Toast.LENGTH_SHORT).show()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
-    ) {
-        CupertinoNavBar(
-            title = AppStrings.get("network_share_screen_title", lang),
-            showBackButton = true,
-            onBack = onBack
-        )
-
+    // The same scrolling surface reaches behind the transparent status/navigation bars;
+    // the title/back row floats above it instead of splitting the page into fixed regions.
+    Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag("network-share-list")
                 .bounceOverscroll()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Card 1: Switch & Status
             item(key = "lan_switch") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                NetworkSharePanelSurface {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -191,9 +186,7 @@ fun NetworkShareScreen(
             // Credentials are shown only while LAN exposure is enabled.
             if (allowLan) {
                 item(key = "lan_auth") {
-                    Surface(shape = RoundedCornerShape(16.dp), color = LoonCard,
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                        modifier = Modifier.fillMaxWidth()) {
+                    NetworkSharePanelSurface {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically) {
@@ -222,12 +215,7 @@ fun NetworkShareScreen(
 
             // Card 2: Detected LAN IP Addresses
             item(key = "lan_ips") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                NetworkSharePanelSurface {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -287,12 +275,7 @@ fun NetworkShareScreen(
 
             // Card 3: One-Tap Terminal Proxy Commands
             item(key = "terminal_commands") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                NetworkSharePanelSurface {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "终端一键配置代理命令",
@@ -366,12 +349,7 @@ fun NetworkShareScreen(
 
             // Card 4: Device Configuration Guide
             item(key = "device_guide") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                NetworkSharePanelSurface {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "设备 Wi-Fi 代理设置指南",
@@ -455,6 +433,15 @@ fun NetworkShareScreen(
                 }
             }
         }
+        Box(Modifier.fillMaxWidth().statusBarsPadding().zIndex(1f)) {
+            CupertinoNavBar(
+                title = AppStrings.get("network_share_screen_title", lang),
+                showBackButton = true,
+                onBack = onBack,
+                frosted = true,
+                titleFrostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA
+            )
+        }
     }
 }
 
@@ -462,4 +449,21 @@ fun NetworkShareScreen(
 internal fun buildLanProxyUrl(credentials: LanCredentials, host: String, port: String): String {
     fun encode(value: String) = java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
     return "http://${encode(credentials.username)}:${encode(credentials.password)}@$host:$port"
+}
+
+/** Major LAN-sharing sections use the same restrained glass slab as the redesigned pages. */
+@Composable
+private fun NetworkSharePanelSurface(content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(GlassRadius.card)
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = Modifier.fillMaxWidth(), shape = shape) { content() }
+    } else {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = LoonCard,
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
+            content = content
+        )
+    }
 }

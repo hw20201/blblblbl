@@ -4,7 +4,10 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,9 +24,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.glass.recordNavigationScene
@@ -37,7 +45,10 @@ import com.github.mihomo.android.data.ThemeMode
 import com.github.mihomo.android.data.TunTuning
 import com.github.mihomo.android.data.TunStack
 import com.github.mihomo.android.ui.components.ShortcutTouchVariant
-import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
+import com.github.mihomo.android.ui.glass.LocalGlassTokens
+import com.github.mihomo.android.ui.glass.ShortcutDockGlassSurface
+import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
+import com.github.mihomo.android.ui.glass.ShortcutRefraction
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
@@ -45,7 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(
     scrollState: ScrollState,
@@ -60,8 +71,6 @@ fun SettingsScreen(
     hapticEnabled: Boolean = true,
     shortcutTouchVariant: ShortcutTouchVariant = ShortcutTouchVariant.GentleFloat,
     onShortcutTouchVariantChanged: (ShortcutTouchVariant) -> Unit = {},
-    shortcutGlassLevel: ShortcutGlassLevel = ShortcutGlassLevel.Normal,
-    onShortcutGlassLevelChanged: (ShortcutGlassLevel) -> Unit = {},
     onIpv6EnabledChanged: (Boolean) -> Unit = {},
     onTunMtuChanged: (Int) -> Unit = {},
     onMipsCongestionControllerChanged: (String) -> Unit = {},
@@ -73,6 +82,7 @@ fun SettingsScreen(
     onNavigateToLogs: () -> Unit,
     onNavigateToAppearance: () -> Unit = {},
     onNavigateToDns: () -> Unit = {},
+    onNavigateToGlassEffects: () -> Unit = {},
     glassScene: NavigationLensState? = null
 ) {
     val context = LocalContext.current
@@ -80,7 +90,6 @@ fun SettingsScreen(
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
     var showShortcutTouchDialog by remember { mutableStateOf(false) }
-    var showShortcutGlassDialog by remember { mutableStateOf(false) }
     var showMtuDialog by remember { mutableStateOf(false) }
     var showCongestionDialog by remember { mutableStateOf(false) }
     var mtuDraft by remember { mutableStateOf(tunMtu.toString()) }
@@ -99,12 +108,17 @@ fun SettingsScreen(
     }
 
     val titleScene = rememberNavigationLens()
+    // Settings groups use the original grouped-card component, which has no lens. Keep
+    // descendants from sampling titleScene while the scrolling scene is being recorded.
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
     Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
+        CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
         Column(
             modifier = Modifier.fillMaxSize()
                 .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
+                .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
+                .testTag("settings-scroll")
                 .bounceOverscroll()
                 .verticalScroll(scrollState)
                 .padding(top = headerInset + 12.dp, bottom = 120.dp)
@@ -245,19 +259,14 @@ fun SettingsScreen(
                     showChevron = true,
                     onClick = { showShortcutTouchDialog = true }
                 )
-                CupertinoDivider()
                 CupertinoCell(
-                    title = if (lang == "en") "Shortcut glass intensity" else "快捷卡片玻璃明显度",
-                    subtitle = if (lang == "en") "Affects shortcut cards only" else "仅影响快捷卡片，不改变底部滑钮",
-                    value = when (shortcutGlassLevel) {
-                        ShortcutGlassLevel.Normal -> if (lang == "en") "Normal" else "普通"
-                        ShortcutGlassLevel.Obvious -> if (lang == "en") "Obvious" else "明显"
-                        ShortcutGlassLevel.Extreme -> if (lang == "en") "Extreme" else "极致"
-                    },
-                    icon = Icons.Default.Layers,
-                    iconBg = Color(0xFF5E5CE6),
+                    modifier = Modifier.testTag("settings-glass-effects-entry"),
+                    title = "玻璃效果",
+                    subtitle = "折射、色散、部位覆盖与跟手倾斜",
+                    icon = Icons.Default.AutoAwesome,
+                    iconBg = Color(0xFF7B61D1),
                     showChevron = true,
-                    onClick = { showShortcutGlassDialog = true }
+                    onClick = onNavigateToGlassEffects
                 )
                 CupertinoDivider()
                 CupertinoCell(title = "触感反馈", subtitle = "立即应用于界面交互", trailing = {
@@ -314,9 +323,18 @@ fun SettingsScreen(
                 )
             }
         }
-        Box(Modifier.onSizeChanged { headerHeightPx = it.height }.statusBarsPadding().padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 12.dp)
-            ) {
-            PageTitleGlass(titleScene) {
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .onSizeChanged { headerHeightPx = it.height }
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = 12.dp)
+                .zIndex(1f)
+                .testTag("settings-title-header")
+        ) {
+            PageTitleGlass(titleScene, modifier = Modifier.testTag("settings-title-capsule"),
+                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA) {
                 Text(AppStrings.get("settings_title", lang), color = LoonTextPrimary,
                     fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
             }
@@ -505,37 +523,6 @@ fun SettingsScreen(
         )
     }
 
-    if (showShortcutGlassDialog) {
-        AlertDialog(
-            onDismissRequest = { showShortcutGlassDialog = false },
-            title = { Text(if (lang == "en") "Shortcut glass intensity" else "快捷卡片玻璃明显度") },
-            text = {
-                Column {
-                    val choices = listOf(
-                        Triple(ShortcutGlassLevel.Normal, if (lang == "en") "Normal" else "普通", if (lang == "en") "Lighter resource use" else "较轻开销"),
-                        Triple(ShortcutGlassLevel.Obvious, if (lang == "en") "Obvious" else "明显", if (lang == "en") "Balanced" else "平衡"),
-                        Triple(ShortcutGlassLevel.Extreme, if (lang == "en") "Extreme" else "极致", if (lang == "en") "Stronger optics; GPU cost above Normal" else "强折射；GPU 开销高于普通")
-                    )
-                    choices.forEach { (level, label, description) ->
-                        Row(Modifier.fillMaxWidth().clickable {
-                            onShortcutGlassLevelChanged(level)
-                            showShortcutGlassDialog = false
-                        }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = shortcutGlassLevel == level, onClick = {
-                                onShortcutGlassLevelChanged(level)
-                                showShortcutGlassDialog = false
-                            })
-                            Column(Modifier.padding(start = 8.dp)) {
-                                Text(label, fontWeight = FontWeight.Medium)
-                                Text(description, color = LoonTextSecondary, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showShortcutGlassDialog = false }) { Text(if (lang == "en") "Done" else "完成") } }
-        )
-    }
     if (showShortcutTouchDialog) {
         AlertDialog(
             onDismissRequest = { showShortcutTouchDialog = false },
@@ -597,3 +584,10 @@ fun SettingsScreen(
     }
 
 }
+
+
+/** A descendant glass surface must never sample the scene currently recording that descendant. */
+internal fun settingsSectionLens(
+    recordedScene: NavigationLensState,
+    externalBackdrop: NavigationLensState?
+): NavigationLensState? = externalBackdrop?.takeUnless { it === recordedScene }

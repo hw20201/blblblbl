@@ -163,6 +163,9 @@ internal fun lensReadyToContract(expansion: LensSpring, travel: LensSpring): Boo
 
 internal data class LensFrame(val position: Float, val stretch: Float, val expansion: Float = 0f)
 
+/** Preserve the original refractive liquid-glass lens for the bottom navigation selection. */
+internal val NAVIGATION_SELECTED_LENS_STRENGTH = LensStrength.STRONG
+
 /** Shared by the shell and foreground drawing; never changes tab layout or hit targets. */
 @androidx.compose.runtime.Stable
 class NavigationLensOpticsState(initialPosition: Float) {
@@ -234,7 +237,8 @@ fun NavigationLens(
                 lens = lens,
                 shape = CircleShape,
                 cornerRadius = 1000.dp,
-                strength = LensStrength.STRONG,
+                strength = NAVIGATION_SELECTED_LENS_STRENGTH,
+                surfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
                 expansionProgress = { frame.expansion },
                 content = {}
             )

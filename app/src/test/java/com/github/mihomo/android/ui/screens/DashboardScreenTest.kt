@@ -9,6 +9,7 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,6 +22,46 @@ class DashboardScreenTest {
 
     private val shortcutOrder = listOf("nodes", "profiles", "rules", "request_logs")
     private val noOp: () -> Unit = {}
+
+    @Test fun performanceTestBackdropPickerSelectsOriginalAndInvertedVariants() {
+        val variant = mutableStateOf("original")
+        compose.setContent {
+            DashboardScreen(
+                scrollState = ScrollState(0),
+                vpnState = VpnState(status = VpnState.Status.STOPPED),
+                currentMode = TunnelMode.RULE,
+                activeProfileName = "测试配置",
+                mainGroupName = "",
+                mainGroupProxies = emptyList<Proxy>(),
+                activeNodeName = "",
+                totalNodes = 0,
+                totalRules = 0,
+                visibleShortcuts = shortcutOrder.toSet(),
+                shortcutOrder = shortcutOrder,
+                onToggleVpn = noOp,
+                onModeSelected = {},
+                onSelectProxy = { _, _ -> },
+                onHealthCheck = {},
+                onNavigateToProfiles = noOp,
+                onNavigateToAppRouting = noOp,
+                onNavigateToLogs = noOp,
+                onNavigateToRules = noOp,
+                onNavigateToDns = noOp,
+                onNavigateToRequests = noOp,
+                onNavigateToNetworkShare = noOp,
+                onUpdateVisibleShortcuts = {},
+                onUpdateShortcutOrder = {},
+                testBackdropVariant = variant.value,
+                onTestBackdropVariantChange = { variant.value = it },
+                showTestBackdropSelector = true
+            )
+        }
+
+        compose.onNodeWithTag("glass-test-background-original").assertIsSelected()
+        compose.onNodeWithTag("glass-test-background-inverted").performClick()
+        compose.onNodeWithTag("glass-test-background-inverted").assertIsSelected()
+        compose.onNodeWithTag("glass-test-background-original").assertIsNotSelected()
+    }
 
     @Test fun visibleShortcutSubtitlesFollowVpnProfileCountsAndMonitoringState() {
         val vpnState = mutableStateOf(VpnState(status = VpnState.Status.STOPPED))
@@ -118,12 +159,127 @@ class DashboardScreenTest {
 
         compose.onNodeWithTag("mode-picker-panel").assertDoesNotExist()
         compose.onNodeWithTag("mode-picker-trigger").performClick()
+        // The only transition is the smooth 500ms downward expansion.
+        compose.mainClock.advanceTimeBy(550)
         compose.waitForIdle()
-        compose.onNodeWithTag("mode-picker-panel").assertExists()
+        compose.onNodeWithTag("mode-picker-panel").assertExists().assertIsSelected()
+        compose.onNodeWithTag("mode-option-rule", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("mode-option-direct", useUnmergedTree = true).assertExists()
+        val titleBounds = compose.onNodeWithTag("dashboard-nexus-title").fetchSemanticsNode().boundsInRoot
+        val panelBounds = compose.onNodeWithTag("mode-picker-panel").fetchSemanticsNode().boundsInRoot
+        assertTrue("picker must expand below the NEXUS header", panelBounds.top >= titleBounds.bottom)
+        assertTrue("picker should remain a compact window", panelBounds.width < 260f)
         compose.onNodeWithTag("mode-option-global").performClick()
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(TunnelMode.GLOBAL, selected) }
         compose.onNodeWithTag("mode-picker-panel").assertDoesNotExist()
+    }
+
+    @Test fun modePickerShapeMorphHasAVisibleIntermediateSize() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            DashboardScreen(
+                scrollState = ScrollState(0),
+                vpnState = VpnState(status = VpnState.Status.STOPPED),
+                currentMode = TunnelMode.RULE,
+                activeProfileName = "未选择",
+                mainGroupName = "",
+                mainGroupProxies = emptyList<Proxy>(),
+                activeNodeName = "",
+                totalNodes = 0,
+                totalRules = 0,
+                visibleShortcuts = shortcutOrder.toSet(),
+                shortcutOrder = shortcutOrder,
+                onToggleVpn = noOp,
+                onModeSelected = {},
+                onSelectProxy = { _, _ -> },
+                onHealthCheck = {},
+                onNavigateToProfiles = noOp,
+                onNavigateToAppRouting = noOp,
+                onNavigateToLogs = noOp,
+                onNavigateToRules = noOp,
+                onNavigateToDns = noOp,
+                onNavigateToRequests = noOp,
+                onNavigateToNetworkShare = noOp,
+                onUpdateVisibleShortcuts = {},
+                onUpdateShortcutOrder = {},
+            )
+        }
+
+        compose.waitForIdle()
+        val shellBefore = compose.onNodeWithTag("mode-picker-trigger", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("mode-picker-trigger").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        val panel = compose.onNodeWithTag("mode-picker-panel", useUnmergedTree = true)
+        panel.assertExists()
+        val first = panel.fetchSemanticsNode().boundsInRoot
+        compose.mainClock.advanceTimeBy(60)
+        val middle = panel.fetchSemanticsNode().boundsInRoot
+        compose.mainClock.advanceTimeBy(500) // Finish the 500ms expansion before asserting settled bounds.
+        val settled = panel.fetchSemanticsNode().boundsInRoot
+        assertTrue("the picker should extend downward during the morph", middle.height > first.height)
+        assertEquals("the menu retains the capsule shell width", shellBefore.width, settled.width, 1f)
+        assertEquals("the menu remains anchored at the capsule", shellBefore.top, settled.top, .5f)
+        assertEquals("the menu extends downward far enough for both choices", 144f, settled.height, 2f)
+    }
+
+    @Test fun modePickerKeepsCapsuleFixedAndOpensDownward() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            DashboardScreen(
+                scrollState = ScrollState(0),
+                vpnState = VpnState(status = VpnState.Status.STOPPED),
+                currentMode = TunnelMode.RULE,
+                activeProfileName = "未选择",
+                mainGroupName = "",
+                mainGroupProxies = emptyList<Proxy>(),
+                activeNodeName = "",
+                totalNodes = 0,
+                totalRules = 0,
+                visibleShortcuts = shortcutOrder.toSet(),
+                shortcutOrder = shortcutOrder,
+                onToggleVpn = noOp,
+                onModeSelected = {},
+                onSelectProxy = { _, _ -> },
+                onHealthCheck = {},
+                onNavigateToProfiles = noOp,
+                onNavigateToAppRouting = noOp,
+                onNavigateToLogs = noOp,
+                onNavigateToRules = noOp,
+                onNavigateToDns = noOp,
+                onNavigateToRequests = noOp,
+                onNavigateToNetworkShare = noOp,
+                onUpdateVisibleShortcuts = {},
+                onUpdateShortcutOrder = {},
+            )
+        }
+
+        val capsuleBefore = compose.onNodeWithTag("mode-picker-capsule", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val shellBefore = compose.onNodeWithTag("mode-picker-trigger", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("mode-picker-trigger").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        val panel = compose.onNodeWithTag("mode-picker-panel", useUnmergedTree = true)
+        panel.assertExists().assertIsSelected()
+        val initialPanel = panel.fetchSemanticsNode().boundsInRoot
+        assertEquals("the capsule keeps its width as the shell opens", shellBefore.width, initialPanel.width, 1f)
+        assertEquals("the shell stays anchored to the capsule", shellBefore.top, initialPanel.top, .5f)
+        val capsuleDuring = compose.onNodeWithTag("mode-picker-capsule", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals("the capsule itself keeps its width", capsuleBefore.width, capsuleDuring.width, .5f)
+        assertEquals("the capsule itself keeps its height", capsuleBefore.height, capsuleDuring.height, .5f)
+        assertTrue("the open shell cannot be shorter than the capsule", initialPanel.height >= capsuleBefore.height)
+        compose.mainClock.advanceTimeBy(420)
+        val expanded = panel.fetchSemanticsNode().boundsInRoot
+        assertEquals("the expanded menu retains its width", initialPanel.width, expanded.width, .5f)
+        assertEquals("the expanded menu remains anchored", initialPanel.top, expanded.top, .5f)
+        assertTrue("the menu extends downward to expose both other choices", expanded.height > capsuleBefore.height)
+        compose.onNodeWithTag("mode-option-global", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("mode-option-direct", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("mode-option-rule", useUnmergedTree = true).assertDoesNotExist()
     }
 
 }

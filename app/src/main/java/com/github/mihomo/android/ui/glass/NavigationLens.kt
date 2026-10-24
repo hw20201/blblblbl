@@ -147,14 +147,24 @@ internal const val NAVIGATION_LENS_SHADER = """
         float r = min(cornerRadius * density, min(viewport.x, viewport.y) * 0.5);
         float2 q = p - viewport * 0.5;
         float2 core = viewport * 0.5 - float2(r);
-        float2 nearest = clamp(q, -core, core);
-        float2 n = q - nearest;
-        float len = length(n);
-        float depth = r - len;
+        // Signed distance to the full rounded rectangle. The previous corner-only distance
+        // collapsed to zero along straight edges, making their refraction slider ineffective.
+        float2 d = abs(q) - core;
+        float2 outside = max(d, float2(0.0));
+        float outsideLength = length(outside);
+        float signedDistance = outsideLength + min(max(d.x, d.y), 0.0) - r;
+        float depth = max(-signedDistance, 0.0);
 
-        // 1.0 at the very edge, 0.0 once we are a bevel-width inside the surface.
+        // 1.0 at every point on the outline; smoothly reaches 0 one bevel-width inward.
         float edge = 1.0 - smoothstep(0.0, bevel * density, depth);
-        float2 normal = n / max(len, 0.001);
+        float2 normal;
+        if (outsideLength > 0.001) {
+            normal = sign(q) * outside / max(outsideLength, 0.001);
+        } else if (d.x > d.y) {
+            normal = float2(sign(q.x), 0.0);
+        } else {
+            normal = float2(0.0, sign(q.y));
+        }
         float2 lo = float2(0.5);
         float2 hi = viewport - float2(0.5);
 
@@ -194,7 +204,7 @@ internal const val NAVIGATION_LENS_SHADER = """
  */
 internal data class NavigationLensEffectKey(
     val width: Float, val height: Float, val density: Float, val opticalScale: Float,
-    val strength: LensStrength, val cornerRadius: Float, val frosted: Boolean
+    val strength: LensStrength, val cornerRadius: Float, val frosted: Boolean, val optics: GlassOptics
 )
 
 internal class NavigationLensEffectCache {
@@ -213,6 +223,33 @@ internal class NavigationLensEffectCache {
 /** The shell expansion strengthens edge refraction; the scene is never globally scaled. */
 internal fun lensRefractionScale(expansion: Float): Float = 1f + 0.2f * expansion.coerceIn(0f, 1f)
 
+/** Exact uniforms shared by NavigationGlassSurface and the settings-to-renderer regression tests. */
+internal data class NavigationLensShaderParameters(
+    val opticalScale: Float,
+    val displacementDp: Float,
+    val bevelDp: Float,
+    val saturation: Float,
+    val aberrationDp: Float,
+    val rimGain: Float
+)
+
+internal fun navigationLensShaderParameters(
+    strength: LensStrength,
+    optics: GlassOptics,
+    expansion: Float = 0f
+): NavigationLensShaderParameters {
+    val safe = optics.clamped()
+    val opticalScale = lensRefractionScale(expansion) * safe.refractionScale()
+    return NavigationLensShaderParameters(
+        opticalScale = opticalScale,
+        displacementDp = strength.displacementDp * opticalScale,
+        bevelDp = strength.bevelDp * safe.edgeScale(),
+        saturation = strength.saturation,
+        aberrationDp = strength.aberrationDp * opticalScale * safe.dispersionScale(),
+        rimGain = strength.rimGain * safe.edgeLightScale()
+    )
+}
+
 /**
  * A floating surface that samples the recorded scene through the lens.
  *
@@ -230,10 +267,17 @@ fun NavigationGlassSurface(
     expansionProgress: () -> Float = { 0f },
     refractionAmount: () -> Float = { 1f },
     frosted: Boolean = false,
+    showRim: Boolean = true,
+    frostedFillAlpha: Float? = null,
+    frostedTint: Color? = null,
+    surfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.LARGE_PANELS,
+    /** Optional explicit optics for editors/previews that must mirror an in-progress value. */
+    opticsOverride: GlassOptics? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = glassPalette
     val density = LocalDensity.current.density
+    val optics = (opticsOverride ?: LocalGlassSettings.current.opticsFor(surfaceCategory)).clamped()
     var origin by remember { mutableStateOf(Offset.Zero) }
     val shader = remember {
         if (Build.VERSION.SDK_INT >= 33) RuntimeShader(NAVIGATION_LENS_SHADER) else null
@@ -251,7 +295,9 @@ fun NavigationGlassSurface(
     val responsiveEdge = lens != null && Build.VERSION.SDK_INT >= 33
     val fill = if (frosted) {
         // Pinned titles must stay readable when a node label passes immediately beneath them.
-        if (palette.isDark) palette.base.copy(alpha = .62f) else Color.White.copy(alpha = .52f)
+        val opacity = frostedFillAlpha?.coerceIn(0f, 1f)
+            ?: if (palette.isDark) .62f else .52f
+        (frostedTint ?: if (palette.isDark) palette.base else Color.White).copy(alpha = opacity)
     } else Color.White.copy(alpha = if (responsiveEdge) 0.08f
         else if (palette.isDark) 0.10f else 0.18f)
 
@@ -271,17 +317,20 @@ fun NavigationGlassSurface(
                 .graphicsLayer {
                     if (Build.VERSION.SDK_INT >= 33 && shader != null) {
                         if (size.width > 0f && size.height > 0f) {
-                            val opticalScale = lensRefractionScale(expansionProgress()) * refractionAmount().coerceIn(0f, 1f)
+                            val parameters = navigationLensShaderParameters(strength, optics, expansionProgress())
+                            val opticalScale = parameters.opticalScale * refractionAmount().coerceIn(0f, 1f)
+                            val displacement = strength.displacementDp * opticalScale
+                            val aberration = strength.aberrationDp * opticalScale * optics.dispersionScale()
                             val key = NavigationLensEffectKey(size.width, size.height, density,
-                                opticalScale, strength, cornerRadius.value, frosted)
+                                opticalScale, strength, cornerRadius.value, frosted, optics)
                             renderEffect = effectCache.getOrCreate(key) {
                                 shader.setFloatUniform("viewport", size.width, size.height)
                                 shader.setFloatUniform("density", density)
-                                shader.setFloatUniform("displacement", strength.displacementDp * opticalScale)
-                                shader.setFloatUniform("bevel", strength.bevelDp)
-                                shader.setFloatUniform("saturation", strength.saturation)
-                                shader.setFloatUniform("aberration", strength.aberrationDp * opticalScale)
-                                shader.setFloatUniform("rimGain", strength.rimGain)
+                                shader.setFloatUniform("displacement", displacement)
+                                shader.setFloatUniform("bevel", parameters.bevelDp)
+                                shader.setFloatUniform("saturation", parameters.saturation)
+                                shader.setFloatUniform("aberration", aberration)
+                                shader.setFloatUniform("rimGain", parameters.rimGain)
                                 shader.setFloatUniform("cornerRadius", cornerRadius.value)
                                 // Snapshot only when geometry/optics change. A moving live scene
                                 // remains the input; scrolling does not require a new native graph.
@@ -327,7 +376,7 @@ fun NavigationGlassSurface(
             onDrawBehind {
                 drawRect(fill)
                 drawRect(sheen)
-                drawPath(rim, rimTop, style = Stroke(0.9.dp.toPx()))
+                if (showRim) drawPath(rim, rimTop, style = Stroke(0.9.dp.toPx()))
             }
         })
         content()

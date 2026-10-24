@@ -17,7 +17,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -32,6 +34,7 @@ import com.github.mihomo.android.ui.theme.AppStrings
 import com.github.mihomo.android.ui.theme.LocalAppLanguage
 import com.github.mihomo.android.ui.theme.MihomoTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -99,6 +102,19 @@ class ConfigurationCenterScreenTest {
                 }
             }
         }
+        compose.onNodeWithText("配置中心").assertExists()
+        compose.onAllNodesWithTag("navigation-title-capsule").assertCountEquals(1)
+        compose.onAllNodesWithTag("navigation-title-plain").assertCountEquals(0)
+        listOf("配置 / 订阅", "脚本", "规则 / 路由资源").forEachIndexed { index, label ->
+            val heading = compose.onNodeWithTag("configuration-center-section-header-$index")
+            heading.assertExists()
+            compose.onAllNodesWithText(label).assertCountEquals(1)
+            assertTrue("section labels stay compact and unboxed", heading.fetchSemanticsNode().boundsInRoot.height < 32f)
+        }
+        listOf("配置文件与订阅", "脚本管理", "规则资源", "应用分流").forEach { label ->
+            compose.onNodeWithText(label).assertExists()
+        }
+        compose.onNodeWithTag("configuration-center-scroll").assertExists()
         for (target in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
             compose.runOnIdle { mode.value = target }
             compose.waitForIdle()

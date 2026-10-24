@@ -423,7 +423,7 @@ fun LoonShortcutCard(
                 shortcutDockLens = true,
                 shortcutRefraction = touchMotion.refraction
             ) {
-                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier)
             }
         } else {
             Surface(
@@ -433,7 +433,7 @@ fun LoonShortcutCard(
                     .border(0.5.dp, LoonCardBorder, RoundedCornerShape(18.dp)),
                 color = LoonCard
             ) {
-                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete)
+                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier)
             }
         }
     }
@@ -446,9 +446,12 @@ private fun ShortcutCardContent(
     subtitle: String,
     icon: @Composable () -> Unit,
     isEditing: Boolean,
-    onDelete: (() -> Unit)?
+    onDelete: (() -> Unit)?,
+    contentPerspectiveModifier: Modifier = Modifier
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    // This single inner layer is shared by every glyph, chevron and icon. Its residual
+    // perspective is contact-dependent; the outer glass surface and its follow animation stay put.
+    Box(modifier = Modifier.fillMaxSize().then(contentPerspectiveModifier)) {
         // Text info on top-left
         Column(
             modifier = Modifier
@@ -1264,10 +1267,11 @@ fun rememberBounceOverscrollConnection(
             }
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
-                if ((available.y > 0f && allowTop) || (available.y < 0f && allowBottom)) {
-                    return Offset(0f, band.pull(available.y))
+                return when {
+                    available.y > 0f && allowTop -> Offset(0f, band.pull(available.y))
+                    available.y < 0f && allowBottom -> Offset(0f, band.pull(available.y))
+                    else -> Offset.Zero
                 }
-                return Offset.Zero
             }
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (band.offset == 0f) return Velocity.Zero

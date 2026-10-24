@@ -2,6 +2,7 @@ package com.github.mihomo.android.ui.glass
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -21,7 +22,7 @@ import kotlin.math.roundToInt
 
 /** Local regression switch: the previous contact/frost renderer remains independently testable. */
 internal val LocalShortcutDockLensEnabled = staticCompositionLocalOf { true }
-internal const val SHORTCUT_DOCK_MARGIN_DP = 8f
+internal const val SHORTCUT_DOCK_MARGIN_DP = 34f
 
 /** Exactly the dock's optical kernel, with an overscan origin and finite larger input only.
  * No Gaussian pass or stretched static image. Mode B adds a local contact normal to the live lens.
@@ -101,10 +102,14 @@ internal fun ShortcutDockGlassSurface(
     content: @Composable BoxScope.() -> Unit
 ) {
     val density = LocalDensity.current.density
-    val level = LocalShortcutGlassLevel.current
+    val glassSettings = LocalGlassSettings.current
+    val level = glassSettings.shortcutGlassLevel
+    val tuning = glassSettings.opticsFor(GlassSurfaceCategory.SHORTCUT_CARDS)
+    val optics = shortcutDockLensOptics(tuning)
     val quality = rememberShortcutGlassQuality()
     val replay = lens != null && Build.VERSION.SDK_INT >= 31 && quality != ShortcutGlassQuality.Flat
-    val shader = remember(replay, quality) {
+    val shader = remember(replay, quality, tuning) {
+        // Every selectable intensity uses the same live refraction shader; only its optics vary.
         if (replay && quality == ShortcutGlassQuality.Refracted && Build.VERSION.SDK_INT >= 33)
             RuntimeShader(SHORTCUT_DOCK_LENS_SHADER) else null
     }
@@ -113,6 +118,13 @@ internal fun ShortcutDockGlassSurface(
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val replayScratch = remember { SceneReplayScratch() }
     val effectCache = remember(shader) { ShortcutDockEffectCache() }
+    // Older Android lacks RuntimeShader. Retain the middle tier's lightweight frost fallback there;
+    // on modern devices it remains refractive like the other levels rather than swapping effects.
+    val frostedEffect = remember(density, level) {
+        if (level == ShortcutGlassLevel.Obvious && Build.VERSION.SDK_INT in 31..32)
+            RenderEffect.createBlurEffect(12f * density, 12f * density, Shader.TileMode.CLAMP)
+        else null
+    }
     Box(modifier.clip(shape)) {
         if (replay && lens != null) {
             val overscan = Modifier.layout { measurable, constraints ->
@@ -125,26 +137,32 @@ internal fun ShortcutDockGlassSurface(
                 .graphicsLayer {
                     val contact = refraction() // observe pose without a separate animation clock
                     if (Build.VERSION.SDK_INT >= 33 && shader != null) {
-                        val strength = level.strength
-                        val key = listOf(size.width, size.height, density, level.ordinal.toFloat())
+                        val key = listOf(size.width, size.height, density,
+                            optics.displacementDp, optics.aberrationDp, optics.bevelDp, optics.saturation, optics.rimGain)
                         if (effectCache.key != key) {
                             shader.setFloatUniform("viewport", size.width - 2 * margin, size.height - 2 * margin)
                             shader.setFloatUniform("inputOrigin", margin.toFloat(), margin.toFloat())
                             shader.setFloatUniform("inputViewport", size.width, size.height)
                             shader.setFloatUniform("density", density)
-                            shader.setFloatUniform("displacement", strength.displacementDp)
-                            shader.setFloatUniform("bevel", strength.bevelDp)
-                            shader.setFloatUniform("saturation", strength.saturation)
-                            shader.setFloatUniform("aberration", level.aberrationDp)
+                            shader.setFloatUniform("displacement", optics.displacementDp)
+                            shader.setFloatUniform("bevel", optics.bevelDp)
+                            shader.setFloatUniform("saturation", optics.saturation)
+                            shader.setFloatUniform("aberration", optics.aberrationDp)
                             shader.setFloatUniform("chromaticSamples", level.chromaticSamples.toFloat())
-                            shader.setFloatUniform("rimGain", strength.rimGain)
+                            shader.setFloatUniform("rimGain", optics.rimGain)
                             shader.setFloatUniform("cornerRadius", ShortcutTunedParameters.lengthDp(60f))
-                            effectCache.effect = RenderEffect.createRuntimeShaderEffect(shader, "scene").asComposeRenderEffect()
+                            val lensEffect = RenderEffect.createRuntimeShaderEffect(shader, "scene")
+                            val composedEffect = if (frostedEffect != null)
+                                RenderEffect.createChainEffect(lensEffect, frostedEffect) else lensEffect
+                            effectCache.effect = composedEffect.asComposeRenderEffect()
                             effectCache.key = key
                         }
                         shader.setFloatUniform("depression", contact.depression.coerceIn(0f, 1f))
                         shader.setFloatUniform("contactPoint", (contact.x + 1f) * .5f, (contact.y + 1f) * .5f)
                         renderEffect = effectCache.effect
+                    } else if (frostedEffect != null) {
+                        // API 31–32 keep the same Noticeable frost without AGSL refraction.
+                        renderEffect = frostedEffect.asComposeRenderEffect()
                     }
                 }
                 .drawWithContent {

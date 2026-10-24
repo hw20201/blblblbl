@@ -2,15 +2,9 @@ package com.github.mihomo.android.ui.screens
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,6 +27,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -41,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -100,24 +98,44 @@ fun DashboardScreen(
     onNavigateToNetworkShare: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit,
-    glassScene: NavigationLensState? = null
+    glassScene: NavigationLensState? = null,
+    testBackdropVariant: String = "original",
+    onTestBackdropVariantChange: (String) -> Unit = {},
+    showTestBackdropSelector: Boolean = false
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
-    var showModePicker by remember { mutableStateOf(false) }
-    val modePickerProgress by animateFloatAsState(
-        targetValue = if (showModePicker) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
-        label = "mode_picker_glass_expansion"
-    )
-    BackHandler(enabled = showModePicker) { showModePicker = false }
+    val coroutineScope = rememberCoroutineScope()
+    var modePickerOpen by remember { mutableStateOf(false) }
+    val modePickerProgress = remember { Animatable(0f) }
+    val pickerMorph = modePickerProgress.value.coerceIn(0f, 1f)
+    // A fixed, slightly enlarged capsule is measured in both states. The same glass shell owns
+    // the collapsed capsule and grows only downward when opened.
+    val collapsedPickerWidth = 136.dp
+    val capsuleHeight = 48.dp
+    val optionHeight = 40.dp
+    val pickerHeight = capsuleHeight + 96.dp * pickerMorph
+    val closeModePicker: () -> Unit = {
+        modePickerOpen = false
+        coroutineScope.launch { modePickerProgress.animateTo(0f, tween(180, easing = FastOutSlowInEasing)) }
+    }
+    val toggleModePicker: () -> Unit = {
+        if (modePickerOpen) {
+            closeModePicker()
+        } else {
+            modePickerOpen = true
+            coroutineScope.launch {
+                modePickerProgress.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
+            }
+        }
+    }
+    BackHandler(enabled = modePickerOpen, onBack = closeModePicker)
 
     // State for Quick Node Selector Modal
     var showQuickNodeSelector by remember { mutableStateOf(false) }
     var quickNodeSearchQuery by remember { mutableStateOf("") }
     var isTestingQuickSheet by remember { mutableStateOf(false) }
     val quickNodeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val coroutineScope = rememberCoroutineScope()
 
     // Automatically fully expand sheet when opened
     LaunchedEffect(showQuickNodeSelector) {
@@ -255,6 +273,28 @@ fun DashboardScreen(
                     .padding(horizontal = 20.dp)
                     .padding(top = headerInset + 12.dp, bottom = 110.dp)
             ) {
+                if (showTestBackdropSelector) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().testTag("glass-test-background-picker"),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilterChip(
+                            selected = testBackdropVariant == "original",
+                            onClick = { onTestBackdropVariantChange("original") },
+                            modifier = Modifier.testTag("glass-test-background-original"),
+                            label = { Text("网格原图", maxLines = 1) }
+                        )
+                        FilterChip(
+                            selected = testBackdropVariant == "inverted",
+                            onClick = { onTestBackdropVariantChange("inverted") },
+                            modifier = Modifier.testTag("glass-test-background-inverted"),
+                            label = { Text("反色网格", maxLines = 1) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 // Dual Traffic Cards Row (Upload & Download)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -397,6 +437,7 @@ fun DashboardScreen(
                                         scaleY = scale
                                         shadowElevation = if (isBeingDragged) 24f else 0f
                                     }
+                                    .testTag("shortcut-${item.id}")
 
                                 if (isEditingShortcuts) {
                                     itemModifier = itemModifier.pointerInput(item.id) {
@@ -562,7 +603,7 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PageTitleGlass(titleScene) { Text(
+                    PageTitleGlass(titleScene, modifier = Modifier.testTag("dashboard-nexus-title")) { Text(
                         text = "NEXUS",
                         color = LoonOrange,
                         fontSize = 32.sp,
@@ -577,109 +618,127 @@ fun DashboardScreen(
                     )
                 }
 
-                PageTitleGlass(titleScene, modifier = Modifier.padding(top = 6.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .testTag("mode-picker-trigger")
-                            .clickable { showModePicker = !showModePicker }
-                            .padding(vertical = 3.dp, horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = when (currentMode) {
-                                TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
-                                TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
-                                TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
-                            },
-                            color = LoonOrangeLight,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                            tint = LoonOrangeLight,
-                            modifier = Modifier.size(18.dp)
-                        )
+                val modeOptions = remember(lang) {
+                    TunnelMode.values().map { mode ->
+                        val key = when (mode) {
+                            TunnelMode.RULE -> "mode_rule"
+                            TunnelMode.GLOBAL -> "mode_global"
+                            TunnelMode.DIRECT -> "mode_direct"
+                            else -> "mode_${mode.name.lowercase()}"
+                        }
+                        mode to AppStrings.get(key, lang)
                     }
                 }
-
-                AnimatedVisibility(
-                    visible = showModePicker,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    enter = expandVertically(
-                        expandFrom = Alignment.Top,
-                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)
-                    ) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
-                    exit = shrinkVertically(
-                        shrinkTowards = Alignment.Top,
-                        animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
-                    ) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMedium))
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
                 ) {
-                    NavigationGlassSurface(
-                        modifier = Modifier.fillMaxWidth().testTag("mode-picker-panel"),
-                        lens = titleScene,
-                        shape = RoundedCornerShape(22.dp),
-                        cornerRadius = 22.dp,
-                        strength = LensStrength.SUBTLE,
-                        expansionProgress = { modePickerProgress },
-                        frosted = true
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
-                            Text(
-                                text = AppStrings.get("select_mode", lang),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = LoonTextSecondary,
-                                modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 4.dp)
-                            )
-                            val modes = listOf(
-                                Triple(TunnelMode.RULE, AppStrings.get("mode_rule", lang), "根据分流规则匹配分流策略"),
-                                Triple(TunnelMode.GLOBAL, AppStrings.get("mode_global", lang), "强制转发至目标节点"),
-                                Triple(TunnelMode.DIRECT, AppStrings.get("mode_direct", lang), "所有流量直接连接，不通过代理")
-                            )
-                            modes.forEachIndexed { index, (mode, title, desc) ->
-                                val selected = mode == currentMode
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("mode-option-${mode.name.lowercase()}")
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            onModeSelected(mode)
-                                            showModePicker = false
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(title, fontSize = 15.sp,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (selected) LoonOrange else LoonTextPrimary)
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(desc, fontSize = 12.sp, color = LoonTextSecondary)
+                    val pickerShape = RoundedCornerShape(20.dp)
+                    val otherModes = modeOptions.filterNot { it.first == currentMode }.take(2)
+                    val outerPickerModifier = Modifier
+                        .requiredSize(collapsedPickerWidth, pickerHeight)
+                        .testTag(if (modePickerOpen) "mode-picker-panel" else "mode-picker-trigger")
+                        .semantics { selected = modePickerOpen }
+                        .clip(pickerShape)
+                        .clickable(interactionSource = null, indication = null, onClick = toggleModePicker)
+                    Box(outerPickerModifier) {
+                        NavigationGlassSurface(
+                            modifier = Modifier.fillMaxSize(),
+                            lens = titleScene,
+                            shape = pickerShape,
+                            cornerRadius = 24.dp,
+                            strength = LensStrength.SUBTLE,
+                            surfaceCategory = com.github.mihomo.android.ui.glass.GlassSurfaceCategory.TITLE_CAPSULES,
+                            frosted = true,
+                            showRim = true
+                        ) {
+                            if (modePickerOpen) {
+                                Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                                    Spacer(Modifier.height(capsuleHeight - 8.dp))
+                                    Spacer(Modifier.height(4.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        otherModes.forEach { (mode, title) ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(optionHeight)
+                                                        .testTag("mode-option-${mode.name.lowercase()}")
+                                                        .clip(RoundedCornerShape(14.dp))
+                                                        .semantics { selected = mode == currentMode }
+                                                        .clickable {
+                                                            onModeSelected(mode)
+                                                            closeModePicker()
+                                                        }
+                                                        .padding(horizontal = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text(
+                                                        title,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = LoonTextPrimary,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
                                     }
-                                    if (selected) Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = LoonOrange,
-                                        modifier = Modifier.size(20.dp)
-                                    )
                                 }
-                                if (index < modes.lastIndex) HorizontalDivider(
-                                    color = LoonCardBorder.copy(alpha = 0.62f),
-                                    thickness = 0.5.dp,
-                                    modifier = Modifier.padding(horizontal = 8.dp)
-                                )
                             }
                         }
+                        // Keep a legible, persistently visible glass face over the live lens.
+                        // The lens remains underneath for refraction; this soft neutral veil and
+                        // quiet rim keep the collapsed capsule from disappearing on pale scenes.
+                        Box(
+                            Modifier.matchParentSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0f to Color.White.copy(alpha = 0.24f),
+                                        0.55f to Color.White.copy(alpha = 0.16f),
+                                        1f to Color.White.copy(alpha = 0.10f)
+                                    ),
+                                    pickerShape
+                                )
+                                .border(0.8.dp, Color.White.copy(alpha = 0.72f), pickerShape)
+                        )
+                        // Keep the capsule as a separate fixed-size layer above the expanding
+                        // shell; it remains visible and stationary throughout the downward morph.
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(horizontal = 12.dp)
+                                .fillMaxWidth()
+                                .height(capsuleHeight)
+                                .testTag("mode-picker-capsule"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                modifier = Modifier.weight(1f),
+                                text = when (currentMode) {
+                                    TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
+                                    TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
+                                    TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
+                                    else -> AppStrings.get("mode_${currentMode.name.lowercase()}", lang)
+                                },
+                                color = LoonOrangeLight,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = LoonOrangeLight,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
                     }
                 }
-            }
 
+            }
 
             // =========================================================================
             // In-Place Quick Node Selector BottomSheet (Full 92% height, smooth expansion)
@@ -694,6 +753,7 @@ fun DashboardScreen(
                 ) {
                     Column(
                         modifier = Modifier
+                            .testTag("quick-node-selector-sheet")
                             .fillMaxWidth()
                             .fillMaxHeight(0.92f)
                             .padding(horizontal = 20.dp)

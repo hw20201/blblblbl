@@ -29,6 +29,7 @@ import com.github.mihomo.android.data.RequestLogRepository
 import com.github.mihomo.android.service.VpnState
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -164,7 +165,8 @@ fun RequestLogsScreen(
                         tint = LoonTextSecondary
                     )
                 }
-            }
+            },
+            frosted = true
         )
 
         Column(
@@ -172,40 +174,44 @@ fun RequestLogsScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
         ) {
-            // Live Traffic Metrics Card
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = LoonCard,
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                modifier = Modifier.fillMaxWidth()
+            // Live traffic is now the page's primary visual: a glass instrument panel with a
+            // clear state line and two separated metrics, without changing their data source.
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth().height(104.dp),
+                shape = RoundedCornerShape(22.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
-                        Text("实时速率 (↑ / ↓)", fontSize = 11.sp, color = LoonTextMuted)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${vpnState.upSpeed.ifBlank { "0 B/s" }} / ${vpnState.downSpeed.ifBlank { "0 B/s" }}",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = IosBlue
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(if (isRunning) IosGreen else LoonTextMuted))
+                        Spacer(Modifier.width(8.dp))
+                        Text("实时流量", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
+                        Spacer(Modifier.weight(1f))
+                        Text(if (isRunning) "LIVE" else "待连接", fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold, color = if (isRunning) IosGreen else LoonTextMuted)
                     }
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("流量累计 (↑ / ↓)", fontSize = 11.sp, color = LoonTextMuted)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${vpnState.totalUp.ifBlank { "0 B" }} / ${vpnState.totalDown.ifBlank { "0 B" }}",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = LoonTextPrimary
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("↑ 上传  /  ↓ 下载", fontSize = 10.sp, color = LoonTextMuted)
+                            Text(
+                                text = "${vpnState.upSpeed.ifBlank { "0 B/s" }}  /  ${vpnState.downSpeed.ifBlank { "0 B/s" }}",
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = IosBlue, maxLines = 1
+                            )
+                        }
+                        Box(Modifier.width(1.dp).height(34.dp).background(LoonCardBorder.copy(alpha = .7f)))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("累计流量", fontSize = 10.sp, color = LoonTextMuted)
+                            Text(
+                                text = "${vpnState.totalUp.ifBlank { "0 B" }}  /  ${vpnState.totalDown.ifBlank { "0 B" }}",
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary, maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -213,33 +219,10 @@ fun RequestLogsScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Cupertino Search Bar
-            TextField(
+            ShortcutSearchField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("搜索请求域名、IP、规则、出站节点...", fontSize = 13.sp, color = LoonTextMuted) },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(18.dp))
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = LoonCard,
-                    unfocusedContainerColor = LoonCard,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedTextColor = LoonTextPrimary,
-                    unfocusedTextColor = LoonTextPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
+                placeholder = "搜索请求域名、IP、规则、出站节点..."
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -265,16 +248,37 @@ fun RequestLogsScreen(
                         .bounceOverscroll(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (!isRunning) "代理服务未开启\n连接建立后，应用请求明细将在此实时滚动"
-                            else if (searchQuery.isNotBlank()) "未找到匹配「$searchQuery」的请求记录"
-                            else "暂无实时请求记录",
-                            color = LoonTextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        shape = RoundedCornerShape(26.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.History, contentDescription = null,
+                                tint = IosBlue.copy(alpha = .82f), modifier = Modifier.size(38.dp))
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                text = when {
+                                    !isRunning -> "代理服务未开启"
+                                    searchQuery.isNotBlank() -> "没有匹配的请求"
+                                    else -> "暂无实时请求记录"
+                                },
+                                color = LoonTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = when {
+                                    !isRunning -> "连接建立后，请求明细会在这里实时滚动"
+                                    searchQuery.isNotBlank() -> "试试缩短关键词，或切换协议筛选"
+                                    else -> "新建连接后，域名、规则和出站节点会汇集在这里"
+                                },
+                                color = LoonTextSecondary, fontSize = 12.sp, lineHeight = 18.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                     }
                 }
             } else {
@@ -293,18 +297,32 @@ fun RequestLogsScreen(
                             else -> Color(0xFFAF52DE)
                         }
 
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = LoonCard,
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .iosPressable {
-                                    haptic.selection()
-                                    inspectedRequest = req
-                                }
+                        // A quiet rail ties adjacent records into a timeline without adding
+                        // another boxed card or changing the row's existing inspect action.
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                            verticalAlignment = Alignment.Top
                         ) {
+                            Column(
+                                modifier = Modifier.width(14.dp).fillMaxHeight(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(Modifier.padding(top = 15.dp).size(7.dp).clip(CircleShape).background(protoColor))
+                                Box(Modifier.width(1.dp).weight(1f).background(protoColor.copy(alpha = 0.22f)))
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = LoonCard.copy(alpha = .72f),
+                                border = androidx.compose.foundation.BorderStroke(0.75.dp, Color.White.copy(alpha = .68f)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .iosPressable {
+                                        haptic.selection()
+                                        inspectedRequest = req
+                                    }
+                            ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -344,21 +362,31 @@ fun RequestLogsScreen(
                                     )
                                 }
 
-                                if (req.rule.isNotBlank() || req.outbound.isNotBlank()) {
+                                if (req.source.isNotBlank() || req.rule.isNotBlank() || req.outbound.isNotBlank()) {
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = if (req.rule.isNotBlank()) "匹配: ${req.rule}" else "默认路由",
-                                            fontSize = 11.sp,
-                                            color = LoonTextSecondary,
-                                            maxLines = 1,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            if (req.source.isNotBlank()) {
+                                                Text(
+                                                    text = "${req.source}  →",
+                                                    fontSize = 10.5.sp,
+                                                    color = LoonTextMuted,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = if (req.rule.isNotBlank()) "匹配: ${req.rule}" else "默认路由",
+                                                fontSize = 11.sp,
+                                                color = LoonTextSecondary,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
 
                                         if (req.outbound.isNotBlank()) {
                                             val isDirect = req.outbound.contains("DIRECT", ignoreCase = true)
@@ -387,11 +415,12 @@ fun RequestLogsScreen(
                                 }
                             }
                         }
+                            }
+                        }
                     }
                 }
             }
         }
-    }
 
     // =========================================================================
     // iOS Inspection Bottom Sheet (Flat layout, NO box-in-a-box)

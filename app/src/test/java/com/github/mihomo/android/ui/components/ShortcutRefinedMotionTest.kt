@@ -35,23 +35,110 @@ class ShortcutRefinedMotionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun responseHasSoftCentreRadialTiltCapAndDistinctStyles() {
+        val restA = shortcutLiveRestingPose(ShortcutTouchVariant.GentleFloat)
+        val restB = shortcutLiveRestingPose(ShortcutTouchVariant.FingerTilt)
+        val restC = shortcutLiveRestingPose(ShortcutTouchVariant.BuoyantSpring)
         val a = shortcutLiveTouchTarget(ShortcutTouchVariant.GentleFloat, 0f, 0f)
+        val bCentre = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt, 0f, 0f)
         val c = shortcutLiveTouchTarget(ShortcutTouchVariant.BuoyantSpring, 0f, 0f)
-        assertTrue(a.offsetYDp < 0f && c.offsetYDp < a.offsetYDp * 2f)
+        assertEquals("A rests neutral; its rise happens after press", 0f, restA.offsetYDp, 0f)
+        assertTrue("A rises on press", a.offsetYDp < restA.offsetYDp)
+        assertEquals("B keeps its raised baseline through contact", restB.offsetYDp, bCentre.offsetYDp, 0f)
+        assertTrue("B starts noticeably above the neutral slot", restB.offsetYDp <= -6f)
+        assertEquals("C starts neutral", 0f, restC.offsetYDp, 0f)
+        assertTrue("C has a distinct stronger lift than A", c.offsetYDp < a.offsetYDp)
         assertTrue(c.scale > a.scale && a.scale > 1f)
         assertTrue(shortcutReleaseDamping(ShortcutTouchVariant.GentleFloat) > shortcutReleaseDamping(ShortcutTouchVariant.BuoyantSpring))
         for (point in listOf(Offset(-1f,0f),Offset(1f,0f),Offset(0f,-1f),Offset(0f,1f),Offset(1f,1f),Offset(-1f,-1f))) {
             val b = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt,point.x,point.y)
-            assertEquals(1f,b.scale,0f); assertEquals(0f,b.offsetYDp,0f)
-            assertTrue(hypot(b.rotationX,b.rotationY) <= 6.001f)
-            // y-down rotation convention used by the original supplied experiment:
-            // local Z = y*sin(rx)-x*sin(ry), negative at contact, positive opposite it.
+            assertEquals(1f,b.scale,0f); assertEquals(restB.offsetYDp,b.offsetYDp,0f)
+            assertTrue(hypot(b.rotationX,b.rotationY) <= FINGER_TILT_MAX_DEGREES + .001f)
+            // Compose's y-down rotation convention: local Z = y*sin(rx)-x*sin(ry).
+            // The accepted concept brings the pressed corner toward the viewer; the opposite
+            // corner recedes. The content is inside this same rigid plane, not warped separately.
             val contactZ = point.y * kotlin.math.sin(Math.toRadians(b.rotationX.toDouble())) -
                 point.x * kotlin.math.sin(Math.toRadians(b.rotationY.toDouble()))
-            assertTrue("contact side recedes, opposite side rises: $point",contactZ < 0)
+            assertTrue("pressed corner comes forward: $point",contactZ > 0)
+            val oppositeZ = (-point.y) * kotlin.math.sin(Math.toRadians(b.rotationX.toDouble())) -
+                (-point.x) * kotlin.math.sin(Math.toRadians(b.rotationY.toDouble()))
+            assertTrue("opposite corner recedes: $point",oppositeZ < 0)
         }
         val centre=shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt,.02f,-.02f)
         assertEquals(0f,centre.rotationX,0f); assertEquals(0f,centre.rotationY,0f)
+    }
+
+    @Test fun foregroundPerspectiveIsContactDependentAndOppositeCornersConvergeOppositely() {
+        fun contentPose(x: Float, y: Float): ShortcutContentPerspectivePose {
+            val root = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt, x, y)
+            return shortcutContentPerspectivePose(x, y, root.rotationX, root.rotationY)
+        }
+        val centre = contentPose(0f, 0f)
+        assertEquals("neutral contact leaves clear content undistorted", 0f, centre.strength, 0f)
+        assertEquals(.5f, centre.pivotX, 0f)
+        assertEquals(.5f, centre.pivotY, 0f)
+
+        val nearTop = contentPose(0f, -.25f)
+        val topEdge = contentPose(0f, -.55f)
+        val leftEdge = contentPose(-.55f, 0f)
+        val rightEdge = contentPose(.55f, 0f)
+        val topLeft = contentPose(-1f, -1f)
+        val bottomRight = contentPose(1f, 1f)
+        assertTrue("perspective grows continuously away from centre",
+            centre.strength < nearTop.strength && nearTop.strength < topEdge.strength &&
+                topEdge.strength < topLeft.strength)
+        assertEquals("same radial distance gives same left/right edge strength",
+            leftEdge.strength, rightEdge.strength, .0001f)
+        assertTrue("edge contact has a visible but bounded residual", topEdge.strength in .1f..0.25f)
+        assertTrue("corner contact reaches the bounded maximum", topLeft.strength <= .42f && topLeft.strength > .4f)
+        assertEquals("top-left touch anchors projection at top-left", 0f, topLeft.pivotX, 0f)
+        assertEquals("top-left touch anchors projection at top-left", 0f, topLeft.pivotY, 0f)
+        assertEquals("bottom-right touch anchors projection at bottom-right", 1f, bottomRight.pivotX, 0f)
+        assertEquals("bottom-right touch anchors projection at bottom-right", 1f, bottomRight.pivotY, 0f)
+        assertTrue("opposite contacts reverse vertical content perspective",
+            topLeft.rotationX * bottomRight.rotationX < 0f)
+        assertTrue("opposite contacts reverse horizontal content perspective",
+            topLeft.rotationY * bottomRight.rotationY < 0f)
+        val rootTopLeft = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt, -1f, -1f)
+        assertEquals("residual derives from the live glass pose, not a fixed extra angle",
+            rootTopLeft.rotationX * SHORTCUT_CONTENT_PERSPECTIVE_FRACTION, topLeft.rotationX, .001f)
+        assertEquals("residual derives from the live glass pose on both axes",
+            rootTopLeft.rotationY * SHORTCUT_CONTENT_PERSPECTIVE_FRACTION, topLeft.rotationY, .001f)
+        // In LoonComponents the title, subtitle, chevron and both rounded-rectangle icons are
+        // descendants of one content Box carrying this pose, so they share the same mapping.
+    }
+
+    @Test fun iconLongAxesRemainParallelToCardBottomOnBothPressedCorners() {
+        // Card bottom and the two blue rounded rectangles are authored in one card-local plane.
+        // A common rigid X/Y tilt preserves their parallel 3D directions for either contact.
+        fun rotate(v: Offset, pose: ShortcutTouchPose): Pair<Float, Float> {
+            val rx = Math.toRadians(pose.rotationX.toDouble())
+            val ry = Math.toRadians(pose.rotationY.toDouble())
+            val xAfterY = v.x * kotlin.math.cos(ry)
+            val zAfterY = -v.x * kotlin.math.sin(ry)
+            val yAfterX = v.y * kotlin.math.cos(rx) - zAfterY * kotlin.math.sin(rx)
+            return xAfterY.toFloat() to yAfterX.toFloat()
+        }
+        val cardBottom = Offset(1f, 0f)
+        val firstRectangleLongAxis = Offset(1f, 0f)
+        val secondRectangleLongAxis = Offset(1f, 0f)
+        for (contact in listOf(Offset(-1f, -1f), Offset(1f, 1f))) {
+            val pose = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt, contact.x, contact.y)
+            val bottom = rotate(cardBottom, pose)
+            val first = rotate(firstRectangleLongAxis, pose)
+            val second = rotate(secondRectangleLongAxis, pose)
+            assertEquals("first icon long axis stays parallel to card bottom", 0f,
+                bottom.first * first.second - bottom.second * first.first, .0001f)
+            assertEquals("second icon long axis stays parallel to card bottom", 0f,
+                bottom.first * second.second - bottom.second * second.first, .0001f)
+        }
+        val upperLeft = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt, -1f, -1f)
+        val lowerRight = shortcutLiveTouchTarget(ShortcutTouchVariant.FingerTilt, 1f, 1f)
+        assertEquals("keep full configured tilt amplitude", FINGER_TILT_MAX_DEGREES,
+            hypot(upperLeft.rotationX, upperLeft.rotationY), .01f)
+        assertEquals("keep full configured tilt amplitude", FINGER_TILT_MAX_DEGREES,
+            hypot(lowerRight.rotationX, lowerRight.rotationY), .01f)
+        assertTrue("opposite corner presses reverse the shared plane",
+            upperLeft.rotationX * lowerRight.rotationX < 0f && upperLeft.rotationY * lowerRight.rotationY < 0f)
     }
 
     @Test fun actualGentleAndBuoyantPlanesLiftAndCReboundsPastRest() = liftAndRebound(false)
@@ -142,7 +229,7 @@ class ShortcutRefinedMotionTest {
         assertEquals(hit,card.fetchSemanticsNode().boundsInRoot)
         capture("B-edge-held")
         card.performTouchInput { cancel() }
-        compose.mainClock.advanceTimeBy(1000);compose.waitForIdle()
+        repeat(60) { compose.mainClock.advanceTimeBy(16); compose.waitForIdle() }
         assertEquals("cancelled pose settles back to rest",restWidth,width(),.75f)
         compose.runOnIdle { assertEquals(0,clicks) }
         compose.mainClock.autoAdvance=true

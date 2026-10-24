@@ -9,6 +9,10 @@
 }
 -keep class com.github.kr328.clash.core.** { *; }
 -keep interface com.github.kr328.clash.core.** { *; }
+# JNI_OnLoad in libbridge.so resolves kotlin/Unit and its INSTANCE field by fixed names.
+-keep class kotlin.Unit { public static final kotlin.Unit INSTANCE; }
+# JNI_OnLoad also resolves CompletableDeferred.complete/completeExceptionally via GetMethodID.
+-keep interface kotlinx.coroutines.CompletableDeferred { *; }
 -keep class * implements com.github.kr328.clash.core.bridge.TunInterface { *; }
 -keep class * implements com.github.kr328.clash.core.bridge.FetchCallback { *; }
 -keep class * implements com.github.kr328.clash.core.bridge.LogcatInterface { *; }

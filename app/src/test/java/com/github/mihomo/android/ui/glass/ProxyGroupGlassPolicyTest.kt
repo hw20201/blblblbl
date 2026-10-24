@@ -1,5 +1,6 @@
 package com.github.mihomo.android.ui.glass
 
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,7 +27,6 @@ class ProxyGroupGlassPolicyTest {
         assertFalse(replayProxyGroupBackdrop(26, lowRam = false, hasSource = true))
         assertFalse(replayProxyGroupBackdrop(30, lowRam = false, hasSource = true))
     }
-}
 
     @Test fun glassGroupUsesItsOwnRimWithoutAnExtraWhiteCardStroke() {
         assertFalse(proxyCardNeedsOuterBorder(groupGlass = true, selected = false))
@@ -36,3 +36,5 @@ class ProxyGroupGlassPolicyTest {
         assertTrue(proxyCardNeedsOuterBorder(groupGlass = false, selected = false))
         assertTrue(proxyCardNeedsOuterBorder(groupGlass = false, selected = true))
     }
+
+}

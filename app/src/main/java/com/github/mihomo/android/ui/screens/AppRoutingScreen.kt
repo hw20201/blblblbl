@@ -20,11 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.InstalledApp
 import com.github.mihomo.android.data.PerAppProxyMode
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.theme.*
@@ -46,290 +49,175 @@ fun AppRoutingScreen(
     var showSystemApps by remember { mutableStateOf(false) }
     val lang = LocalAppLanguage.current
     val haptic = rememberIosHaptic()
+    val modes = listOf(PerAppProxyMode.DISABLED, PerAppProxyMode.WHITELIST, PerAppProxyMode.BLACKLIST)
+    val visibleApps = remember(apps, showSystemApps) {
+        if (showSystemApps) apps else apps.filter { !it.isSystem }
+    }
+    val filtered = remember(visibleApps, searchQuery) {
+        if (searchQuery.isBlank()) visibleApps
+        else visibleApps.filter {
+            it.label.contains(searchQuery, ignoreCase = true) ||
+                it.packageName.contains(searchQuery, ignoreCase = true)
+        }
+    }
+    val (checkedApps, unselectedApps) = remember(filtered, selectedPackages) {
+        filtered.partition { selectedPackages.contains(it.packageName) }
+    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
-    ) {
-        // Cupertino Navigation Bar
-        CupertinoNavBar(
-            title = AppStrings.get("app_routing_title", lang),
-            showBackButton = onBack != null,
-            onBack = onBack
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
+    // One transparent edge-to-edge list owns the controls and every app row. The title/back
+    // row floats above it, so searching, filters and results all move as one continuous page.
+    Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().testTag("app-routing-list").bounceOverscroll(),
+            contentPadding = PaddingValues(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                bottom = 120.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Mode Segmented Buttons
-            val modes = listOf(
-                PerAppProxyMode.DISABLED,
-                PerAppProxyMode.WHITELIST,
-                PerAppProxyMode.BLACKLIST
-            )
-            CupertinoSegmentedControl(
-                items = modes,
-                selectedItem = currentMode,
-                onItemSelected = onModeChanged,
-                labelProvider = { mode ->
-                    when (mode) {
-                        PerAppProxyMode.DISABLED -> AppStrings.get("per_app_disabled", lang)
-                        PerAppProxyMode.WHITELIST -> AppStrings.get("per_app_whitelist", lang)
-                        PerAppProxyMode.BLACKLIST -> AppStrings.get("per_app_blacklist", lang)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (currentMode != PerAppProxyMode.DISABLED) {
-                // Cupertino Search Bar
-                TextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text(AppStrings.get("app_search_placeholder", lang), color = LoonTextMuted, fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(18.dp)) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
-                            }
+            item(key = "routing-mode") {
+                CupertinoSegmentedControl(
+                    items = modes,
+                    selectedItem = currentMode,
+                    onItemSelected = onModeChanged,
+                    labelProvider = { mode ->
+                        when (mode) {
+                            PerAppProxyMode.DISABLED -> AppStrings.get("per_app_disabled", lang)
+                            PerAppProxyMode.WHITELIST -> AppStrings.get("per_app_whitelist", lang)
+                            PerAppProxyMode.BLACKLIST -> AppStrings.get("per_app_blacklist", lang)
                         }
                     },
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = LoonCard,
-                        unfocusedContainerColor = LoonCard,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        focusedTextColor = LoonTextPrimary,
-                        unfocusedTextColor = LoonTextPrimary
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                 )
-
-                // Sub-bar: stats & system apps toggle
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "已选中 ${selectedPackages.size} 个应用",
-                        color = LoonTextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+            }
+            if (currentMode != PerAppProxyMode.DISABLED) {
+                item(key = "routing-search") {
+                    ShortcutSearchField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = AppStrings.get("app_search_placeholder", lang),
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = AppStrings.get("app_show_system", lang),
-                            color = LoonTextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        CupertinoSwitch(
-                            checked = showSystemApps,
-                            onCheckedChange = { showSystemApps = it }
-                        )
+                }
+                item(key = "routing-summary") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("已选中 ${selectedPackages.size} 个应用", color = LoonTextSecondary,
+                            fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(AppStrings.get("app_show_system", lang), color = LoonTextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.width(8.dp))
+                            CupertinoSwitch(checked = showSystemApps, onCheckedChange = { showSystemApps = it })
+                        }
                     }
                 }
-
                 if (isLoading) {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = IosBlue)
+                    item(key = "routing-loading") {
+                        Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = IosBlue)
+                        }
                     }
                 } else {
-                    val visibleApps = remember(apps, showSystemApps) {
-                        if (showSystemApps) apps else apps.filter { !it.isSystem }
-                    }
-                    val filtered = remember(visibleApps, searchQuery) {
-                        if (searchQuery.isBlank()) visibleApps
-                        else visibleApps.filter {
-                            it.label.contains(searchQuery, ignoreCase = true) ||
-                                it.packageName.contains(searchQuery, ignoreCase = true)
-                        }
-                    }
-                    val (checkedApps, unselectedApps) = remember(filtered, selectedPackages) {
-                        filtered.partition { selectedPackages.contains(it.packageName) }
-                    }
-
-                    // Quick Batch Actions
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = LoonTertiaryBg,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
+                    item(key = "routing-batch-actions") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp), color = LoonTertiaryBg,
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
                                     haptic.selection()
-                                    // Select all currently visible unselected
                                     unselectedApps.forEach { onTogglePackage(it.packageName) }
                                 }
-                        ) {
-                            Text(
-                                text = "全选当前 (${filtered.size})",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = IosBlue,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                            )
-                        }
-
-                        if (checkedApps.isNotEmpty()) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = LoonTertiaryBg,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
+                            ) {
+                                Text("全选当前 (${filtered.size})", fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold, color = IosBlue,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                            }
+                            if (checkedApps.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp), color = LoonTertiaryBg,
+                                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
                                         haptic.selection()
-                                        // Deselect all checked
                                         checkedApps.forEach { onTogglePackage(it.packageName) }
                                     }
-                            ) {
-                                Text(
-                                    text = "全部取消",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = IosRed,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                )
+                                ) {
+                                    Text("全部取消", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold,
+                                        color = IosRed, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                                }
                             }
                         }
                     }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .bounceOverscroll(),
-                        contentPadding = PaddingValues(top = 2.dp, bottom = 120.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Category 1: Selected (Checked) Apps
-                        if (checkedApps.isNotEmpty()) {
-                            item(key = "hdr_checked") {
-                                Text(
-                                    text = if (currentMode == PerAppProxyMode.WHITELIST) "已启用代理的应用 (${checkedApps.size})"
-                                    else "直接连接/绕过的应用 (${checkedApps.size})",
-                                    color = IosBlue,
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 4.dp)
-                                )
-                            }
-                            items(checkedApps, key = { "chk_${it.packageName}" }) { app ->
-                                AppItemRow(
-                                    app = app,
-                                    isChecked = true,
-                                    onToggle = {
-                                        haptic.selection()
-                                        onTogglePackage(app.packageName)
-                                    }
-                                )
-                            }
-                            item(key = "sp_checked") {
-                                Spacer(modifier = Modifier.height(4.dp))
+                    if (checkedApps.isNotEmpty()) {
+                        item(key = "hdr_checked") {
+                            Text(
+                                text = if (currentMode == PerAppProxyMode.WHITELIST) "已启用代理的应用 (${checkedApps.size})"
+                                else "直接连接/绕过的应用 (${checkedApps.size})",
+                                color = IosBlue, fontSize = 12.5.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 20.dp)
+                            )
+                        }
+                        items(checkedApps, key = { "chk_${it.packageName}" }) { app ->
+                            Box(Modifier.padding(horizontal = 16.dp)) {
+                                AppItemRow(app, true) { haptic.selection(); onTogglePackage(app.packageName) }
                             }
                         }
-
-                        // Category 2: Other (Unselected) Apps
-                        if (unselectedApps.isNotEmpty()) {
-                            if (checkedApps.isNotEmpty()) {
-                                item(key = "hdr_other") {
-                                    Text(
-                                        text = "其他未选应用 (${unselectedApps.size})",
-                                        color = LoonTextSecondary,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 4.dp)
-                                    )
-                                }
+                        item(key = "sp_checked") { Spacer(Modifier.height(4.dp)) }
+                    }
+                    if (unselectedApps.isNotEmpty()) {
+                        if (checkedApps.isNotEmpty()) {
+                            item(key = "hdr_other") {
+                                Text("其他未选应用 (${unselectedApps.size})", color = LoonTextSecondary,
+                                    fontSize = 12.5.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 20.dp))
                             }
-                            items(unselectedApps, key = { "other_${it.packageName}" }) { app ->
-                                AppItemRow(
-                                    app = app,
-                                    isChecked = false,
-                                    onToggle = {
-                                        haptic.selection()
-                                        onTogglePackage(app.packageName)
-                                    }
-                                )
+                        }
+                        items(unselectedApps, key = { "other_${it.packageName}" }) { app ->
+                            Box(Modifier.padding(horizontal = 16.dp)) {
+                                AppItemRow(app, false) { haptic.selection(); onTogglePackage(app.packageName) }
                             }
-                        } else if (checkedApps.isEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 40.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(AppStrings.get("app_no_match", lang), color = LoonTextMuted, fontSize = 13.sp)
-                                }
+                        }
+                    } else if (checkedApps.isEmpty()) {
+                        item(key = "routing-no-match") {
+                            Box(Modifier.fillMaxWidth().heightIn(min = 240.dp).padding(horizontal = 32.dp),
+                                contentAlignment = Alignment.Center) {
+                                Text(AppStrings.get("app_no_match", lang), color = LoonTextMuted, fontSize = 13.sp)
                             }
                         }
                     }
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .bounceOverscroll(),
-                    contentAlignment = Alignment.Center
-                ) {
+                item(key = "routing-disabled-empty") {
                     Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(horizontal = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 32.dp)
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(LoonTertiaryBg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Android,
-                                contentDescription = null,
-                                tint = IosOrange,
-                                modifier = Modifier.size(32.dp)
-                            )
+                        Box(Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)).background(LoonTertiaryBg),
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Android, contentDescription = null, tint = IosOrange, modifier = Modifier.size(32.dp))
                         }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = "未启用分应用代理",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LoonTextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "请在上方选择「白名单模式」（仅代理选中应用）或「黑名单模式」（仅绕过选中应用）以开启针对特定 App 的网络分流控制",
-                            color = LoonTextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
+                        Spacer(Modifier.height(14.dp))
+                        Text("未启用分应用代理", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary)
+                        Spacer(Modifier.height(6.dp))
+                        Text("请在上方选择「白名单模式」（仅代理选中应用）或「黑名单模式」（仅绕过选中应用）以开启针对特定 App 的网络分流控制",
+                            color = LoonTextSecondary, fontSize = 13.sp, lineHeight = 19.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }
+        }
+        Box(Modifier.fillMaxWidth().statusBarsPadding().zIndex(1f)) {
+            CupertinoNavBar(
+                title = AppStrings.get("app_routing_title", lang),
+                showBackButton = onBack != null,
+                onBack = onBack,
+                frosted = true,
+                titleFrostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA
+            )
         }
     }
 }

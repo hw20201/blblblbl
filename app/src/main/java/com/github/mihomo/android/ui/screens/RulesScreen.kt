@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -73,237 +74,146 @@ fun RulesScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
-    ) {
-        // Cupertino Navigation Bar
-        CupertinoNavBar(
-            title = AppStrings.get("rules_screen_title", lang),
-            subtitle = "${tunnelMode.displayName} · 共 $totalRules 条规则",
-            showBackButton = true,
-            onBack = onBack
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
+    // One edge-to-edge lazy surface owns the search, filters and rule rows. The title
+    // row floats above it, so the same page scene continues behind the transparent toolbar
+    // while every control scrolls naturally with the rule content.
+    Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().testTag("rules-list").bounceOverscroll(),
+            contentPadding = PaddingValues(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 50.dp,
+                bottom = 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Cupertino Search Bar
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("搜索规则类型、域名、目标策略...", fontSize = 13.sp, color = LoonTextMuted) },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(18.dp))
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Clear, contentDescription = "清除", tint = LoonTextMuted, modifier = Modifier.size(16.dp))
+            item(key = "rules-search") {
+                ShortcutSearchField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = "搜索规则类型、域名、目标策略...",
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+            item(key = "rules-behavior-filter") {
+                CupertinoSegmentedControl(
+                    items = behaviorTabs,
+                    selectedItem = selectedBehavior,
+                    onItemSelected = { selectedBehavior = it },
+                    labelProvider = { tab ->
+                        when (tab) {
+                            "ALL" -> "全部 (${rules.size})"
+                            "PROXY" -> "代理"
+                            "DIRECT" -> "直连"
+                            "REJECT" -> "拦截"
+                            else -> tab
                         }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = LoonCard,
-                    unfocusedContainerColor = LoonCard,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedTextColor = LoonTextPrimary,
-                    unfocusedTextColor = LoonTextPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // iOS Segmented Behavior Filter
-            CupertinoSegmentedControl(
-                items = behaviorTabs,
-                selectedItem = selectedBehavior,
-                onItemSelected = { selectedBehavior = it },
-                labelProvider = { tab ->
-                    when (tab) {
-                        "ALL" -> "全部 (${rules.size})"
-                        "PROXY" -> "代理"
-                        "DIRECT" -> "直连"
-                        "REJECT" -> "拦截"
-                        else -> tab
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-            )
-
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                )
+            }
             if (filterTypes.size > 2) {
-                LazyRow(
-                    contentPadding = PaddingValues(bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filterTypes) { type ->
-                        val selected = selectedFilterType == type
-                        Surface(
-                            modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
-                                haptic.selection()
-                                selectedFilterType = type
-                            },
-                            color = if (selected) IosBlue.copy(alpha = 0.12f) else LoonCard,
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text(
-                                text = if (type == "ALL") "全部 (${rules.size})" else type,
-                                color = if (selected) IosBlue else LoonTextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                            )
+                item(key = "rules-type-filter") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filterTypes) { type ->
+                            val selected = selectedFilterType == type
+                            Surface(
+                                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
+                                    haptic.selection()
+                                    selectedFilterType = type
+                                },
+                                color = if (selected) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .22f else .09f) else LoonCard.copy(alpha = .72f),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = if (type == "ALL") "全部 (${rules.size})" else type,
+                                    color = if (selected) LoonTextPrimary else LoonTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
-
-            // Rules List
             if (filteredRules.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .bounceOverscroll(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.FilterList,
-                            contentDescription = null,
-                            tint = LoonTextMuted,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = if (rules.isEmpty()) "当前配置未配置任何分流规则\n所有流量将采用默认出站策略" else "未找到符合条件的规则",
-                            color = LoonTextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
+                item(key = "rules-empty") {
+                    Box(
+                        Modifier.fillMaxWidth().heightIn(min = 240.dp).padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.FilterList, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = if (rules.isEmpty()) "当前配置未配置任何分流规则\n所有流量将采用默认出站策略" else "未找到符合条件的规则",
+                                color = LoonTextSecondary, fontSize = 13.sp, lineHeight = 20.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .bounceOverscroll(),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 120.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    itemsIndexed(filteredRules) { index, rule ->
-                        val isDirect = rule.target.equals("DIRECT", ignoreCase = true)
-                        val isReject = rule.target.contains("REJECT", ignoreCase = true)
-                        val targetColor = when {
-                            isDirect -> IosGreen
-                            isReject -> IosRed
-                            else -> IosBlue
+                itemsIndexed(filteredRules, key = { index, rule -> "${rule.type}-$index-${rule.payload}" }) { index, rule ->
+                    val startsTypeGroup = index == 0 || !filteredRules[index - 1].type.equals(rule.type, ignoreCase = true)
+                    val targetColor = when {
+                        rule.target.equals("DIRECT", ignoreCase = true) -> IosGreen
+                        rule.target.contains("REJECT", ignoreCase = true) -> IosRed
+                        else -> IosBlue
+                    }
+                    val typeColor = when {
+                        rule.type.contains("DOMAIN", ignoreCase = true) -> IosBlue
+                        rule.type.contains("GEOIP", ignoreCase = true) -> IosOrange
+                        rule.type.contains("IP-CIDR", ignoreCase = true) -> Color(0xFF5856D6)
+                        rule.type.contains("RULE-SET", ignoreCase = true) -> IosGreen
+                        else -> LoonTextSecondary
+                    }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                        if (startsTypeGroup) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(start = 4.dp, top = if (index == 0) 4.dp else 8.dp, bottom = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(rule.type.uppercase(), color = typeColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.7.sp)
+                                Spacer(Modifier.width(8.dp))
+                                HorizontalDivider(Modifier.weight(1f), color = LoonCardBorder.copy(alpha = 0.6f), thickness = 0.5.dp)
+                            }
                         }
-
-                        val typeColor = when {
-                            rule.type.contains("DOMAIN", ignoreCase = true) -> IosBlue
-                            rule.type.contains("GEOIP", ignoreCase = true) -> IosOrange
-                            rule.type.contains("IP-CIDR", ignoreCase = true) -> Color(0xFF5856D6)
-                            rule.type.contains("RULE-SET", ignoreCase = true) -> IosGreen
-                            else -> LoonTextSecondary
-                        }
-
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = LoonCard,
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .iosPressable {
-                                    haptic.selection()
-                                    inspectedRule = Pair(index + 1, rule)
-                                }
+                            shape = RoundedCornerShape(12.dp), color = LoonCard.copy(alpha = .72f),
+                            border = androidx.compose.foundation.BorderStroke(0.75.dp, Color.White.copy(alpha = .7f)),
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).iosPressable {
+                                haptic.selection()
+                                inspectedRule = Pair(index + 1, rule)
+                            }
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
+                                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("#${index + 1}", fontSize = 11.sp, color = LoonTextMuted, fontFamily = FontFamily.Monospace, modifier = Modifier.width(34.dp))
+                                    Text(rule.type, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = typeColor)
+                                    Spacer(Modifier.width(10.dp))
                                     Text(
-                                        text = "#${index + 1}",
-                                        fontSize = 11.sp,
-                                        color = LoonTextMuted,
-                                        fontFamily = FontFamily.Monospace,
-                                        modifier = Modifier.width(34.dp)
+                                        text = rule.payload.ifBlank { "MATCH ALL" },
+                                        fontSize = if (rule.payload.isBlank()) 12.sp else 13.5.sp,
+                                        fontWeight = if (rule.payload.isBlank()) FontWeight.Normal else FontWeight.Medium,
+                                        color = if (rule.payload.isBlank()) LoonTextMuted else LoonTextPrimary,
+                                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
-
-                                    // Clean text typography for rule type - NO square box!
-                                    Text(
-                                        text = rule.type,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = typeColor
-                                    )
-
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    if (rule.payload.isNotBlank()) {
-                                        Text(
-                                            text = rule.payload,
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = LoonTextPrimary,
-                                            maxLines = 1,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "MATCH ALL",
-                                            fontSize = 12.sp,
-                                            color = LoonTextMuted,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
                                 }
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
+                                Spacer(Modifier.width(10.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (rule.noResolve) {
-                                        Text(
-                                            text = "no-resolve",
-                                            fontSize = 10.sp,
-                                            color = LoonTextMuted,
-                                            modifier = Modifier.padding(end = 8.dp)
-                                        )
-                                    }
-
-                                    // Round pill badge strictly for highlight target
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = targetColor.copy(alpha = 0.12f)
-                                    ) {
-                                        Text(
-                                            text = rule.target.ifBlank { "DIRECT" },
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = targetColor,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                        )
+                                    if (rule.noResolve) Text("no-resolve", fontSize = 10.sp, color = LoonTextMuted, modifier = Modifier.padding(end = 8.dp))
+                                    Surface(shape = CircleShape, color = targetColor.copy(alpha = 0.12f)) {
+                                        Text(rule.target.ifBlank { "DIRECT" }, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                            color = targetColor, modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp))
                                     }
                                 }
                             }
@@ -311,6 +221,15 @@ fun RulesScreen(
                     }
                 }
             }
+        }
+        Box(Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
+            CupertinoNavBar(
+                title = AppStrings.get("rules_screen_title", lang),
+                subtitle = "${tunnelMode.displayName} · 共 $totalRules 条规则",
+                showBackButton = true,
+                onBack = onBack,
+                frosted = true
+            )
         }
     }
 

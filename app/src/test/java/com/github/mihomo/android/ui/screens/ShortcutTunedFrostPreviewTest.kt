@@ -56,7 +56,7 @@ class ShortcutTunedFrostPreviewTest {
         val preview = mutableStateOf<ShortcutTouchPreview?>(null)
         val tuned = mutableStateOf(false)
         content(variant, dark, preview, tuned)
-        val bounds = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag("shortcut-nodes").fetchSemanticsNode().boundsInRoot
         val mode = if (dark) "dark" else "light"
         val dir = File("build/outputs/tuned-frost-dashboard").also { it.mkdirs() }
         val prefix = "${variant.name}-$mode"

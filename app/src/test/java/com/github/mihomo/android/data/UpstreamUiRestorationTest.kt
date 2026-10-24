@@ -45,7 +45,10 @@ class UpstreamUiRestorationTest {
         root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { file ->
             val text = file.readText()
             removedReferences.forEach { name ->
-                assertFalse("$name remains in $file", text.contains(name))
+                // Match the removed symbol as a Kotlin identifier, not a prefix: the current
+                // dedicated GlassEffectsScreen is valid and must not trip the old GlassEffect check.
+                val identifier = Regex("\\b${Regex.escape(name)}\\b")
+                assertFalse("$name remains in $file", identifier.containsMatchIn(text))
             }
         }
         val theme = File(root, "com/github/mihomo/android/ui/theme/Theme.kt").readText()

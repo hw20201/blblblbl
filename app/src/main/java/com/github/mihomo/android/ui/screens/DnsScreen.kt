@@ -17,14 +17,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.data.LogRepository
+import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -104,35 +109,28 @@ fun DnsScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
+            .testTag("dns-page-root")
     ) {
-        // Cupertino Navigation Bar
-        CupertinoNavBar(
-            title = AppStrings.get("dns_screen_title", lang),
-            showBackButton = true,
-            onBack = onBack
-        )
-
+        // One full-screen list moves behind the pinned, translucent navigation bar.
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag("dns-page-list")
                 .bounceOverscroll()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Card 1: DNS Mode & Status
             item(key = "dns_status") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                DnsPanelSurface(tag = "dns-panel-status", modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -155,7 +153,8 @@ fun DnsScreen(
                             }
                             CupertinoSwitch(
                                 checked = fakeIpEnabled,
-                                onCheckedChange = { onFakeIpEnabledChanged(it) }
+                                onCheckedChange = { onFakeIpEnabledChanged(it) },
+                                modifier = Modifier.testTag("dns-fakeip-switch")
                             )
                         }
 
@@ -213,12 +212,7 @@ fun DnsScreen(
 
             // Card 2: Live DNS Diagnostic Tool
             item(key = "dns_test_tool") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                DnsPanelSurface(tag = "dns-panel-diagnostic", modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "DNS 实时解析诊断",
@@ -323,12 +317,7 @@ fun DnsScreen(
 
             // Card 3: Upstream Nameservers
             item(key = "dns_servers") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                DnsPanelSurface(tag = "dns-panel-upstream", modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "配置的上游 DNS 服务器",
@@ -373,12 +362,7 @@ fun DnsScreen(
 
             // Card 4: Fake-IP Bypass Filter Domains
             item(key = "dns_bypass") {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                DnsPanelSurface(tag = "dns-panel-bypass", modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Fake-IP 过滤名单 (直连真实解析)",
@@ -488,5 +472,42 @@ fun DnsScreen(
                 }
             }
         }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .zIndex(1f)
+                .testTag("dns-page-header")
+        ) {
+            CupertinoNavBar(
+                title = AppStrings.get("dns_screen_title", lang),
+                showBackButton = true,
+                onBack = onBack,
+                frosted = true,
+                titleFrostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA
+            )
+        }
+    }
+}
+
+@Composable
+private fun DnsPanelSurface(
+    tag: String,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
+    content: @Composable () -> Unit
+) {
+    val taggedModifier = modifier.testTag(tag)
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = taggedModifier, shape = shape) { content() }
+    } else {
+        Surface(
+            modifier = taggedModifier,
+            shape = shape,
+            color = LoonCard,
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
+            content = content
+        )
     }
 }

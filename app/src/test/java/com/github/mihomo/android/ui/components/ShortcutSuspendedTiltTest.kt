@@ -41,7 +41,7 @@ class ShortcutSuspendedTiltTest {
             CompositionLocalProvider(
                 LocalShortcutTouchVariant provides ShortcutTouchVariant.FingerTilt,
                 LocalShortcutMotionEnabled provides true,
-                LocalShortcutGlassLevel provides level.value,
+                LocalGlassSettings provides GlassSettings.DEFAULT.copy(shortcutGlassLevel = level.value),
                 LocalGlassTokens provides (if (dark) GlassPalettes.MIDNIGHT else GlassPalettes.CREAM).toTokens()
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

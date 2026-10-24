@@ -121,8 +121,10 @@ fun MihomoTheme(
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val statusBarColor = loonColors.bg.toArgb()
-        val navBarColor = loonColors.bg.toArgb()
+        // Bars are transparent so each screen's live scene, not a flat theme strip,
+        // continues behind the system chrome. Insets are handled by the screen layouts.
+        val statusBarColor = android.graphics.Color.TRANSPARENT
+        val navBarColor = android.graphics.Color.TRANSPARENT
         SideEffect {
             val window = view.context.findActivity()?.window ?: return@SideEffect
             window.statusBarColor = statusBarColor
