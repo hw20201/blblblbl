@@ -6,6 +6,8 @@ import com.github.mihomo.android.ui.components.ShortcutTouchVariant
 import com.github.mihomo.android.ui.glass.GlassOptics
 import com.github.mihomo.android.ui.glass.GlassSettings
 import com.github.mihomo.android.ui.glass.GlassSurfaceCategory
+import com.github.mihomo.android.ui.glass.GlassWallpaperMode
+import com.github.mihomo.android.ui.glass.GlassWallpaperSettings
 import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -33,6 +35,13 @@ private val glassSettingsJson = Json { ignoreUnknownKeys = true; encodeDefaults 
 class SettingsManager(context: Context) {
     private companion object {
         const val KEY_GLASS_SETTINGS = "glass_settings_v1"
+        const val KEY_WALLPAPER_ENABLED = "glass_wallpaper_enabled"
+        const val KEY_WALLPAPER_MODE = "glass_wallpaper_mode"
+        const val KEY_WALLPAPER_COLOR_A = "glass_wallpaper_color_a"
+        const val KEY_WALLPAPER_COLOR_B = "glass_wallpaper_color_b"
+        const val KEY_WALLPAPER_COLOR_C = "glass_wallpaper_color_c"
+        const val KEY_WALLPAPER_FLOW = "glass_wallpaper_flow"
+        const val KEY_WALLPAPER_CURVE_SEED = "glass_wallpaper_curve_seed"
         const val KEY_SHORTCUT_GLASS_LEVEL = "shortcut_glass_level"
         const val KEY_SHORTCUT_GLASS_REFRACTION = "shortcut_glass_refraction_dp"
         const val KEY_SHORTCUT_GLASS_DISPERSION = "shortcut_glass_dispersion_dp"
@@ -197,6 +206,27 @@ class SettingsManager(context: Context) {
     var glassPaletteKey: String
         get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
         set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
+
+    /** User-selectable straight fluted wallpaper; inactive preserves the existing mesh backdrop. */
+    var glassWallpaperSettings: GlassWallpaperSettings
+        get() = GlassWallpaperSettings(
+            enabled = prefs.getBoolean(KEY_WALLPAPER_ENABLED, false),
+            mode = GlassWallpaperMode.fromKey(prefs.getString(KEY_WALLPAPER_MODE, GlassWallpaperMode.FLUTED.name)),
+            colorA = prefs.getInt(KEY_WALLPAPER_COLOR_A, GlassWallpaperSettings.COLOR_A),
+            colorB = prefs.getInt(KEY_WALLPAPER_COLOR_B, GlassWallpaperSettings.COLOR_B),
+            colorC = prefs.getInt(KEY_WALLPAPER_COLOR_C, GlassWallpaperSettings.COLOR_C),
+            colorFlow = prefs.getBoolean(KEY_WALLPAPER_FLOW, true)
+        )
+        set(value) {
+            prefs.edit()
+                .putBoolean(KEY_WALLPAPER_ENABLED, value.enabled)
+                .putString(KEY_WALLPAPER_MODE, value.mode.name)
+                .putInt(KEY_WALLPAPER_COLOR_A, value.colorA)
+                .putInt(KEY_WALLPAPER_COLOR_B, value.colorB)
+                .putInt(KEY_WALLPAPER_COLOR_C, value.colorC)
+                .putBoolean(KEY_WALLPAPER_FLOW, value.colorFlow)
+                .apply()
+        }
 
     /** Glass effects live under one typed JSON preference; legacy split keys migrate on first write. */
     var glassSettings: GlassSettings

@@ -2,6 +2,7 @@ package com.github.mihomo.android.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,7 +48,8 @@ import androidx.compose.ui.geometry.Offset
 fun GlassEffectsScreen(
     settings: GlassSettings,
     onSettingsChanged: (GlassSettings) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    scrollState: ScrollState = rememberScrollState()
 ) {
     val safe = settings.clamped()
     var selected by remember { mutableStateOf(GlassSurfaceCategory.SHORTCUT_CARDS) }
@@ -71,7 +73,7 @@ fun GlassEffectsScreen(
             Modifier.fillMaxSize()
                 .recordNavigationScene(titleScene)
                 .testTag("glass-effects-scroll")
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
                 .padding(
                     top = headerInset + 8.dp,

@@ -206,4 +206,27 @@ class SettingsUiBehaviorTest {
         compose.runOnIdle { assertTrue("settings content should scroll continuously", scroll.value > 0) }
         compose.onNodeWithTag("settings-title-header").assertExists()
     }
+
+    @Test fun legacySettingsUsesGlassGroupHeadersAndKeepsCompactControls() {
+        compose.setContent {
+            MihomoTheme(ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                    ProvideGlassTheme {
+                        SettingsScreen(
+                            scrollState = ScrollState(0), tunStack = TunStack.DEFAULT,
+                            bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
+                            onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                            onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
+                        )
+                    }
+                }
+            }
+        }
+        listOf("network-core", "network-tun", "routing-services", "preferences-debug", "maintenance-about")
+            .forEach { compose.onNodeWithTag("settings-group-header-$it").assertExists() }
+        compose.onNodeWithText("连接基础、启动与局域网共享").assertExists()
+        compose.onNodeWithText("TUN 堆栈").assertExists()
+        compose.onNodeWithTag("settings-title-capsule").assertExists()
+    }
+
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
 import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +52,10 @@ import com.github.mihomo.android.ui.glass.ShortcutFollowupCardShape
 import com.github.mihomo.android.ui.glass.ShortcutRefraction
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
+import com.github.mihomo.android.ui.glass.GlassRadius
+import com.github.mihomo.android.ui.glass.glassTextPrimary
+import com.github.mihomo.android.ui.glass.glassTextSecondary
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -123,10 +128,9 @@ fun SettingsScreen(
                 .verticalScroll(scrollState)
                 .padding(top = headerInset + 12.dp, bottom = 120.dp)
         ) {
-            // Section 1: 网络与核心 (Network & Core)
-            CupertinoGroupedSection(
-                header = "网络与核心"
-            ) {
+            SettingsGroupHeader("network-core", "网络与核心", "连接基础、启动与局域网共享", Icons.Default.VpnKey, IosBlue)
+            Spacer(Modifier.height(8.dp))
+            CupertinoGroupedSection {
                 CupertinoCell(
                     title = "TUN 堆栈",
                     value = when (tunStack.key) {
@@ -185,10 +189,9 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section 2: 分流与服务 (Routing & Services)
-            CupertinoGroupedSection(
-                header = "网络与 TUN"
-            ) {
+            SettingsGroupHeader("network-tun", "网络与 TUN", "隧道协议、地址族与网络参数", Icons.Default.Public, Color(0xFF30B0C7))
+            Spacer(Modifier.height(8.dp))
+            CupertinoGroupedSection {
                 CupertinoCell(title = "IPv6", subtitle = AppStrings.get("settings_ipv6_desc", lang), trailing = {
                     CupertinoSwitch(checked = ipv6Enabled, onCheckedChange = { enabled ->
                         onIpv6EnabledChanged(enabled)
@@ -204,9 +207,9 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(20.dp))
-            CupertinoGroupedSection(
-                header = "分流与服务"
-            ) {
+            SettingsGroupHeader("routing-services", "分流与服务", "配置资源、DNS 与规则入口", Icons.Default.FolderZip, Color(0xFFAF52DE))
+            Spacer(Modifier.height(8.dp))
+            CupertinoGroupedSection {
                 CupertinoCell(
                     title = "配置中心",
                     subtitle = "配置文件、订阅、脚本与路由资源",
@@ -229,10 +232,10 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section 3: 个性化与调试 (Preferences & Debugging)
-            CupertinoGroupedSection(
-                header = "个性化与调试"
-            ) {
+            // Settings controls stay compact; only the five major groups receive a spacious glass header.
+            SettingsGroupHeader("preferences-debug", "个性化与调试", "外观、交互反馈与调试工具", Icons.Default.Palette, Color(0xFFFF2D55))
+            Spacer(Modifier.height(8.dp))
+            CupertinoGroupedSection {
                 CupertinoCell(
                     title = "外观与显示",
                     value = when (themeMode) {
@@ -295,10 +298,9 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section 4: 关于与维护 (About & Maintenance)
-            CupertinoGroupedSection(
-                header = "维护与关于"
-            ) {
+            SettingsGroupHeader("maintenance-about", "维护与关于", "应用与核心版本、维护操作", Icons.Default.SystemUpdate, Color(0xFF34C759))
+            Spacer(Modifier.height(8.dp))
+            CupertinoGroupedSection {
                 CupertinoCell(
                     title = "应用版本",
                     value = "v$installedVersion",
@@ -591,3 +593,55 @@ internal fun settingsSectionLens(
     recordedScene: NavigationLensState,
     externalBackdrop: NavigationLensState?
 ): NavigationLensState? = externalBackdrop?.takeUnless { it === recordedScene }
+
+
+@Composable
+private fun SettingsGroupHeader(
+    tag: String,
+    title: String,
+    description: String,
+    icon: ImageVector,
+    accent: Color
+) {
+    val modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(62.dp)
+        .testTag("settings-group-header-$tag")
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier, shape = RoundedCornerShape(GlassRadius.card), accent = accent) {
+            SettingsGroupHeaderContent(title, description, icon, accent, true)
+        }
+    } else {
+        Surface(modifier = modifier, shape = RoundedCornerShape(GlassRadius.card), color = LoonCard) {
+            SettingsGroupHeaderContent(title, description, icon, accent, false)
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroupHeaderContent(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    accent: Color,
+    glass: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = if (glass) .16f else .12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(11.dp))
+        Column(verticalArrangement = Arrangement.Center) {
+            Text(title, color = if (glass) glassTextPrimary else LoonTextPrimary,
+                fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Spacer(Modifier.height(1.dp))
+            Text(description, color = if (glass) glassTextSecondary else LoonTextSecondary,
+                fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}

@@ -1,6 +1,7 @@
 package com.github.mihomo.android.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -40,7 +41,8 @@ fun ConfigurationCenterScreen(
     onNavigateToScripts: () -> Unit,
     onNavigateToRules: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    scrollState: ScrollState = rememberScrollState()
 ) {
     val titleScene = rememberNavigationLens()
     var headerHeightPx by remember { mutableIntStateOf(0) }
@@ -55,8 +57,8 @@ fun ConfigurationCenterScreen(
             Modifier.fillMaxSize()
                 .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene) else Modifier)
                 .testTag("configuration-center-scroll")
-                .verticalScroll(rememberScrollState())
-                .padding(top = headerInset + 16.dp, bottom = 136.dp),
+                .verticalScroll(scrollState)
+                .padding(top = headerInset + 32.dp, bottom = 136.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             ConfigurationCenterSection("配置 / 订阅", "configuration-center-section-header-0") {

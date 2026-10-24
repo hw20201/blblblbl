@@ -17,7 +17,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -85,11 +89,13 @@ class ThemeColorGridRenderingTest {
         val actualScreen = screenshot()
         val gridBounds = compose.onNodeWithTag("appearance-theme-color-grid")
             .fetchSemanticsNode().boundsInRoot
-        val topSwatch = compose.onNodeWithContentDescription(
-            "#${GlassPalettes.keyForColor(ThemeColorGrid.first()).substringAfter(':')}"
+        fun appearanceSwatch(hex: String) = compose.onAllNodesWithContentDescription("#$hex")
+            .filterToOne(hasAnyAncestor(hasTestTag("appearance-theme-color-grid")))
+        val topSwatch = appearanceSwatch(
+            GlassPalettes.keyForColor(ThemeColorGrid.first()).substringAfter(':')
         ).fetchSemanticsNode().boundsInRoot
-        val bottomSwatch = compose.onNodeWithContentDescription(
-            "#${GlassPalettes.keyForColor(ThemeColorGrid.last()).substringAfter(':')}"
+        val bottomSwatch = appearanceSwatch(
+            GlassPalettes.keyForColor(ThemeColorGrid.last()).substringAfter(':')
         ).fetchSemanticsNode().boundsInRoot
         assertEquals("actual AppearanceScreen grid has no top inset", topSwatch.top, gridBounds.top, 0.01f)
         assertEquals("actual AppearanceScreen grid has no bottom inset", bottomSwatch.bottom, gridBounds.bottom, 0.01f)
@@ -99,7 +105,7 @@ class ThemeColorGridRenderingTest {
         val blue = GlassPalettes.keyForColor(ThemeColorGrid[12 + 4 * 12 + 2])
         val coral = GlassPalettes.keyForColor(ThemeColorGrid[12 + 4 * 12 + 5])
         for ((name, key) in listOf("blue" to blue, "coral" to coral)) {
-            compose.onNodeWithContentDescription("#${key.substringAfter(':')}").performClick().assertIsSelected()
+            appearanceSwatch(key.substringAfter(':')).performClick().assertIsSelected()
             compose.waitForIdle()
             assertEquals(key, selected.value.key)
             assertEquals(key, SettingsManager(compose.activity).glassPaletteKey)
@@ -112,7 +118,7 @@ class ThemeColorGridRenderingTest {
         assertNotEquals(GlassPalettes.byKey(blue).blobs, GlassPalettes.byKey(coral).blobs)
         compose.runOnIdle { dark.value = true }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("#${coral.substringAfter(':')}").assertIsSelected()
+        appearanceSwatch(coral.substringAfter(':')).assertIsSelected()
         save(screenshot(), "theme-grid-coral-dark.png")
         File("build/outputs/mesh-preview/theme-grid-evidence.txt").writeText(
             "Actual AppearanceScreen Compose/HWUI PixelCopy, not a device screenshot.\n" +

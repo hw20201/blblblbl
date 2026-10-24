@@ -53,6 +53,7 @@ import com.github.mihomo.android.ui.glass.GlassSurfaceCategory
 import com.github.mihomo.android.ui.glass.LocalGlassSettings
 import com.github.mihomo.android.ui.glass.GlassPalettes
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassWallpaperSettings
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.NexusGlassBackground
 import com.github.mihomo.android.ui.glass.ProvideGlassTheme
@@ -126,6 +127,7 @@ class MainActivity : ComponentActivity() {
         settingsManager = SettingsManager(this)
         // Restore the saved palette before the first frame so there is no flash of the default.
         GlassDefaults.palette = GlassPalettes.byKey(settingsManager.glassPaletteKey)
+        GlassDefaults.wallpaper = settingsManager.glassWallpaperSettings
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -240,6 +242,9 @@ class MainActivity : ComponentActivity() {
         var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
         val settingsScrollState = rememberScrollState()
         val dashboardScrollState = rememberScrollState()
+        val configurationCenterScrollState = rememberScrollState()
+        val appearanceScrollState = rememberScrollState()
+        val glassEffectsScrollState = rememberScrollState()
         val proxiesTabsListState = rememberLazyListState()
         val proxiesListModeState = rememberLazyListState()
         val proxiesGroupRowState = rememberLazyListState()
@@ -725,10 +730,6 @@ class MainActivity : ComponentActivity() {
         ProvideGlassTheme {
         ProvideSoftMeshMotion(paused = { pagerState.isScrollInProgress || dashboardScrollState.isScrollInProgress }) {
         val context = LocalContext.current
-        val hasGlassTestBackgrounds = remember(context) {
-            context.resources.getIdentifier("nexus_glass_test_grid", "drawable", context.packageName) != 0
-        }
-        var glassTestBackdropVariant by remember { mutableStateOf("original") }
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
         val subScreenTransitionState = remember {
@@ -739,8 +740,7 @@ class MainActivity : ComponentActivity() {
         NexusGlassBackground(
             modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
             palette = glassPalette,
-            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier,
-            testBackdropVariant = if (hasGlassTestBackgrounds && currentTab == 0 && currentSubScreen == null) glassTestBackdropVariant else null
+            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier
         ) {
         Box(
             modifier = Modifier
@@ -806,9 +806,6 @@ class MainActivity : ComponentActivity() {
                                     settingsManager.shortcutOrder = updated
                                 },
                                 glassScene = cardScene,
-                                testBackdropVariant = glassTestBackdropVariant,
-                                onTestBackdropVariantChange = { glassTestBackdropVariant = it },
-                                showTestBackdropSelector = hasGlassTestBackgrounds
                             )
                         }
                         1 -> {
@@ -1090,7 +1087,8 @@ class MainActivity : ComponentActivity() {
                                     fromConfigurationCenter = true
                                     currentSubScreen = SubScreen.APP_ROUTING
                                 },
-                                onBack = handleSubScreenBack
+                                onBack = handleSubScreenBack,
+                                scrollState = configurationCenterScrollState
                             )
                             SubScreen.PROFILES -> {
                                 ProfilesScreen(
@@ -1270,7 +1268,8 @@ class MainActivity : ComponentActivity() {
                                     glassSettings = updated.clamped()
                                     settingsManager.glassSettings = glassSettings
                                 },
-                                onBack = { currentSubScreen = null }
+                                onBack = { currentSubScreen = null },
+                                scrollState = glassEffectsScrollState
                             )
                             SubScreen.APPEARANCE -> {
                                 val activePalette = glassPalette
@@ -1281,6 +1280,11 @@ class MainActivity : ComponentActivity() {
                                     onPaletteChanged = { spec ->
                                         GlassDefaults.palette = spec
                                         settingsManager.glassPaletteKey = spec.key
+                                    },
+                                    wallpaperSettings = GlassDefaults.wallpaper,
+                                    onWallpaperSettingsChanged = { value ->
+                                        GlassDefaults.wallpaper = value
+                                        settingsManager.glassWallpaperSettings = value
                                     },
                                     onLanguageChanged = { code -> appLanguage = code },
                                     nodeColumns = nodeColumns,
@@ -1293,7 +1297,8 @@ class MainActivity : ComponentActivity() {
                                         showGroupIcons = show
                                         settingsManager.showGroupIcons = show
                                     },
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { currentSubScreen = null },
+                                    scrollState = appearanceScrollState
                                 )
                             }
                         }

@@ -23,6 +23,7 @@ import com.github.mihomo.android.ui.theme.LoonThemeColors
 object GlassDefaults {
     var enabled by mutableStateOf(true)
     var palette by mutableStateOf(GlassPalettes.CREAM)
+    var wallpaper by mutableStateOf(GlassWallpaperSettings())
 }
 
 val LocalGlassPalette = staticCompositionLocalOf { GlassPalettes.CREAM }

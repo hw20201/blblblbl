@@ -117,12 +117,15 @@ class ShortcutFrostedDepthRenderingTest {
         if (android.os.Build.VERSION.SDK_INT >= 33 && !tuned) {
             var bevel = 0L
             var samples = 0
+            // The captured rounded card edge is antialiased across more than two pixels;
+            // sample the inset return beyond that coverage rather than inside the same rim.
+            val insetReturnOffset = 4
             for (x in (card.left + 32).toInt() until (card.right - 32).toInt()) {
                 val outer = first.getPixel(x, card.top.toInt())
-                val inner = first.getPixel(x, card.top.toInt() + 2)
-                bevel += android.graphics.Color.red(outer) - android.graphics.Color.red(inner)
-                bevel += android.graphics.Color.green(outer) - android.graphics.Color.green(inner)
-                bevel += android.graphics.Color.blue(outer) - android.graphics.Color.blue(inner)
+                val insetReturn = first.getPixel(x, card.top.toInt() + insetReturnOffset)
+                bevel += android.graphics.Color.red(outer) - android.graphics.Color.red(insetReturn)
+                bevel += android.graphics.Color.green(outer) - android.graphics.Color.green(insetReturn)
+                bevel += android.graphics.Color.blue(outer) - android.graphics.Color.blue(insetReturn)
                 samples += 3
             }
             val contrast = bevel.toDouble() / samples

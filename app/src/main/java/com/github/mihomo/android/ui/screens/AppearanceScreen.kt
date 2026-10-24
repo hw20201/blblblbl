@@ -2,6 +2,7 @@ package com.github.mihomo.android.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,8 @@ import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassPalettePicker
 import com.github.mihomo.android.ui.glass.GlassPaletteSpec
+import com.github.mihomo.android.ui.glass.GlassWallpaperSettings
+import com.github.mihomo.android.ui.glass.GlassWallpaperPicker
 import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
@@ -41,7 +44,10 @@ fun AppearanceScreen(
     onNodeColumnsChanged: (Int) -> Unit,
     onBack: () -> Unit,
     palette: GlassPaletteSpec = GlassDefaults.palette,
-    onPaletteChanged: (GlassPaletteSpec) -> Unit = { GlassDefaults.palette = it }
+    onPaletteChanged: (GlassPaletteSpec) -> Unit = { GlassDefaults.palette = it },
+    wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
+    onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = { GlassDefaults.wallpaper = it },
+    scrollState: ScrollState = rememberScrollState()
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -64,7 +70,7 @@ fun AppearanceScreen(
                 .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene) else Modifier)
                 .testTag("appearance-scroll-content")
                 .bounceOverscroll()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(
                     top = headerInset + 12.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp
@@ -127,6 +133,18 @@ fun AppearanceScreen(
                             },
                             onSelect = onPaletteChanged
                         )
+                    }
+                }
+            }
+
+            // The wallpaper is separate from the global accent grid: three chosen stops blend behind glass.
+            if (GlassDefaults.enabled) {
+                CupertinoGroupedSection(
+                    title = if (lang == "zh") "液态玻璃壁纸" else "Liquid-glass wallpaper",
+                    footer = if (lang == "zh") "只保留直纹褶皱；三种主色柔和混合，色彩波动可关闭。" else "Straight fluted ribs only, blend three colors, and turn slow color flow off anytime."
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp).testTag("appearance-wallpaper-controls")) {
+                        GlassWallpaperPicker(wallpaperSettings, onWallpaperSettingsChanged)
                     }
                 }
             }

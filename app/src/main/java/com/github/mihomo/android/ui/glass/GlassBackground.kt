@@ -78,6 +78,7 @@ fun NexusGlassBackground(
     val seed = LocalSoftMeshSeed.current
     val motion = remember(seed) { SoftMeshMotion(seed ?: Random.nextLong()) }
     val structured = LocalStructuredMeshEnabled.current
+    val wallpaper = GlassDefaults.wallpaper
     val custom = palette.key.startsWith("custom:")
     val baseBlobs = if (palette.isDark || palette.key.startsWith("custom:")) palette.blobs else IceLavenderMesh
     val blobs = remember(palette, structured) {
@@ -118,27 +119,31 @@ fun NexusGlassBackground(
             modifier = Modifier.fillMaxSize().graphicsLayer().then(backdropRecorder)
                 .then(if (testBackdropId == null) Modifier.background(base).drawBehind {
                     val time = seconds.value // draw-phase read; no foreground recomposition/layout.
-                    val diag = kotlin.math.hypot(size.width, size.height)
-                    blobs.forEachIndexed { index, blob ->
-                        val pose = motion.sample(index, time)
-                        val radius = (if (structured) size.minDimension else diag) * blob.radius
-                        val travel = if (custom) 1.5f else 5.0f
-                        val rawX = if (structured) blob.x + (pose.x - .5f) * .20f * travel else pose.x
-                        val rawY = if (structured) blob.y + (pose.y - .5f) * .24f * travel else pose.y
-                        val dockCell = structured && palette.isDark && index in 12..14
-                        val x = if (dockCell) rawX.coerceIn(blob.x - .12f, blob.x + .12f) else rawX
-                        val y = if (dockCell) rawY.coerceIn(.78f, 1.02f) else rawY
-                        translate(size.width * x, size.height * y) {
-                            rotate(pose.rotation, Offset.Zero) {
-                                val stretchX = if (structured && !custom) 1.22f else 1f
-                                val stretchY = if (structured && !custom) .82f else 1f
-                                scale(radius * pose.scaleX * stretchX, radius * pose.scaleY * stretchY, Offset.Zero) {
-                                    drawCircle(brushes[index], radius = 1f, center = Offset.Zero)
+                    if (wallpaper.enabled) {
+                        drawGlassWallpaper(wallpaper, time)
+                    } else {
+                        val diag = kotlin.math.hypot(size.width, size.height)
+                        blobs.forEachIndexed { index, blob ->
+                            val pose = motion.sample(index, time)
+                            val radius = (if (structured) size.minDimension else diag) * blob.radius
+                            val travel = if (custom) 1.5f else 5.0f
+                            val rawX = if (structured) blob.x + (pose.x - .5f) * .20f * travel else pose.x
+                            val rawY = if (structured) blob.y + (pose.y - .5f) * .24f * travel else pose.y
+                            val dockCell = structured && palette.isDark && index in 12..14
+                            val x = if (dockCell) rawX.coerceIn(blob.x - .12f, blob.x + .12f) else rawX
+                            val y = if (dockCell) rawY.coerceIn(.78f, 1.02f) else rawY
+                            translate(size.width * x, size.height * y) {
+                                rotate(pose.rotation, Offset.Zero) {
+                                    val stretchX = if (structured && !custom) 1.22f else 1f
+                                    val stretchY = if (structured && !custom) .82f else 1f
+                                    scale(radius * pose.scaleX * stretchX, radius * pose.scaleY * stretchY, Offset.Zero) {
+                                        drawCircle(brushes[index], radius = 1f, center = Offset.Zero)
+                                    }
                                 }
                             }
                         }
+                        drawRect(veil)
                     }
-                    drawRect(veil)
                 } else Modifier)
         ) {
             if (testBackdropId != null) {

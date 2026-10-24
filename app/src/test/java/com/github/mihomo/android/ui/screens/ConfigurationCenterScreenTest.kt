@@ -22,6 +22,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -74,7 +76,10 @@ class ConfigurationCenterScreenTest {
         listOf("脚本中心", "配置与订阅", "应用分流").forEach {
             compose.onAllNodesWithText(it).assertCountEquals(0)
         }
-        compose.onNodeWithText("配置中心").performScrollTo().performClick()
+        compose.onNodeWithText("配置中心").performScrollTo()
+        // A floating bottom bar overlays the viewport; scroll the row clear of that hit target.
+        compose.onNodeWithTag("settings-scroll").performTouchInput { swipeUp(startY = height * 0.80f, endY = height * 0.60f) }
+        compose.onNodeWithText("配置中心").performClick()
         compose.runOnIdle { assertEquals(1, opened) }
         save("settings-configuration-center")
     }
@@ -105,6 +110,11 @@ class ConfigurationCenterScreenTest {
         compose.onNodeWithText("配置中心").assertExists()
         compose.onAllNodesWithTag("navigation-title-capsule").assertCountEquals(1)
         compose.onAllNodesWithTag("navigation-title-plain").assertCountEquals(0)
+        val pinnedHeaderBottom = compose.onNodeWithTag("configuration-center-pinned-header")
+            .fetchSemanticsNode().boundsInRoot.bottom
+        val firstSectionTop = compose.onNodeWithTag("configuration-center-section-header-0")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue("first section label clears the pinned back/title bar", firstSectionTop >= pinnedHeaderBottom + 24f)
         listOf("配置 / 订阅", "脚本", "规则 / 路由资源").forEachIndexed { index, label ->
             val heading = compose.onNodeWithTag("configuration-center-section-header-$index")
             heading.assertExists()

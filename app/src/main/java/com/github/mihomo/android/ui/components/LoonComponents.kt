@@ -139,6 +139,101 @@ fun LoonTrafficCard(
     }
 }
 
+/** One calm dashboard panel for the two live traffic directions. */
+@Composable
+fun LoonTrafficSummaryCard(
+    modifier: Modifier = Modifier,
+    uploadTitle: String,
+    uploadSpeed: String,
+    downloadTitle: String,
+    downloadSpeed: String,
+    uploadTotal: String,
+    downloadTotal: String,
+    totalLabel: String,
+    glass: Boolean = GlassDefaults.enabled
+) {
+    val shape = RoundedCornerShape(GlassRadius.card)
+    if (glass) {
+        GlassSurface(
+            modifier = modifier.fillMaxWidth().height(104.dp).testTag("dashboard-traffic-card"),
+            shape = shape,
+            accent = GlassAccent.download
+        ) {
+            TrafficSummaryContents(uploadTitle, uploadSpeed, uploadTotal, downloadTitle, downloadSpeed, downloadTotal, totalLabel, true)
+        }
+    } else {
+        Surface(
+            modifier = modifier.fillMaxWidth().height(104.dp).testTag("dashboard-traffic-card"),
+            shape = shape,
+            color = if (LocalLoonColors.current.isDark) Color(0xFF202833) else Color(0xFFF3F5F8)
+        ) {
+            TrafficSummaryContents(uploadTitle, uploadSpeed, uploadTotal, downloadTitle, downloadSpeed, downloadTotal, totalLabel, false)
+        }
+    }
+}
+
+@Composable
+private fun TrafficSummaryContents(
+    uploadTitle: String,
+    uploadSpeed: String,
+    uploadTotal: String,
+    downloadTitle: String,
+    downloadSpeed: String,
+    downloadTotal: String,
+    totalLabel: String,
+    glass: Boolean
+) {
+    val primary = if (glass) glassTextPrimary else LoonTextPrimary
+    val secondary = if (glass) glassTextSecondary else LoonTextSecondary
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TrafficMetric(
+            modifier = Modifier.weight(1f), title = uploadTitle, speed = uploadSpeed, total = uploadTotal,
+            totalLabel = totalLabel, icon = Icons.Default.ArrowUpward, accent = GlassAccent.upload,
+            primary = primary, secondary = secondary, tag = "traffic-upload"
+        )
+        Box(Modifier.width(1.dp).height(48.dp).background(secondary.copy(alpha = .20f)))
+        TrafficMetric(
+            modifier = Modifier.weight(1f).padding(start = 18.dp), title = downloadTitle, speed = downloadSpeed, total = downloadTotal,
+            totalLabel = totalLabel, icon = Icons.Default.ArrowDownward, accent = GlassAccent.download,
+            primary = primary, secondary = secondary, tag = "traffic-download"
+        )
+    }
+}
+
+@Composable
+private fun TrafficMetric(
+    modifier: Modifier,
+    title: String,
+    speed: String,
+    total: String,
+    totalLabel: String,
+    icon: ImageVector,
+    accent: Color,
+    primary: Color,
+    secondary: Color,
+    tag: String
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = title, tint = accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(title, color = secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = speed.ifBlank { "--" }, color = primary, fontSize = 17.sp,
+            fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.testTag("$tag-rate")
+        )
+        Text(
+            text = "$totalLabel $total", color = secondary, fontSize = 10.5.sp,
+            maxLines = 1, modifier = Modifier.testTag("$tag-total")
+        )
+    }
+}
+
 /**
  * Glass variant of [LoonTrafficCard]. Same geometry (82dp tall, 18dp radius, arrow on the right) so
  * the dashboard layout is untouched; only the material changes. The accent now tints the panel
@@ -398,7 +493,7 @@ fun LoonShortcutCard(
         onPickupChanged = onPickupChanged
     )
     val experimental = touchVariant != null && !isEditing
-    val fixedSlot = modifier.height(118.dp).testTag("shortcut-card-$title")
+    val fixedSlot = modifier.height(118.dp)
     val slotModifier = if (experimental) fixedSlot.then(touchMotion.gestureModifier)
         .clickable(interactionSource = experimentalInteractions, indication = null) {
             haptic.lightTick()
@@ -412,7 +507,10 @@ fun LoonShortcutCard(
         }
     // No fixed ground duplicate: only this plane moves; the slot owns hit testing.
     // B enters direct manipulation only after a held contact; short vertical motion remains scrollable.
-    Box(slotModifier) {
+    // Keep the card's stable tag on a separate semantics node from the caller's
+    // shortcut-id tag. Chaining both testTag modifiers on the same node masks one.
+    Box(Modifier.testTag("shortcut-card-$title")) {
+        Box(slotModifier) {
         if (GlassDefaults.enabled) {
             GlassSurface(
                 modifier = pressModifier,
@@ -435,6 +533,7 @@ fun LoonShortcutCard(
             ) {
                 ShortcutCardContent(title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier)
             }
+        }
         }
     }
 }

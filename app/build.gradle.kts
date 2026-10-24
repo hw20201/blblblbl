@@ -1,11 +1,58 @@
 import java.util.Properties
 import java.security.MessageDigest
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("io.gitlab.arturbosch.detekt")
+}
+
+
+abstract class VerifyNativeLibrariesTask : DefaultTask() {
+    @get:InputFile
+    abstract val checksumFile: RegularFileProperty
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val libraries: ConfigurableFileCollection
+
+    @get:Input
+    abstract val libraryPaths: ListProperty<String>
+
+    @TaskAction
+    fun verify() {
+        val expected = checksumFile.get().asFile.readLines()
+            .filter { it.isNotBlank() }
+            .associate { line ->
+                val parts = line.trim().split(Regex("\\s+"), limit = 2)
+                check(parts.size == 2) { "Malformed native/SHA256SUMS" }
+                parts[1] to parts[0]
+            }
+        val paths = libraryPaths.get()
+        check(expected.keys == paths.toSet()) { "Native library pair manifest is incomplete" }
+
+        val librariesByName = libraries.files.associateBy { it.name }
+        check(paths.map { it.substringAfterLast('/') }.toSet() == librariesByName.keys) {
+            "Configured native library files do not match the expected pair"
+        }
+        for (path in paths) {
+            val library = librariesByName.getValue(path.substringAfterLast('/'))
+            val actual = MessageDigest.getInstance("SHA-256").digest(library.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            check(actual == expected[path]) { "Mismatched native library $path; rebuild the matching pair" }
+        }
+    }
 }
 
 // Release signing is never committed to the repo. Provide it via local.properties
@@ -32,27 +79,14 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
 // R8 remains experimental and off for signed draft packages.
 val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: false
 
-val nativeChecksums = rootProject.file("native/SHA256SUMS")
-val nativeLibraries = listOf("libclash.so", "libbridge.so").associate { name ->
-    val path = "app/src/main/jniLibs/arm64-v8a/$name"
-    path to rootProject.file(path)
-}
-val verifyNativeLibraries by tasks.registering {
-    inputs.file(nativeChecksums)
-    inputs.files(nativeLibraries.values)
-    doLast {
-        val expected = nativeChecksums.readLines().filter { it.isNotBlank() }.associate { line ->
-            val parts = line.trim().split(Regex("\\s+"), limit = 2)
-            check(parts.size == 2) { "Malformed native/SHA256SUMS" }
-            parts[1] to parts[0]
-        }
-        check(expected.keys == nativeLibraries.keys) { "Native library pair manifest is incomplete" }
-        for ((path, library) in nativeLibraries) {
-            val actual = MessageDigest.getInstance("SHA-256").digest(library.readBytes())
-                .joinToString("") { "%02x".format(it) }
-            check(actual == expected[path]) { "Mismatched native library $path; rebuild the matching pair" }
-        }
-    }
+val nativeLibraryPaths = listOf(
+    "app/src/main/jniLibs/arm64-v8a/libclash.so",
+    "app/src/main/jniLibs/arm64-v8a/libbridge.so",
+)
+val verifyNativeLibraries = tasks.register<VerifyNativeLibrariesTask>("verifyNativeLibraries") {
+    checksumFile.set(rootProject.layout.projectDirectory.file("native/SHA256SUMS"))
+    libraryPaths.set(nativeLibraryPaths)
+    libraries.from(nativeLibraryPaths.map { rootProject.file(it) })
 }
 tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 
@@ -65,8 +99,8 @@ android {
         applicationId = "com.github.mihomo.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 53
-        versionName = "1.0.34-with-suspended"
+        versionCode = 58
+        versionName = "1.0.36-with-suspended"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

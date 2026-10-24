@@ -23,8 +23,7 @@ class DashboardScreenTest {
     private val shortcutOrder = listOf("nodes", "profiles", "rules", "request_logs")
     private val noOp: () -> Unit = {}
 
-    @Test fun performanceTestBackdropPickerSelectsOriginalAndInvertedVariants() {
-        val variant = mutableStateOf("original")
+    @Test fun oldTestWallpaperChoicesAreNotShownOnTheUserDashboard() {
         compose.setContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
@@ -50,17 +49,12 @@ class DashboardScreenTest {
                 onNavigateToRequests = noOp,
                 onNavigateToNetworkShare = noOp,
                 onUpdateVisibleShortcuts = {},
-                onUpdateShortcutOrder = {},
-                testBackdropVariant = variant.value,
-                onTestBackdropVariantChange = { variant.value = it },
-                showTestBackdropSelector = true
+                onUpdateShortcutOrder = {}
             )
         }
-
-        compose.onNodeWithTag("glass-test-background-original").assertIsSelected()
-        compose.onNodeWithTag("glass-test-background-inverted").performClick()
-        compose.onNodeWithTag("glass-test-background-inverted").assertIsSelected()
-        compose.onNodeWithTag("glass-test-background-original").assertIsNotSelected()
+        compose.onNodeWithTag("glass-test-background-picker").assertDoesNotExist()
+        compose.onNodeWithTag("glass-test-background-original").assertDoesNotExist()
+        compose.onNodeWithTag("glass-test-background-inverted").assertDoesNotExist()
     }
 
     @Test fun visibleShortcutSubtitlesFollowVpnProfileCountsAndMonitoringState() {
@@ -280,6 +274,47 @@ class DashboardScreenTest {
         compose.onNodeWithTag("mode-option-global", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("mode-option-direct", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("mode-option-rule", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+
+    @Test fun homepageTrafficPanelKeepsLiveDirectionsAndShowsOnlyProvidedTotals() {
+        compose.setContent {
+            DashboardScreen(
+                scrollState = ScrollState(0),
+                vpnState = VpnState(
+                    status = VpnState.Status.RUNNING,
+                    upSpeed = "12 KB/s", downSpeed = "4 MB/s",
+                    totalUp = "18.2 MB", totalDown = "2.4 GB"
+                ),
+                currentMode = TunnelMode.RULE,
+                activeProfileName = "测试配置",
+                mainGroupName = "",
+                mainGroupProxies = emptyList<Proxy>(),
+                activeNodeName = "",
+                totalNodes = 0,
+                totalRules = 0,
+                visibleShortcuts = shortcutOrder.toSet(),
+                shortcutOrder = shortcutOrder,
+                onToggleVpn = noOp,
+                onModeSelected = {},
+                onSelectProxy = { _, _ -> },
+                onHealthCheck = {},
+                onNavigateToProfiles = noOp,
+                onNavigateToAppRouting = noOp,
+                onNavigateToLogs = noOp,
+                onNavigateToRules = noOp,
+                onNavigateToDns = noOp,
+                onNavigateToRequests = noOp,
+                onNavigateToNetworkShare = noOp,
+                onUpdateVisibleShortcuts = {},
+                onUpdateShortcutOrder = {}
+            )
+        }
+        compose.onNodeWithTag("dashboard-traffic-card").assertExists()
+        compose.onNodeWithTag("traffic-upload-rate").assertTextEquals("12 KB/s")
+        compose.onNodeWithTag("traffic-download-rate").assertTextEquals("4 MB/s")
+        compose.onNodeWithTag("traffic-upload-total").assertTextEquals("Total 18.2 MB")
+        compose.onNodeWithTag("traffic-download-total").assertTextEquals("Total 2.4 GB")
     }
 
 }

@@ -98,10 +98,7 @@ fun DashboardScreen(
     onNavigateToNetworkShare: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit,
-    glassScene: NavigationLensState? = null,
-    testBackdropVariant: String = "original",
-    onTestBackdropVariantChange: (String) -> Unit = {},
-    showTestBackdropSelector: Boolean = false
+    glassScene: NavigationLensState? = null
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
@@ -273,46 +270,16 @@ fun DashboardScreen(
                     .padding(horizontal = 20.dp)
                     .padding(top = headerInset + 12.dp, bottom = 110.dp)
             ) {
-                if (showTestBackdropSelector) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().testTag("glass-test-background-picker"),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = testBackdropVariant == "original",
-                            onClick = { onTestBackdropVariantChange("original") },
-                            modifier = Modifier.testTag("glass-test-background-original"),
-                            label = { Text("网格原图", maxLines = 1) }
-                        )
-                        FilterChip(
-                            selected = testBackdropVariant == "inverted",
-                            onClick = { onTestBackdropVariantChange("inverted") },
-                            modifier = Modifier.testTag("glass-test-background-inverted"),
-                            label = { Text("反色网格", maxLines = 1) }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
-                // Dual Traffic Cards Row (Upload & Download)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    LoonTrafficCard(
-                        modifier = Modifier.weight(1f),
-                        title = AppStrings.get("traffic_up", lang),
-                        speed = if (isRunning) vpnState.upSpeed else "--",
-                        isUpload = true
-                    )
-                    LoonTrafficCard(
-                        modifier = Modifier.weight(1f),
-                        title = AppStrings.get("traffic_down", lang),
-                        speed = if (isRunning) vpnState.downSpeed else "--",
-                        isUpload = false
-                    )
-                }
+                LoonTrafficSummaryCard(
+                    uploadTitle = AppStrings.get("traffic_up", lang),
+                    uploadSpeed = if (isRunning) vpnState.upSpeed else "--",
+                    downloadTitle = AppStrings.get("traffic_down", lang),
+                    downloadSpeed = if (isRunning) vpnState.downSpeed else "--",
+                    uploadTotal = vpnState.totalUp,
+                    downloadTotal = vpnState.totalDown,
+                    totalLabel = if (lang == "zh") "累计" else "Total"
+                )
 
                 Spacer(modifier = Modifier.height(26.dp))
 
