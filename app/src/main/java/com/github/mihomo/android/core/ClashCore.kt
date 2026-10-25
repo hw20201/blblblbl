@@ -145,13 +145,9 @@ object ClashCore {
             override fun querySocketUid(protocol: Int, source: String, target: String): Int {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && cm != null) {
                     try {
-                        val srcParts = source.split(":")
-                        val dstParts = target.split(":")
-                        if (srcParts.size == 2 && dstParts.size == 2) {
-                            val srcAddr = InetSocketAddress(srcParts[0], srcParts[1].toInt())
-                            val dstAddr = InetSocketAddress(dstParts[0], dstParts[1].toInt())
-                            return cm.getConnectionOwnerUid(protocol, srcAddr, dstAddr)
-                        }
+                        val srcAddr = parseInetSocketAddress(source) ?: return 0
+                        val dstAddr = parseInetSocketAddress(target) ?: return 0
+                        return cm.getConnectionOwnerUid(protocol, srcAddr, dstAddr)
                     } catch (_: Throwable) {
                     }
                 }
@@ -170,6 +166,41 @@ object ClashCore {
             }
         }
         Log.i(TAG, "Native TUN listener started: ${started.displayName}")
+    }
+
+    /**
+     * Parses Go net.Addr.String() endpoints: host:port for IPv4 and [host]:port for IPv6,
+     * including an optional %zone scope identifier. Invalid endpoints preserve UID 0 fallback.
+     */
+    internal fun parseInetSocketAddress(address: String): InetSocketAddress? {
+        try {
+            val host: String
+            val portText: String
+            val isBracketedIpv6 = address.startsWith("[")
+            if (isBracketedIpv6) {
+                val closingBracket = address.indexOf(']')
+                if (closingBracket <= 1 || closingBracket + 1 >= address.length || address[closingBracket + 1] != ':') {
+                    return null
+                }
+                host = address.substring(1, closingBracket)
+                portText = address.substring(closingBracket + 2)
+                if (!host.contains(':') || host.contains('[') || host.contains(']')) return null
+            } else {
+                val separator = address.indexOf(':')
+                if (separator <= 0 || separator != address.lastIndexOf(':')) return null
+                host = address.substring(0, separator)
+                portText = address.substring(separator + 1)
+                if (host.contains('[') || host.contains(']')) return null
+            }
+
+            if (host.isBlank() || portText.isEmpty() || !portText.all { it in '0'..'9' }) return null
+            val port = portText.toIntOrNull()?.takeIf { it in 0..65535 } ?: return null
+            val inetAddress = java.net.InetAddress.getByName(host)
+            if (isBracketedIpv6 && inetAddress !is java.net.Inet6Address) return null
+            return InetSocketAddress(inetAddress, port)
+        } catch (_: Exception) {
+            return null
+        }
     }
 
     /** True only when the installed native pair understands MTU/congestion-controller options. */
