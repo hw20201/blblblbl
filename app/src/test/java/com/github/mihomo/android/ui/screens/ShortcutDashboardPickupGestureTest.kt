@@ -121,10 +121,16 @@ class ShortcutDashboardPickupGestureTest {
 
     @Test fun blankColumnGapRemainsScrollable() {
         val fixture = render()
-        val left = compose.onNodeWithTag("shortcut-card-Profiles").fetchSemanticsNode().boundsInRoot
-        val right = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
+        // The inner card tags can resolve to the same bounds under the dashboard's
+        // merged semantics tree; use each positioned grid-slot tag for geometry.
+        val cards = listOf(
+            compose.onNodeWithTag("shortcut-profiles").fetchSemanticsNode().boundsInRoot,
+            compose.onNodeWithTag("shortcut-nodes").fetchSemanticsNode().boundsInRoot
+        ).sortedBy { it.center.x }
+        val left = cards[0]
+        val right = cards[1]
         val x = (left.right + right.left) / 2f
-        assertTrue("actual column gap", x > left.right && x < right.left)
+        assertTrue("fixture exposes a real blank column gap: left=$left right=$right x=$x", x > left.right && x < right.left)
         assertTrue("fixture really has scrollable content", fixture.scroll.maxValue > 0)
         val start = Offset(x, left.center.y)
         compose.onRoot().performTouchInput {

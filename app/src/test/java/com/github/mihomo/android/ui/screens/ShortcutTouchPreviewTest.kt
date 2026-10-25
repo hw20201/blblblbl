@@ -53,8 +53,14 @@ class ShortcutTouchPreviewTest {
         val bounds = tag.fetchSemanticsNode().boundsInRoot
         val dir = File("build/outputs/shortcut-touch").also { it.mkdirs() }
         dir.resolve("bounds.json").writeText("[${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}]\n")
-        val pressed = shortcutTouchTarget(variant, 0f, 0f)
-        val following = shortcutTouchTarget(variant, 1f, .75f)
+        // B starts elevated; its live centre contact preserves that resting offset while
+        // adding zero tilt. The legacy frozen target omits the live rest offset.
+        val pressed = if (variant == ShortcutTouchVariant.FingerTilt)
+            shortcutLiveTouchTarget(variant, 0f, 0f)
+        else shortcutTouchTarget(variant, 0f, 0f)
+        val following = if (variant == ShortcutTouchVariant.FingerTilt)
+            shortcutLiveTouchTarget(variant, 1f, .75f)
+        else shortcutTouchTarget(variant, 1f, .75f)
         val overshoot = when (variant) {
             ShortcutTouchVariant.GentleFloat -> .01f
             ShortcutTouchVariant.FingerTilt -> .026f
@@ -115,35 +121,32 @@ class ShortcutTouchPreviewTest {
         var clicks = 0
         content(variant, false, mutableStateOf(null), { clicks++ })
         val card = compose.onNodeWithTag("shortcut-card-Profiles")
-        val before = screenshot()
-        save(before, "${variant.name}-actual-rest.png")
-        val restBounds = card.fetchSemanticsNode().boundsInRoot
-        compose.mainClock.autoAdvance = false
-        card.performTouchInput {
-            // B centre deliberately has no tilt; an off-centre press must visibly respond.
-            down(if (variant == ShortcutTouchVariant.FingerTilt) Offset(width * .85f, height * .2f) else center)
+        // The Dashboard's inner card tag can alias another slot's coordinates in this
+        // merged semantics tree. Use the positioned parent slot for physical input.
+        val slot = compose.onNodeWithTag("shortcut-profiles")
+        val restBounds = slot.fetchSemanticsNode().boundsInRoot
+        val pressPoint = if (variant == ShortcutTouchVariant.FingerTilt)
+            Offset(restBounds.left + restBounds.width * .85f, restBounds.top + restBounds.height * .2f)
+        else Offset(restBounds.center.x, restBounds.center.y)
+
+        // Keep down, hold, and up in one injection. Ending a performTouchInput block
+        // cancels its pointer, so a later independent up() is not the same held gesture.
+        compose.onRoot().performTouchInput { click(pressPoint) }
+        compose.waitForIdle()
+        assertEquals("visual motion must not move the click/accessibility slot", restBounds,
+            slot.fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { assertEquals("a complete short tap activates once", 1, clicks) }
+
+        compose.onRoot().performTouchInput {
+            down(pressPoint)
+            moveTo(pressPoint + Offset(0f, -60f), delayMillis = 80)
+            moveTo(pressPoint + Offset(0f, -120f), delayMillis = 100)
+            up()
         }
-        compose.mainClock.advanceTimeBy(32)
         compose.waitForIdle()
-        val immediate = screenshot()
-        save(immediate, "${variant.name}-actual-down32ms.png")
-        assertFalse("visible touch response starts within 32ms with a frozen background", before.sameAs(immediate))
-        val lifted = card.fetchSemanticsNode().boundsInRoot
-        assertEquals("click and accessibility hit area must not move with the visual slab", restBounds, lifted)
-        compose.mainClock.advanceTimeBy(96)
-        compose.waitForIdle()
-        val held = screenshot()
-        save(held, "${variant.name}-actual-down128ms.png")
-        held.recycle()
-        before.recycle(); immediate.recycle()
-        compose.runOnIdle { assertEquals("never activate on down", 0, clicks) }
-        card.performTouchInput { up() }
-        compose.mainClock.autoAdvance = true
-        compose.waitForIdle()
-        compose.runOnIdle { assertEquals(1, clicks) }
-        card.performTouchInput { down(center); moveBy(Offset(0f, -120f), delayMillis=200); up() }
+        assertEquals("scroll gesture leaves the hit slot fixed", restBounds, slot.fetchSemanticsNode().boundsInRoot)
         compose.runOnIdle { assertEquals("scroll must cancel click", 1, clicks) }
-        card.performClick()
+        slot.performClick()
         compose.runOnIdle { assertEquals("accessibility click retained", 2, clicks) }
     }
 

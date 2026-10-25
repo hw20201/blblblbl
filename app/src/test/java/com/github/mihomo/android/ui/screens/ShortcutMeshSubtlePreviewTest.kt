@@ -103,10 +103,12 @@ class ShortcutMeshSubtlePreviewTest {
             assertEquals("tap does not toggle VPN", 0, fixture.vpnToggles)
         }
         // Column gap is deliberately used as the blank-origin scroll path.
-        val left = compose.onNodeWithTag("shortcut-card-Profiles").fetchSemanticsNode().boundsInRoot
-        val right = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
+        // Inner card tags collapse to the same bounds in the merged semantics tree.
+        // Use the positioned dashboard slot tags for the real visible gutter.
+        val left = compose.onNodeWithTag("shortcut-profiles").fetchSemanticsNode().boundsInRoot
+        val right = compose.onNodeWithTag("shortcut-nodes").fetchSemanticsNode().boundsInRoot
         val x = (left.right + right.left) / 2f
-        assertTrue("fixture exposes a real blank column gap", x > left.right && x < right.left)
+        assertTrue("fixture exposes a real blank column gap: left=$left right=$right x=$x", x > left.right && x < right.left)
         assertTrue("dashboard contains scrollable content", fixture.scroll.maxValue > 0)
         compose.onRoot().performTouchInput {
             down(Offset(x, left.center.y)); moveTo(Offset(x, left.center.y - 80f), delayMillis = 100)
@@ -119,11 +121,19 @@ class ShortcutMeshSubtlePreviewTest {
         val pose = mutableStateOf<ShortcutTouchPreview?>(null)
         val shortcuts = mutableStateOf(listOf("profiles", "nodes", "rules", "request_logs", "ip_test", "core_logs", "plugins", "network_share", "vpn"))
         render(dark = false, mesh = true, preview = pose, shortcutsOverride = shortcuts)
-        val nodes = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
-        val profiles = compose.onNodeWithTag("shortcut-card-Profiles").fetchSemanticsNode().boundsInRoot
-        val probeX = (nodes.left - 80f + 24f).toInt()
-        val probeY = (nodes.top + 68f).toInt()
-        fun probe(image: Bitmap) = IntArray(28 * 28).also { image.getPixels(it, 0, 28, probeX, probeY, 28, 28) }
+        // Use grid-slot bounds (the card tags are aliased by the merged tree here).
+        val nodes = compose.onNodeWithTag("shortcut-nodes").fetchSemanticsNode().boundsInRoot
+        val profiles = compose.onNodeWithTag("shortcut-profiles").fetchSemanticsNode().boundsInRoot
+        // Probe a bounded patch of the lower Profiles card's blue icon. The original
+        // hard-coded -80dp projection went negative whenever Nodes was in the left column.
+        val probeX = (profiles.right - 58f).toInt()
+        val probeY = (profiles.top + 68f).toInt()
+        fun probe(image: Bitmap): IntArray {
+            val width = 28
+            assertTrue("Profiles icon probe stays inside the rendered frame",
+                probeX >= 0 && probeY >= 0 && probeX + width <= image.width && probeY + width <= image.height)
+            return IntArray(width * width).also { image.getPixels(it, 0, width, probeX, probeY, width, width) }
+        }
         fun blueIconPixels(pixels: IntArray) = pixels.count {
             android.graphics.Color.blue(it) > 170 && android.graphics.Color.red(it) < 125 &&
                 android.graphics.Color.blue(it) - android.graphics.Color.red(it) > 80
@@ -132,20 +142,26 @@ class ShortcutMeshSubtlePreviewTest {
         val visibleIcon = blueIconPixels(probe(initial))
         assertTrue("the probe must really contain the lower Profiles icon, not just wallpaper", visibleIcon > 25)
         save(initial, out(), "overlap-before-neighbor-sampling-topdown.png")
-        // Forced pose covers the lower tile's icon. Scale=1 gives zero frost: blur is not the cause.
-        // This exaggerated -80dp pose is test-only, never the normal +/-4dp gesture range.
-        compose.runOnIdle { pose.value = ShortcutTouchPreview("Nodes", ShortcutTouchPose(offsetXDp = -80f)) }
+        // Align the upper Nodes card over Profiles regardless of which column each occupies.
+        // Scale=1 gives zero frost: blur is not the cause. This forced overlap is test-only.
+        val overlapDx = profiles.center.x - nodes.center.x
+        compose.runOnIdle { pose.value = ShortcutTouchPreview("Nodes", ShortcutTouchPose(offsetXDp = overlapDx)) }
         compose.waitForIdle()
         val image = screenshot()
         val withLowerCard = probe(image)
-        assertTrue("forced pose geometrically overlaps adjacent tile", nodes.left - 80f < profiles.right && nodes.right - 80f > profiles.left)
+        assertTrue("forced pose geometrically overlaps adjacent tile",
+            nodes.left + overlapDx < profiles.right && nodes.right + overlapDx > profiles.left)
         assertTrue("neighbor tile text region lies within dashboard", profiles.center.y > 0f && profiles.center.y < image.height)
         assertTrue("captured rendered frame has visible content", hasVariance(image))
         save(image, out(), "overlap-forced-minus80dp-wallpaper-only-topdown.png")
+        compose.runOnIdle { shortcuts.value = shortcuts.value.filterNot { it == "profiles" } }
+        compose.waitForIdle()
+        // Removing the lower tile can reflow Nodes into the other column. Keep its upper
+        // plane at the same screen-space position so the two captures differ only by that tile.
+        val nodesWithoutProfiles = compose.onNodeWithTag("shortcut-nodes").fetchSemanticsNode().boundsInRoot
+        val sameWorldOffset = nodes.left + overlapDx - nodesWithoutProfiles.left
         compose.runOnIdle {
-            shortcuts.value = shortcuts.value.filterNot { it == "profiles" }
-            // Removing the lower tile changes slot order. Keep the upper plane at the exact same world position.
-            pose.value = ShortcutTouchPreview("Nodes", ShortcutTouchPose(offsetXDp = nodes.left - profiles.left - 80f))
+            pose.value = ShortcutTouchPreview("Nodes", ShortcutTouchPose(offsetXDp = sameWorldOffset))
         }
         compose.waitForIdle()
         val without = screenshot()
@@ -183,8 +199,8 @@ class ShortcutMeshSubtlePreviewTest {
                 CompositionLocalProvider(
                     LocalAppLanguage provides "en", LocalSoftMeshTime provides seconds,
                     LocalSoftMeshSeed provides 734921L,
-                    LocalShortcutTouchVariant provides ShortcutTouchVariant.FingerTilt,
                     LocalShortcutTouchPreview provides preview.value,
+                    LocalShortcutTouchVariant provides (if (preview.value != null) ShortcutTouchVariant.FingerTilt else null),
                     LocalStructuredMeshEnabled provides (meshOverride?.value ?: mesh)
                 ) {
                     ProvideGlassTheme {
