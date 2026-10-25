@@ -15,6 +15,15 @@
 
 预置核心为 Mihomo v1.19.32；MIPS 指其原生 Go IP 栈，不是 CPU 架构。核心源码、补丁和许可见 [native/UPSTREAM.md](native/UPSTREAM.md)。修改原生部分后先运行 `bash scripts/build-native.sh`；Gradle 会校验核心与 JNI 两库的配对哈希。本版原生契约为 2（新增 MTU 与拥塞控制参数），只构建 APK 而不重建 native 时会退回契约 1 的行为并忽略这两项设置。
 
+## 原生库的二进制与源码归属
+
+`app/src/main/jniLibs/arm64-v8a/` 中的 `libbridge.so` 和 `libclash.so` 是此 fork 从仓库源码构建的 ARM64 产物，不是从 kanwox/Nexus 复制来的预编译 `.so`。
+
+- `libbridge.so` 是本仓库的 JNI 桥接层，由 `scripts/build-native.sh` 编译仓库内的 C/JNI 源文件生成。维护者说明桥接实现由其编写；它负责把 Android 调用接到 Go 核心，不是代理引擎本身。
+- `libclash.so` 由 Go 工具链和 Android NDK 从本仓库的 Go 适配/桥接代码及固定版本的 Mihomo 源码构建。桥接和 MIPS 集成是本 fork 的工作；代理引擎源自 MetaCubeX 的 Mihomo，不是本 fork 原创。
+
+精确来源、补丁、依赖和重建步骤见 [native/UPSTREAM.md](native/UPSTREAM.md)；第三方许可见 [LICENSE](LICENSE) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 图标采用深灰底青蓝 N，通知与快捷设置使用同形单色 N，并支持 Android 13 主题图标。可编辑 SVG 及生成方法见 [assets/README.md](assets/README.md)。
 
 ```bash

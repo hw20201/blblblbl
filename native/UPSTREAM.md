@@ -2,9 +2,16 @@
 
 MIPS 指 **Mihomo IP Stack**，不是 MIPS CPU 架构。应用仍为 Android ARM64。
 
+## 二进制与源码的两层归属
+
+仓库中的 `app/src/main/jniLibs/arm64-v8a/libbridge.so` 与 `libclash.so` 是此 fork 通过 `scripts/build-native.sh` 从仓库源码构建的产物，不是从 kanwox/Nexus 搬来的预编译二进制。这里说“独立构建”只说明二进制由本 fork 构建，不代表其中的 Mihomo 引擎是原创。
+
+- `libbridge.so` 由仓库内的 `native/cpp/` JNI/C 实现和辅助代码编译生成，负责 Android JNI 调用与 Go 核心之间的衔接。维护者说明该桥接实现由其编写；它不是 Mihomo 代理引擎。
+- `libclash.so` 由 Go 工具链与 Android NDK 从 `native/golang/` 中的适配/桥接代码、固定版本的 Mihomo 源码及其依赖构建。Go 桥接与 MIPS 集成属于本 fork 的实现；代理规则、分流和 TUN 栈等引擎功能来自 MetaCubeX Mihomo，不能表述为本 fork 原创。
+
 ## 固定来源
 
-- Android Go adapter 与 JNI 桥来自 [MetaCubeX/ClashMetaForAndroid](https://github.com/MetaCubeX/ClashMetaForAndroid/tree/3cc102aab3f251ef460a3b6e2835b6c1eb581e73/core/src/main)，提交 `3cc102aab3f251ef460a3b6e2835b6c1eb581e73`。本目录保留修改后的对应源码。
+- Android Go adapter 的上游来源为 [MetaCubeX/ClashMetaForAndroid](https://github.com/MetaCubeX/ClashMetaForAndroid/tree/3cc102aab3f251ef460a3b6e2835b6c1eb581e73/core/src/main)，提交 `3cc102aab3f251ef460a3b6e2835b6c1eb581e73`；本 fork 保留了修改后的对应源码。该来源说明的是适配层的上游代码脉络，不表示仓库中的 `.so` 是从该项目或 kanwox/Nexus 复制的预编译二进制；桥接二进制的构建与维护者说明见上节。
 - [Mihomo v1.19.32](https://github.com/MetaCubeX/mihomo/tree/v1.19.32)，对应提交 `88dcbf7f1614a67c3b36b848ee3592dfa92ada36`。
 - 该版本锁定 `mipstack v0.0.0-20260930071539-961d4b1c1983` 与 `sing-tun v0.4.27`。其余依赖见 `golang/go.mod` 与 `golang/go.sum`。
 - GPL 许可文本见 `LICENSE.mihomo`、`LICENSE.upstream`。MIPS 本身的 MPL-2.0 许可不能替代整个应用的 GPL 合规义务；分发二进制时应同时提供本源码、补丁、构建脚本及依赖来源。
