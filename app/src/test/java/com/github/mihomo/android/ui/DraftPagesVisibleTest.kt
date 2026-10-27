@@ -94,10 +94,10 @@ class DraftPagesVisibleTest {
                 if (delta > 45) foregroundEdges++
             }
         }
-        assertTrue("$theme/$page has no visible sharp foreground ($foregroundEdges edges)", foregroundEdges > 100)
         val out = File("build/reports/draft-pages/$theme-$page.png")
         out.parentFile!!.mkdirs()
         out.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        assertTrue("$theme/$page has no visible sharp foreground ($foregroundEdges edges)", foregroundEdges > 100)
         bitmap.recycle()
     }
 }

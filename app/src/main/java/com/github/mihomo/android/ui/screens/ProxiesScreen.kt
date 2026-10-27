@@ -45,6 +45,7 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import com.github.mihomo.android.ui.glass.NavigationLensState
 import com.github.mihomo.android.ui.glass.ProxyGroupGlass
@@ -317,13 +318,20 @@ fun ProxiesScreen(
                         .fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (visibleGroups.isEmpty()) "暂无节点数据\n请在[配置]中添加订阅" else "当前策略组无可用节点",
-                        color = LoonTextSecondary,
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+                    GlassSurface(
+                        modifier = Modifier.padding(horizontal = 28.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        blurEnabled = false
+                    ) {
+                        Text(
+                            text = if (visibleGroups.isEmpty()) "暂无节点数据\n请在[配置]中添加订阅" else "当前策略组无可用节点",
+                            color = LoonTextPrimary,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                        )
+                    }
                 }
             } else {
                 val chunkedRows = remember(proxies, nodeColumns) {

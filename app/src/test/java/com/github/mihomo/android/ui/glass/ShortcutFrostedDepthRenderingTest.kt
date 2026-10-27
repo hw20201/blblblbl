@@ -48,6 +48,7 @@ class ShortcutFrostedDepthRenderingTest {
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        GlassDefaults.wallpaper = GlassWallpaperSettings()
     }
 
     @Test fun api35LightDashboard() = verify(false)
@@ -67,6 +68,8 @@ class ShortcutFrostedDepthRenderingTest {
         var compositions = 0
         var foreground = 0
         GlassDefaults.enabled = true
+        // Exercise the SoftMesh-backed shortcut material, not the product's Fluted wallpaper.
+        GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = GlassPalettes.CREAM
         compose.setContent {
             MihomoTheme(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) {

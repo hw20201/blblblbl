@@ -48,6 +48,7 @@ class SoftMeshRenderingTest {
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        GlassDefaults.wallpaper = GlassWallpaperSettings()
     }
 
     @Test fun api35ActualDashboardMovesThroughCardsAndAgslDock() = verify(false)
@@ -66,6 +67,9 @@ class SoftMeshRenderingTest {
         var compositions = 0
         var foreground = 0
         GlassDefaults.enabled = true
+        // This suite measures the animated SoftMesh renderer, independent of the app's
+        // newly enabled saved Fluted wallpaper.
+        GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = palette
         compose.setContent {
             MihomoTheme(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) {
