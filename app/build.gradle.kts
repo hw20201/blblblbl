@@ -77,7 +77,7 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
     !releaseStorePassword.isNullOrBlank()
 
 // R8 remains experimental and off for signed draft packages.
-val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: false
+val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: true
 
 val nativeLibraryPaths = listOf(
     "app/src/main/jniLibs/arm64-v8a/libclash.so",
