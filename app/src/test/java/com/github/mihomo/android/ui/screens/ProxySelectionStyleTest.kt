@@ -13,8 +13,8 @@ class ProxySelectionStyleTest {
         assertEquals(1f, selectedProxyCardScale(false), 0f)
     }
 
-    @Test fun selectedCardUsesDarkNeutralFill() {
-        assertEquals(Color(0xFF26313E), SelectedProxyCardFill)
-        assertTrue(SelectedProxyCardFill.luminance() < .05f)
+    @Test fun selectedCardUsesReferenceGrayFill() {
+        assertEquals(Color(0xFFABB1BC), SelectedProxyCardFill)
+        assertTrue(SelectedProxyCardFill.luminance() in .4f..0.55f)
     }
 }

@@ -745,9 +745,10 @@ private fun LoonGroupHeaderCard(
 // Keep the selected node perceptibly pressed without changing its measured layout size.
 internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
 
-internal val SelectedProxyCardFill = Color(0xFF26313E)
-private val SelectedProxyCardText = Color.White
-private val SelectedProxyCardMutedText = Color(0xB8FFFFFF)
+// Match the neutral gray used by the selected strategy capsule in the reference UI.
+internal val SelectedProxyCardFill = Color(0xFFABB1BC)
+private val SelectedProxyCardText = Color(0xFF1A1D23)
+private val SelectedProxyCardMutedText = Color(0xB31A1D23)
 
 // -----------------------------------------------------------------------------
 // Multi-Column Responsive Proxy Node Card (Supports 1, 2, or 3 columns)
