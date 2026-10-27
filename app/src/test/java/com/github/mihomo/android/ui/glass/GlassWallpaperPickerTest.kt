@@ -29,7 +29,8 @@ import org.robolectric.annotation.GraphicsMode
 class GlassWallpaperPickerTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun pickerSwitchesStyleAndEditsThreeIndependentColors() {
+    @Test fun pickerCollapsesTheColorGridAndEditsThreeIndependentColors() {
+        compose.activity.getSharedPreferences("mihomo_settings", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         val settings = mutableStateOf(GlassWallpaperSettings())
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
@@ -38,10 +39,11 @@ class GlassWallpaperPickerTest {
                 }
             }
         }
-        compose.onNodeWithTag("wallpaper-mode-fluted").performClick()
-        assertEquals(GlassWallpaperMode.FLUTED, settings.value.mode)
         assertTrue(settings.value.enabled)
-        compose.onNodeWithTag("wallpaper-randomize-curve").assertDoesNotExist()
+        compose.onNodeWithTag("wallpaper-mode-fluted").assertDoesNotExist()
+        compose.onNodeWithTag("wallpaper-color-grid").assertDoesNotExist()
+        compose.onNodeWithTag("wallpaper-toggle-color-grid").performClick()
+        compose.onNodeWithTag("wallpaper-color-grid").assertExists()
         compose.onNodeWithTag("wallpaper-rgb-slider-R").assertExists()
         compose.onNodeWithTag("wallpaper-rgb-slider-G").assertExists()
         compose.onNodeWithTag("wallpaper-rgb-slider-B").assertExists()
@@ -53,7 +55,7 @@ class GlassWallpaperPickerTest {
         assertTrue("selecting another swatch must update the second stop", settings.value.colorB != GlassWallpaperSettings.COLOR_B)
         compose.onNodeWithTag("wallpaper-color-slot-2").performScrollTo().performClick()
         assertEquals("one swatch edit must not overwrite the other colors", GlassWallpaperSettings.COLOR_A, settings.value.colorA)
-        compose.onNodeWithTag("wallpaper-mode-fluted").performScrollTo().performClick()
-        compose.onNodeWithTag("wallpaper-randomize-curve").assertDoesNotExist()
+        compose.onNodeWithTag("wallpaper-toggle-color-grid").performScrollTo().performClick()
+        compose.onNodeWithTag("wallpaper-color-grid").assertDoesNotExist()
     }
 }

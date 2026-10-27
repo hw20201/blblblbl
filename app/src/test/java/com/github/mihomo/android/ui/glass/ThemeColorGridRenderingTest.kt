@@ -13,18 +13,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.filterToOne
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.data.ThemeMode
@@ -52,80 +45,27 @@ class ThemeColorGridRenderingTest {
         GlassDefaults.palette = GlassPalettes.CREAM
     }
 
-    @Test fun actualAppearanceGridAppliesRgbPersistsAndSurvivesDarkMode() {
-        val settings = SettingsManager(compose.activity)
-        compose.activity.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        val selected = mutableStateOf(GlassPalettes.CREAM)
-        val dark = mutableStateOf(false)
-        val time = mutableFloatStateOf(8f)
-        GlassDefaults.enabled = true
-        GlassDefaults.palette = selected.value
+    @Test fun appearanceUsesTheCustomWallpaperEditorInsteadOfTheLegacyThemePalette() {
         compose.setContent {
-            MihomoTheme(if (dark.value) ThemeMode.DARK else ThemeMode.LIGHT) {
-                CompositionLocalProvider(LocalAppLanguage provides "zh", LocalSoftMeshTime provides time,
-                    LocalSoftMeshSeed provides 734921L) {
+            MihomoTheme(themeMode = ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalAppLanguage provides "zh") {
                     ProvideGlassTheme {
-                        Box(Modifier.fillMaxSize()) {
-                            NexusGlassBackground {
-                                AppearanceScreen(
-                                    themeMode = if (dark.value) ThemeMode.DARK else ThemeMode.LIGHT,
-                                    onThemeModeChanged = { dark.value = it == ThemeMode.DARK },
-                                    onLanguageChanged = {}, showGroupIcons = true, onShowGroupIconsChanged = {},
-                                    nodeColumns = 2, onNodeColumnsChanged = {}, onBack = {},
-                                    palette = selected.value,
-                                    onPaletteChanged = {
-                                        selected.value = it
-                                        GlassDefaults.palette = it
-                                        settings.glassPaletteKey = it.key
-                                    }
-                                )
-                            }
-                        }
+                        AppearanceScreen(
+                            themeMode = ThemeMode.LIGHT,
+                            onThemeModeChanged = {},
+                            onLanguageChanged = {}, showGroupIcons = true, onShowGroupIconsChanged = {},
+                            nodeColumns = 2, onNodeColumnsChanged = {}, onBack = {}
+                        )
                     }
                 }
             }
         }
-        compose.waitForIdle()
-        val actualScreen = screenshot()
-        val gridBounds = compose.onNodeWithTag("appearance-theme-color-grid")
-            .fetchSemanticsNode().boundsInRoot
-        fun appearanceSwatch(hex: String) = compose.onAllNodesWithContentDescription("#$hex")
-            .filterToOne(hasAnyAncestor(hasTestTag("appearance-theme-color-grid")))
-        val topSwatch = appearanceSwatch(
-            GlassPalettes.keyForColor(ThemeColorGrid.first()).substringAfter(':')
-        ).fetchSemanticsNode().boundsInRoot
-        val bottomSwatch = appearanceSwatch(
-            GlassPalettes.keyForColor(ThemeColorGrid.last()).substringAfter(':')
-        ).fetchSemanticsNode().boundsInRoot
-        assertEquals("actual AppearanceScreen grid has no top inset", topSwatch.top, gridBounds.top, 0.01f)
-        assertEquals("actual AppearanceScreen grid has no bottom inset", bottomSwatch.bottom, gridBounds.bottom, 0.01f)
-        assertTrue("PixelCopy must contain the rendered AppearanceScreen", actualScreen.width > 0 && actualScreen.height > 0)
-        save(actualScreen, "theme-grid-before.png")
-        // Different hue columns, not preset aliases. Values come from the rendered grid itself.
-        val blue = GlassPalettes.keyForColor(ThemeColorGrid[12 + 4 * 12 + 2])
-        val coral = GlassPalettes.keyForColor(ThemeColorGrid[12 + 4 * 12 + 5])
-        for ((name, key) in listOf("blue" to blue, "coral" to coral)) {
-            appearanceSwatch(key.substringAfter(':')).performClick().assertIsSelected()
-            compose.waitForIdle()
-            assertEquals(key, selected.value.key)
-            assertEquals(key, SettingsManager(compose.activity).glassPaletteKey)
-            assertEquals(selected.value, GlassPalettes.byKey(SettingsManager(compose.activity).glassPaletteKey))
-            val chosenDark = resolveGlassPalette(selected.value, true)
-            assertTrue(chosenDark.isDark)
-            assertEquals("dark mode must retain the custom RGB identity", selected.value.accent, chosenDark.accent)
-            save(screenshot(), "theme-grid-$name-selected.png")
-        }
-        assertNotEquals(GlassPalettes.byKey(blue).blobs, GlassPalettes.byKey(coral).blobs)
-        compose.runOnIdle { dark.value = true }
-        compose.waitForIdle()
-        appearanceSwatch(coral.substringAfter(':')).assertIsSelected()
-        save(screenshot(), "theme-grid-coral-dark.png")
-        File("build/outputs/mesh-preview/theme-grid-evidence.txt").writeText(
-            "Actual AppearanceScreen Compose/HWUI PixelCopy, not a device screenshot.\n" +
-                "108 solid RGB cells (12 grayscale + 8 x 12 hue cells); only grid, no spectrum/slider.\n" +
-                "Clicked and persisted $blue then $coral; fresh SettingsManager and byKey reload match.\n" +
-                "Dark mode preserves custom RGB and selection.\n"
-        )
+        compose.onNodeWithTag("appearance-theme-color-grid").assertDoesNotExist()
+        compose.onNodeWithTag("appearance-wallpaper-controls").performScrollTo()
+        compose.onNodeWithTag("wallpaper-toggle-color-grid").performScrollTo().assertExists()
+        compose.onNodeWithTag("wallpaper-color-grid").assertDoesNotExist()
+        compose.onNodeWithTag("wallpaper-toggle-color-grid").performClick()
+        compose.onNodeWithTag("wallpaper-color-grid").assertExists()
     }
 
     @Test fun renderedSwatchesAreSquareAndShareExactRowAndColumnEdges() {

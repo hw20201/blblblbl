@@ -29,7 +29,7 @@ class GlassWallpaperTest {
         assertEquals(Color.Red.toArgb(), third.colorA)
         assertEquals(Color.Green.toArgb(), third.colorB)
         assertEquals(Color.Blue.toArgb(), third.colorC)
-        assertFalse(GlassWallpaperSettings().enabled)
+        assertTrue(GlassWallpaperSettings().enabled)
     }
 
     @Test fun flutedGeometryUsesScriptRibCountWithAVisibleStableSlant() {

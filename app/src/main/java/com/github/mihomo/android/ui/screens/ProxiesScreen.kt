@@ -737,6 +737,10 @@ private fun LoonGroupHeaderCard(
 // Keep the selected node perceptibly pressed without changing its measured layout size.
 internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
 
+internal val SelectedProxyCardFill = Color(0xFF26313E)
+private val SelectedProxyCardText = Color.White
+private val SelectedProxyCardMutedText = Color(0xB8FFFFFF)
+
 // -----------------------------------------------------------------------------
 // Multi-Column Responsive Proxy Node Card (Supports 1, 2, or 3 columns)
 // -----------------------------------------------------------------------------
@@ -772,9 +776,7 @@ private fun LoonProxyItemCard(
         else -> "--"
     }
 
-    val cardBg = if (isSelected) {
-        if (LocalLoonColors.current.isDark) Color(0xFF0A1728) else Color(0xFFE5EEFB)
-    } else LoonCard
+    val cardBg = if (isSelected) SelectedProxyCardFill else LoonCard
 
     when (columns) {
         // ---------------------------------------------------------------------
@@ -792,15 +794,12 @@ private fun LoonProxyItemCard(
                     }
                     .height(54.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .border(
-                        width = if (isSelected) 1.5.dp else 0.5.dp,
-                        color = if (isSelected) IosBlue else LoonCardBorder,
-                        shape = RoundedCornerShape(14.dp)
-                    )
+                    .then(if (isSelected) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(14.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
-                accent = if (isSelected) IosBlue else null
+                accent = null,
+                selected = isSelected
             ) {
                 Row(
                     modifier = Modifier
@@ -821,7 +820,7 @@ private fun LoonProxyItemCard(
                         Column {
                             Text(
                                 text = displayName,
-                                color = if (isSelected) IosBlue else LoonTextPrimary,
+                                color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                 maxLines = 1
@@ -829,7 +828,7 @@ private fun LoonProxyItemCard(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = proxy.type.uppercase(),
-                                color = LoonTextMuted,
+                                color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
                                 fontSize = 9.5.sp
                             )
                         }
@@ -867,7 +866,7 @@ private fun LoonProxyItemCard(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = null,
-                                tint = IosBlue,
+                                tint = SelectedProxyCardText,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -908,7 +907,8 @@ private fun LoonProxyItemCard(
                 color = cardBg,
                 shape = cardShape,
                 groupScene = if (groupGlass) glassScene else null,
-                accent = if (isSelected) IosBlue else null
+                accent = null,
+                selected = isSelected
             ) {
                 Column(
                     modifier = Modifier
@@ -929,7 +929,7 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) IosBlue else LoonTextPrimary,
+                            color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
                             fontSize = 12.5.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
@@ -945,7 +945,7 @@ private fun LoonProxyItemCard(
                     ) {
                         Text(
                             text = proxy.type.uppercase(),
-                            color = LoonTextMuted,
+                            color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
                             fontSize = 8.5.sp,
                             maxLines = 1
                         )
@@ -994,15 +994,12 @@ private fun LoonProxyItemCard(
                     }
                     .height(56.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .border(
-                        width = if (isSelected) 1.5.dp else 0.5.dp,
-                        color = if (isSelected) IosBlue else LoonCardBorder,
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                    .then(if (isSelected) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(12.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
-                accent = if (isSelected) IosBlue else null
+                accent = null,
+                selected = isSelected
             ) {
                 Column(
                     modifier = Modifier
@@ -1023,7 +1020,7 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) IosBlue else LoonTextPrimary,
+                            color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
@@ -1039,7 +1036,7 @@ private fun LoonProxyItemCard(
                     ) {
                         Text(
                             text = proxy.type.uppercase(),
-                            color = LoonTextMuted,
+                            color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
                             fontSize = 8.sp,
                             maxLines = 1
                         )
@@ -1084,9 +1081,12 @@ private fun ProxyGlassCard(
     shape: RoundedCornerShape,
     accent: Color? = null,
     groupScene: NavigationLensState? = null,
+    selected: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
-    if (GlassDefaults.enabled && groupScene != null) {
+    if (selected) {
+        Surface(modifier = modifier, color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
+    } else if (GlassDefaults.enabled && groupScene != null) {
         ProxyGroupGlass(modifier, shape, groupScene, accent, content)
     } else if (GlassDefaults.enabled) {
         val tokens = LocalGlassTokens.current

@@ -126,8 +126,8 @@ class MainActivity : ComponentActivity() {
         // Pages draw into the system-bar areas; each screen owns its own inset handling.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         settingsManager = SettingsManager(this)
-        // Restore the saved palette before the first frame so there is no flash of the default.
-        GlassDefaults.palette = GlassPalettes.byKey(settingsManager.glassPaletteKey)
+        // Use the fixed brand glass surface palette; the app backdrop is the saved custom wallpaper.
+        GlassDefaults.palette = GlassPalettes.CREAM
         GlassDefaults.wallpaper = settingsManager.glassWallpaperSettings
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1334,15 +1334,9 @@ class MainActivity : ComponentActivity() {
                                 scrollState = glassEffectsScrollState
                             )
                             SubScreen.APPEARANCE -> {
-                                val activePalette = glassPalette
                                 AppearanceScreen(
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
-                                    palette = activePalette,
-                                    onPaletteChanged = { spec ->
-                                        GlassDefaults.palette = spec
-                                        settingsManager.glassPaletteKey = spec.key
-                                    },
                                     wallpaperSettings = GlassDefaults.wallpaper,
                                     onWallpaperSettingsChanged = { value ->
                                         GlassDefaults.wallpaper = value

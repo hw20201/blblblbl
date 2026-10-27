@@ -130,7 +130,7 @@ fun SettingsScreen(
                 .testTag("settings-scroll")
                 .bounceOverscroll()
                 .verticalScroll(scrollState)
-                .padding(top = headerInset + 12.dp, bottom = 120.dp)
+                .padding(top = headerInset + 20.dp, bottom = 120.dp)
         ) {
             SettingsGroupHeader("network-core", "网络与核心", "连接基础、启动与局域网共享", Icons.Default.VpnKey, IosBlue)
             Spacer(Modifier.height(8.dp))

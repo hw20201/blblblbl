@@ -28,20 +28,29 @@ enum class ThemeMode {
     SYSTEM, LIGHT, DARK
 }
 
-/** Default palette: the warm white one, which keeps the orange brand identity. */
-private const val KEY_GLASS_PALETTE = "glass_palette"
-private const val DEFAULT_GLASS_PALETTE = "cream"
+/** Preferences retired with the old built-in theme/background palette picker. */
+private const val LEGACY_KEY_GLASS_PALETTE = "glass_palette"
+private const val LEGACY_KEY_SAVED_GLASS_PALETTES = "glass_saved_palettes_v1"
 
 private val glassSettingsJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
 @Serializable
-data class SavedGlassPalette(val name: String, val key: String)
+data class SavedWallpaperPalette(
+    val name: String,
+    val colorA: Int,
+    val colorB: Int,
+    val colorC: Int,
+    val colorFlow: Boolean
+) {
+    fun applyTo(settings: GlassWallpaperSettings): GlassWallpaperSettings = settings.copy(
+        enabled = true, colorA = colorA, colorB = colorB, colorC = colorC, colorFlow = colorFlow
+    )
+}
 
 class SettingsManager(context: Context) {
     private companion object {
         const val KEY_GLASS_SETTINGS = "glass_settings_v1"
-        const val KEY_SAVED_GLASS_PALETTES = "glass_saved_palettes_v1"
-        const val KEY_WALLPAPER_ENABLED = "glass_wallpaper_enabled"
+        const val KEY_SAVED_WALLPAPER_PALETTES = "glass_wallpaper_palettes_v1"
         const val KEY_WALLPAPER_MODE = "glass_wallpaper_mode"
         const val KEY_WALLPAPER_COLOR_A = "glass_wallpaper_color_a"
         const val KEY_WALLPAPER_COLOR_B = "glass_wallpaper_color_b"
@@ -56,6 +65,15 @@ class SettingsManager(context: Context) {
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
+
+    init {
+        // Retire the former built-in background/theme palette picker and its saved presets.
+        prefs.edit()
+            .remove(LEGACY_KEY_GLASS_PALETTE)
+            .remove(LEGACY_KEY_SAVED_GLASS_PALETTES)
+            .remove("glass_wallpaper_enabled")
+            .apply()
+    }
 
     var selectedProfileId: String?
         get() = prefs.getString("selected_profile_id", null)
@@ -214,53 +232,37 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"
         set(value) = prefs.edit().putString("app_language", value).apply()
 
-    /**
-     * Selected glass palette key. Unknown values fall back to the default rather than crashing, so
-     * a palette can be removed from a future build without a migration.
-     */
-    var glassPaletteKey: String
-        get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
-        set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
-
-    /** Named local palettes retain the same stable key used by the active palette setting. */
-    val savedGlassPalettes: List<SavedGlassPalette>
+    /** User-saved three-stop palettes for the active custom fluted background. */
+    val savedWallpaperPalettes: List<SavedWallpaperPalette>
         get() = runCatching {
-            prefs.getString(KEY_SAVED_GLASS_PALETTES, null)
-                ?.let { glassSettingsJson.decodeFromString<List<SavedGlassPalette>>(it) }
+            prefs.getString(KEY_SAVED_WALLPAPER_PALETTES, null)
+                ?.let { glassSettingsJson.decodeFromString<List<SavedWallpaperPalette>>(it) }
                 .orEmpty()
-                .filter { it.name.isNotBlank() && isSupportedPaletteKey(it.key) }
+                .filter { it.name.isNotBlank() }
         }.getOrDefault(emptyList())
 
-    fun saveGlassPalette(name: String, key: String): List<SavedGlassPalette> {
+    fun saveWallpaperPalette(name: String, settings: GlassWallpaperSettings): List<SavedWallpaperPalette> {
         val cleanName = name.trim().take(32)
         require(cleanName.isNotEmpty()) { "Palette name must not be blank" }
-        require(isSupportedPaletteKey(key)) { "Unsupported palette key" }
-        val updated = savedGlassPalettes.toMutableList()
+        val updated = savedWallpaperPalettes.toMutableList()
         val existing = updated.indexOfFirst { it.name.equals(cleanName, ignoreCase = true) }
-        val entry = SavedGlassPalette(cleanName, key)
+        val entry = SavedWallpaperPalette(cleanName, settings.colorA, settings.colorB, settings.colorC, settings.colorFlow)
         if (existing >= 0) updated[existing] = entry else updated += entry
-        persistSavedGlassPalettes(updated)
+        prefs.edit().putString(KEY_SAVED_WALLPAPER_PALETTES, glassSettingsJson.encodeToString(updated)).apply()
         return updated
     }
 
-    fun deleteSavedGlassPalette(name: String): List<SavedGlassPalette> {
-        val updated = savedGlassPalettes.filterNot { it.name == name }
-        persistSavedGlassPalettes(updated)
+    fun deleteWallpaperPalette(name: String): List<SavedWallpaperPalette> {
+        val updated = savedWallpaperPalettes.filterNot { it.name == name }
+        prefs.edit().putString(KEY_SAVED_WALLPAPER_PALETTES, glassSettingsJson.encodeToString(updated)).apply()
         return updated
     }
 
-    private fun persistSavedGlassPalettes(values: List<SavedGlassPalette>) {
-        prefs.edit().putString(KEY_SAVED_GLASS_PALETTES, glassSettingsJson.encodeToString(values)).apply()
-    }
-
-    private fun isSupportedPaletteKey(key: String): Boolean =
-        key in setOf("white", "blue", "cream", "mint", "lavender", "midnight") ||
-            Regex("custom:[0-9a-fA-F]{6}").matches(key)
-
-    /** User-selectable straight fluted wallpaper; inactive preserves the existing mesh backdrop. */
+    /** User-selected three-stop fluted wallpaper; the custom backdrop is always active. */
     var glassWallpaperSettings: GlassWallpaperSettings
         get() = GlassWallpaperSettings(
-            enabled = prefs.getBoolean(KEY_WALLPAPER_ENABLED, false),
+            // The user's custom fluted background is now the only app background.
+            enabled = true,
             mode = GlassWallpaperMode.fromKey(prefs.getString(KEY_WALLPAPER_MODE, GlassWallpaperMode.FLUTED.name)),
             colorA = prefs.getInt(KEY_WALLPAPER_COLOR_A, GlassWallpaperSettings.COLOR_A),
             colorB = prefs.getInt(KEY_WALLPAPER_COLOR_B, GlassWallpaperSettings.COLOR_B),
@@ -269,7 +271,6 @@ class SettingsManager(context: Context) {
         )
         set(value) {
             prefs.edit()
-                .putBoolean(KEY_WALLPAPER_ENABLED, value.enabled)
                 .putString(KEY_WALLPAPER_MODE, value.mode.name)
                 .putInt(KEY_WALLPAPER_COLOR_A, value.colorA)
                 .putInt(KEY_WALLPAPER_COLOR_B, value.colorB)

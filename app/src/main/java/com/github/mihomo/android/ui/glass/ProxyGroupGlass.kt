@@ -37,7 +37,7 @@ internal fun useProxyGroupGlass(isGroup: Boolean, columns: Int, hasSource: Boole
 
 /** Group glass owns its unselected rim; an extra card border double-strokes that edge. */
 internal fun proxyCardNeedsOuterBorder(groupGlass: Boolean, selected: Boolean): Boolean =
-    !groupGlass || selected
+    !selected && !groupGlass
 
 /** The dense strategy grid deliberately never creates an AGSL shader or a blur effect. */
 internal fun replayProxyGroupBackdrop(apiLevel: Int, lowRam: Boolean, hasSource: Boolean): Boolean =

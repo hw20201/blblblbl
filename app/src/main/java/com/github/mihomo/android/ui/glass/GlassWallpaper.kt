@@ -24,7 +24,7 @@ enum class GlassWallpaperMode {
 
 @Immutable
 data class GlassWallpaperSettings(
-    val enabled: Boolean = false,
+    val enabled: Boolean = true,
     val mode: GlassWallpaperMode = GlassWallpaperMode.FLUTED,
     val colorA: Int = COLOR_A,
     val colorB: Int = COLOR_B,

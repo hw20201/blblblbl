@@ -91,8 +91,6 @@ class NestedPageDockVisibilityTest {
                                             onLanguageChanged = {}, showGroupIcons = true,
                                             onShowGroupIconsChanged = {}, nodeColumns = 2,
                                             onNodeColumnsChanged = {}, onBack = { nested.value = false },
-                                            palette = GlassPalettes.CREAM,
-                                            onPaletteChanged = { GlassDefaults.palette = it }
                                         )
                                     }
                                     NestedPageDockVisibility(transition, nested.value, Modifier.align(Alignment.BottomCenter)) {

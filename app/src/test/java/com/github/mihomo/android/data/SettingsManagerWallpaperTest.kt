@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.github.mihomo.android.ui.glass.GlassWallpaperMode
 import com.github.mihomo.android.ui.glass.GlassWallpaperSettings
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,7 +25,7 @@ class SettingsManagerWallpaperTest {
     }
 
     @Test fun wallpaperChoicesPersistAcrossSettingsManagerInstances() {
-        assertFalse(settings.glassWallpaperSettings.enabled)
+        assertTrue(settings.glassWallpaperSettings.enabled)
         val expected = GlassWallpaperSettings(
             enabled = true,
             mode = GlassWallpaperMode.FLUTED,
@@ -36,6 +36,16 @@ class SettingsManagerWallpaperTest {
         )
         settings.glassWallpaperSettings = expected
         assertEquals(expected, SettingsManager(context).glassWallpaperSettings)
+    }
+
+    @Test fun legacyDisabledFlagCannotRestoreTheOldDefaultBackground() {
+        context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE).edit()
+            .putBoolean("glass_wallpaper_enabled", false)
+            .putInt("glass_wallpaper_color_b", Color.Magenta.toArgb())
+            .commit()
+        val loaded = SettingsManager(context).glassWallpaperSettings
+        assertTrue(loaded.enabled)
+        assertEquals(Color.Magenta.toArgb(), loaded.colorB)
     }
 
     @Test fun invalidSavedModeUsesSafeDefaultWithoutDiscardingColors() {
