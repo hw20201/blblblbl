@@ -18,8 +18,8 @@ permissions:
 
 jobs:
   build:
-    # Allow the owner-controlled draft branch for this private validation run; never publish a Release.
-    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/wabi/arca-r8-draft-20261027')
+    # Signing is dispatched from main; the immutable source ref is selected separately.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
@@ -36,16 +36,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358"
-      - name: Set up Go for the pinned native core
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-      - name: Build patched Mihomo ARM64 core and JNI bridge
-        run: |
-          set -euo pipefail
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
-          ./scripts/build-native.sh
+          packages: "platforms;android-36 build-tools;36.0.0"
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Grant execute permission for gradlew
