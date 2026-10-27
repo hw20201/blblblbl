@@ -130,7 +130,7 @@ class ProxiesGlassRenderingTest {
                 compose.onNodeWithText("Osaka").assertIsDisplayed().performClick()
                 compose.waitForIdle()
                 assertEquals("Osaka", selected.value)
-                compose.onNodeWithTag("proxy-selected-glass-material").assertExists()
+                compose.onNodeWithTag("proxy-selected-glass-material", useUnmergedTree = true).assertExists()
                 saveScreenshot("proxies-${if (isDark) "dark" else "light"}-$count-columns")
             }
         }
