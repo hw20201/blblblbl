@@ -34,7 +34,6 @@ import com.github.mihomo.android.ui.theme.LoonBg
 import com.github.mihomo.android.ui.theme.LoonTextMuted
 import com.github.mihomo.android.ui.theme.LoonTextPrimary
 import com.github.mihomo.android.ui.theme.LoonTextSecondary
-import com.github.mihomo.android.ui.theme.IosBlue
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.ZoneId
@@ -92,17 +91,16 @@ private fun TrafficPeriodCard(title: String, bytes: TrafficBytes, lang: String) 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 TrafficValue("↑ ${AppStrings.get("traffic_up", lang)}", trafficString(bytes.upload))
                 TrafficValue("↓ ${AppStrings.get("traffic_down", lang)}", trafficString(bytes.download))
-                TrafficValue(AppStrings.get("traffic_total", lang), trafficString(bytes.total), accent = true)
             }
         }
     }
 }
 
 @Composable
-private fun TrafficValue(label: String, value: String, accent: Boolean = false) {
+private fun TrafficValue(label: String, value: String) {
     Column {
         Text(label, color = LoonTextSecondary, fontSize = 11.sp)
         Spacer(Modifier.height(3.dp))
-        Text(value, color = if (accent) IosBlue else LoonTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = LoonTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }

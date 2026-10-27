@@ -25,7 +25,7 @@ export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/28.2.13676358"
 bash scripts/build-native.sh
 ```
 
-脚本取得固定 Mihomo 模块，在忽略的 `native/build/` 内应用 `patches/mihomo-borrowed-fd.patch`，不修改共享 Go 模块缓存。构建标签为 `foss with_gvisor cmfa`，最低原生 API 为 26。两库均成功且所有 ELF LOAD 段达到 16 KiB 对齐后才复制到应用，并生成 `native/SHA256SUMS`。Gradle 打包前检查两库哈希，防止混搭。
+脚本取得固定 Mihomo 模块，在忽略的 `native/build/` 内依次应用 `patches/mihomo-borrowed-fd.patch` 与 `patches/mihomo-proxy-only-traffic.patch`，不修改共享 Go 模块缓存。构建标签为 `foss with_gvisor cmfa`，最低原生 API 为 26。两库均成功且所有 ELF LOAD 段达到 16 KiB 对齐后才复制到应用，并生成 `native/SHA256SUMS`。Gradle 打包前检查两库哈希，防止混搭。
 
 Go adapter 模块路径为 `cfa/native`，保留上游包导入路径。生成的 C 头文件留在构建目录。
 

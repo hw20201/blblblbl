@@ -54,6 +54,7 @@ internal fun ProxyGroupGlass(
     shape: RoundedCornerShape,
     scene: NavigationLensState,
     accent: Color?,
+    selectedFill: Color? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val tokens = LocalGlassTokens.current
@@ -61,7 +62,11 @@ internal fun ProxyGroupGlass(
     val replay = replayProxyGroupBackdrop(Build.VERSION.SDK_INT,
         quality == ShortcutGlassQuality.Flat, true)
     val tint = if (accent == null) tokens.tint else lerp(tokens.tintAccent, accent, .12f)
-    val fill = Brush.linearGradient(listOf(
+    // A selected card keeps a visible neutral-gray frost over the sampled wallpaper rather than
+    // becoming either a solid opaque slab or a nearly transparent outline.
+    val fill = selectedFill?.let { neutral ->
+        Brush.linearGradient(listOf(neutral.copy(alpha = .84f), neutral.copy(alpha = .76f)))
+    } ?: Brush.linearGradient(listOf(
         tint.copy(alpha = tint.alpha * if (replay) .24f else .42f),
         tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * if (replay) .24f else .42f)
     ))
@@ -77,7 +82,10 @@ internal fun ProxyGroupGlass(
                     }
                 })
         }
-        Box(Modifier.matchParentSize().testTag("proxy-group-glass-material").background(fill).proxyGroupBevel(shape, tokens.isDark))
+        Box(Modifier.matchParentSize()
+            .testTag(if (selectedFill != null) "proxy-selected-glass-material" else "proxy-group-glass-material")
+            .background(fill)
+            .proxyGroupBevel(shape, tokens.isDark))
         Box(Modifier.matchParentSize(), content = content)
     }
 }

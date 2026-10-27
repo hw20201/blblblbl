@@ -364,7 +364,7 @@ fun ProxiesScreen(
                                         val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$selectedGroupName:${proxy.name}")
                                         LoonProxyItemCard(
                                             proxy = proxy,
-                                            glassScene = if (currentViewMode == "TABS") glassScene else null,
+                                            glassScene = glassScene,
                                             isSelected = proxy.name == currentNow,
                                             columns = nodeColumns,
                                             isTesting = isItemTesting,
@@ -479,6 +479,7 @@ fun ProxiesScreen(
                                                             val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$groupName:${proxy.name}")
                                                             LoonProxyItemCard(
                                                                 proxy = proxy,
+                                                                glassScene = glassScene,
                                                                 isSelected = proxy.name == groupNow,
                                                                 columns = nodeColumns,
                                                                 isTesting = isItemTesting,
@@ -808,6 +809,7 @@ private fun LoonProxyItemCard(
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
                 accent = null,
+                groupScene = glassScene,
                 selected = isSelected
             ) {
                 Row(
@@ -915,7 +917,7 @@ private fun LoonProxyItemCard(
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = cardShape,
-                groupScene = if (groupGlass) glassScene else null,
+                groupScene = glassScene,
                 accent = null,
                 selected = isSelected
             ) {
@@ -1008,6 +1010,7 @@ private fun LoonProxyItemCard(
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
                 accent = null,
+                groupScene = glassScene,
                 selected = isSelected
             ) {
                 Column(
@@ -1082,7 +1085,7 @@ private fun LoonProxyItemCard(
 }
 
 
-/** Existing static material; only explicitly supplied two-column GROUP scenes opt into the new bevel. */
+/** Replays the recorded page backdrop for proxy tiles; selected tiles retain a neutral-gray frost. */
 @Composable
 private fun ProxyGlassCard(
     modifier: Modifier,
@@ -1093,10 +1096,25 @@ private fun ProxyGlassCard(
     selected: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
-    if (selected) {
+    if (GlassDefaults.enabled && groupScene != null) {
+        ProxyGroupGlass(
+            modifier = modifier,
+            shape = shape,
+            scene = groupScene,
+            accent = accent,
+            selectedFill = if (selected) SelectedProxyCardFill else null,
+            content = content
+        )
+    } else if (GlassDefaults.enabled && selected) {
+        val tokens = LocalGlassTokens.current
+        val frost = Brush.linearGradient(listOf(
+            SelectedProxyCardFill.copy(alpha = .92f), SelectedProxyCardFill.copy(alpha = .84f)
+        ))
+        Box(modifier.clip(shape).background(frost)
+            .border(0.8.dp, tokens.edge.copy(alpha = .8f), shape)
+            .testTag("proxy-selected-glass-material"), content = content)
+    } else if (selected) {
         Surface(modifier = modifier, color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
-    } else if (GlassDefaults.enabled && groupScene != null) {
-        ProxyGroupGlass(modifier, shape, groupScene, accent, content)
     } else if (GlassDefaults.enabled) {
         val tokens = LocalGlassTokens.current
         val tint = if (accent == null) tokens.tint else androidx.compose.ui.graphics.lerp(tokens.tintAccent, accent, 0.12f)

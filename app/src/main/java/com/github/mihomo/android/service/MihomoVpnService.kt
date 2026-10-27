@@ -43,9 +43,7 @@ import java.io.File
 
 data class TrafficMetrics(
     val upSpeed: String = "0 B/s",
-    val downSpeed: String = "0 B/s",
-    val totalUp: String = "0 B",
-    val totalDown: String = "0 B"
+    val downSpeed: String = "0 B/s"
 )
 
 data class VpnState(
@@ -335,20 +333,13 @@ class MihomoVpnService : VpnService() {
             while (isActive && _vpnState.value.status == VpnState.Status.RUNNING) {
                 delay(1000)
                 val now = ClashCore.queryTrafficNow()
-                val total = ClashCore.queryTrafficTotal()
-                com.github.mihomo.android.data.TrafficRecordRepository.record(total)
+                val proxyTotal = ClashCore.queryProxyTrafficTotal()
+                com.github.mihomo.android.data.TrafficRecordRepository.recordProxy(proxyTotal)
 
                 val upStr = now.trafficSpeedUpload()
                 val downStr = now.trafficSpeedDownload()
-                val totalUpStr = total.trafficUpload()
-                val totalDownStr = total.trafficDownload()
 
-                _trafficMetrics.value = TrafficMetrics(
-                    upSpeed = upStr,
-                    downSpeed = downStr,
-                    totalUp = totalUpStr,
-                    totalDown = totalDownStr
-                )
+                _trafficMetrics.value = TrafficMetrics(upSpeed = upStr, downSpeed = downStr)
                 updateNotification("\u2191 $upStr   \u2193 $downStr")
             }
         }

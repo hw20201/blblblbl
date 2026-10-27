@@ -85,9 +85,6 @@ private fun DashboardTrafficSummary(
         uploadSpeed = if (isRunning) metrics.upSpeed else "--",
         downloadTitle = AppStrings.get("traffic_down", lang),
         downloadSpeed = if (isRunning) metrics.downSpeed else "--",
-        uploadTotal = metrics.totalUp,
-        downloadTotal = metrics.totalDown,
-        totalLabel = if (lang == "zh") "累计" else "Total"
     )
 }
 

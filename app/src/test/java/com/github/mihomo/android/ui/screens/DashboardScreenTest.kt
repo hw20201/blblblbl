@@ -57,13 +57,13 @@ class DashboardScreenTest {
             )
         }
         compose.runOnIdle {
-            metrics.value = TrafficMetrics("5 KB/s", "12 KB/s", "30 MB", "80 MB")
+            metrics.value = TrafficMetrics("5 KB/s", "12 KB/s")
         }
         compose.waitForIdle()
         compose.onNodeWithTag("traffic-upload-rate").assertTextEquals("5 KB/s")
         compose.onNodeWithTag("traffic-download-rate").assertTextEquals("12 KB/s")
-        compose.onNodeWithTag("traffic-upload-total").assertTextEquals("Total 30 MB")
-        compose.onNodeWithTag("traffic-download-total").assertTextEquals("Total 80 MB")
+        compose.onNodeWithTag("traffic-upload-total").assertDoesNotExist()
+        compose.onNodeWithTag("traffic-download-total").assertDoesNotExist()
     }
 
     @Test fun oldTestWallpaperChoicesAreNotShownOnTheUserDashboard() {
@@ -320,8 +320,8 @@ class DashboardScreenTest {
     }
 
 
-    @Test fun homepageTrafficPanelKeepsLiveDirectionsAndShowsOnlyProvidedTotals() {
-        val metrics = MutableStateFlow(TrafficMetrics("12 KB/s", "4 MB/s", "18.2 MB", "2.4 GB"))
+    @Test fun homepageTrafficPanelShowsLiveDirectionsWithoutRecordedTotals() {
+        val metrics = MutableStateFlow(TrafficMetrics("12 KB/s", "4 MB/s"))
         compose.setContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
@@ -354,8 +354,8 @@ class DashboardScreenTest {
         compose.onNodeWithTag("dashboard-traffic-card").assertExists()
         compose.onNodeWithTag("traffic-upload-rate").assertTextEquals("12 KB/s")
         compose.onNodeWithTag("traffic-download-rate").assertTextEquals("4 MB/s")
-        compose.onNodeWithTag("traffic-upload-total").assertTextEquals("Total 18.2 MB")
-        compose.onNodeWithTag("traffic-download-total").assertTextEquals("Total 2.4 GB")
+        compose.onNodeWithTag("traffic-upload-total").assertDoesNotExist()
+        compose.onNodeWithTag("traffic-download-total").assertDoesNotExist()
     }
 
 }

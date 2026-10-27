@@ -101,19 +101,22 @@ class ProxiesGlassRenderingTest {
                 CompositionLocalProvider(LocalAppLanguage provides "zh", LocalSoftMeshTime provides time,
                     LocalSoftMeshSeed provides 734921L) {
                     ProvideGlassTheme {
+                        val backdrop = rememberNavigationLens()
                         Box(Modifier.fillMaxSize()) {
-                            NexusGlassBackground {
-                                val group = ProxyGroup("select", proxies, now = selected.value)
-                                ProxiesScreen(
-                                    groups = listOf("Proxy", "Auto"),
-                                    groupMap = mapOf("Proxy" to group, "Auto" to group),
-                                    currentGroup = group, selectedGroupName = "Proxy",
-                                    currentViewMode = mode.value, nodeColumns = columns.intValue,
-                                    onViewModeChanged = { mode.value = it }, onShowGroupIconsChanged = {},
-                                    onNodeColumnsChanged = { columns.intValue = it }, onSelectGroup = {},
-                                    onSelectProxy = { _, proxy -> selected.value = proxy.name }, onHealthCheck = {}
-                                )
+                            Box(Modifier.fillMaxSize().recordNavigationScene(backdrop)) {
+                                NexusGlassBackground {}
                             }
+                            val group = ProxyGroup("select", proxies, now = selected.value)
+                            ProxiesScreen(
+                                groups = listOf("Proxy", "Auto"),
+                                groupMap = mapOf("Proxy" to group, "Auto" to group),
+                                currentGroup = group, selectedGroupName = "Proxy",
+                                currentViewMode = mode.value, nodeColumns = columns.intValue,
+                                onViewModeChanged = { mode.value = it }, onShowGroupIconsChanged = {},
+                                onNodeColumnsChanged = { columns.intValue = it }, onSelectGroup = {},
+                                onSelectProxy = { _, proxy -> selected.value = proxy.name }, onHealthCheck = {},
+                                glassScene = backdrop
+                            )
                         }
                     }
                 }
@@ -127,6 +130,7 @@ class ProxiesGlassRenderingTest {
                 compose.onNodeWithText("Osaka").assertIsDisplayed().performClick()
                 compose.waitForIdle()
                 assertEquals("Osaka", selected.value)
+                compose.onNodeWithTag("proxy-selected-glass-material").assertExists()
                 saveScreenshot("proxies-${if (isDark) "dark" else "light"}-$count-columns")
             }
         }

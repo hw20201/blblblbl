@@ -221,6 +221,10 @@ object ClashCore {
         return runCatching { Bridge.nativeQueryTrafficTotal() }.getOrDefault(0L)
     }
 
+    fun queryProxyTrafficTotal(): Traffic {
+        return runCatching { Bridge.nativeQueryProxyTrafficTotal() }.getOrDefault(0L)
+    }
+
     fun queryTunnelState(): TunnelState {
         return runCatching {
             val res = Bridge.nativeQueryTunnelState()

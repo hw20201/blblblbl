@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** Persistent byte accounting based only on Mihomo's monotonic session totals. */
+/** Persistent byte accounting from Mihomo's proxy-only outbound counters (DIRECT excluded). */
 object TrafficRecordRepository {
-    private const val PREFS = "traffic_records_v1"
+    // Deliberately isolated from traffic_records_v1, which stored all Mihomo traffic including DIRECT.
+    private const val PREFS = "traffic_proxy_records_v1"
     private const val BASELINE = "baseline"
     private const val LAST_UP = "last_up"
     private const val LAST_DOWN = "last_down"
@@ -32,8 +33,8 @@ object TrafficRecordRepository {
         mutableTotals.value = summaryLocked(LocalDate.now(ZoneId.systemDefault()))
     }
 
-    /** Call once per service poll with the packed native lifetime counters. */
-    fun record(total: Traffic, nowMillis: Long = System.currentTimeMillis()) = synchronized(lock) {
+    /** Call once per service poll with native counters that exclude DIRECT/COMPATIBLE outbounds. */
+    fun recordProxy(total: Traffic, nowMillis: Long = System.currentTimeMillis()) = synchronized(lock) {
         val p = prefs ?: return
         val up = total.rawUpload().coerceAtLeast(0L)
         val down = total.rawDownload().coerceAtLeast(0L)
@@ -108,9 +109,7 @@ internal fun accountCounter(last: Long, pendingReset: Long, current: Long): Coun
 internal fun trafficPeriodStarts(date: LocalDate): Pair<LocalDate, LocalDate> =
     date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)) to date.withDayOfMonth(1)
 
-data class TrafficBytes(val upload: Long = 0L, val download: Long = 0L) {
-    val total: Long get() = if (Long.MAX_VALUE - upload < download) Long.MAX_VALUE else upload + download
-}
+data class TrafficBytes(val upload: Long = 0L, val download: Long = 0L)
 
 data class TrafficRecordTotals(
     val today: TrafficBytes = TrafficBytes(),

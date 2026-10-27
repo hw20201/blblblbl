@@ -147,9 +147,6 @@ fun LoonTrafficSummaryCard(
     uploadSpeed: String,
     downloadTitle: String,
     downloadSpeed: String,
-    uploadTotal: String,
-    downloadTotal: String,
-    totalLabel: String,
     glass: Boolean = GlassDefaults.enabled
 ) {
     val shape = RoundedCornerShape(GlassRadius.card)
@@ -159,7 +156,7 @@ fun LoonTrafficSummaryCard(
             shape = shape,
             accent = GlassAccent.download
         ) {
-            TrafficSummaryContents(uploadTitle, uploadSpeed, uploadTotal, downloadTitle, downloadSpeed, downloadTotal, totalLabel, true)
+            TrafficSummaryContents(uploadTitle, uploadSpeed, downloadTitle, downloadSpeed, true)
         }
     } else {
         Surface(
@@ -167,7 +164,7 @@ fun LoonTrafficSummaryCard(
             shape = shape,
             color = if (LocalLoonColors.current.isDark) Color(0xFF202833) else Color(0xFFF3F5F8)
         ) {
-            TrafficSummaryContents(uploadTitle, uploadSpeed, uploadTotal, downloadTitle, downloadSpeed, downloadTotal, totalLabel, false)
+            TrafficSummaryContents(uploadTitle, uploadSpeed, downloadTitle, downloadSpeed, false)
         }
     }
 }
@@ -176,11 +173,8 @@ fun LoonTrafficSummaryCard(
 private fun TrafficSummaryContents(
     uploadTitle: String,
     uploadSpeed: String,
-    uploadTotal: String,
     downloadTitle: String,
     downloadSpeed: String,
-    downloadTotal: String,
-    totalLabel: String,
     glass: Boolean
 ) {
     val primary = if (glass) glassTextPrimary else LoonTextPrimary
@@ -190,14 +184,14 @@ private fun TrafficSummaryContents(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TrafficMetric(
-            modifier = Modifier.weight(1f), title = uploadTitle, speed = uploadSpeed, total = uploadTotal,
-            totalLabel = totalLabel, icon = Icons.Default.ArrowUpward, accent = GlassAccent.upload,
+            modifier = Modifier.weight(1f), title = uploadTitle, speed = uploadSpeed,
+            icon = Icons.Default.ArrowUpward, accent = GlassAccent.upload,
             primary = primary, secondary = secondary, tag = "traffic-upload"
         )
         Box(Modifier.width(1.dp).height(48.dp).background(secondary.copy(alpha = .20f)))
         TrafficMetric(
-            modifier = Modifier.weight(1f).padding(start = 18.dp), title = downloadTitle, speed = downloadSpeed, total = downloadTotal,
-            totalLabel = totalLabel, icon = Icons.Default.ArrowDownward, accent = GlassAccent.download,
+            modifier = Modifier.weight(1f).padding(start = 18.dp), title = downloadTitle, speed = downloadSpeed,
+            icon = Icons.Default.ArrowDownward, accent = GlassAccent.download,
             primary = primary, secondary = secondary, tag = "traffic-download"
         )
     }
@@ -208,8 +202,6 @@ private fun TrafficMetric(
     modifier: Modifier,
     title: String,
     speed: String,
-    total: String,
-    totalLabel: String,
     icon: ImageVector,
     accent: Color,
     primary: Color,
@@ -226,10 +218,6 @@ private fun TrafficMetric(
         Text(
             text = speed.ifBlank { "--" }, color = primary, fontSize = 17.sp,
             fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.testTag("$tag-rate")
-        )
-        Text(
-            text = "$totalLabel $total", color = secondary, fontSize = 10.5.sp,
-            maxLines = 1, modifier = Modifier.testTag("$tag-total")
         )
     }
 }
