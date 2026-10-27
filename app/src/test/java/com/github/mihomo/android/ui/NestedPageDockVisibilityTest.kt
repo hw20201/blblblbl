@@ -116,6 +116,8 @@ class NestedPageDockVisibilityTest {
         capture("dock-main-tab.png")
 
         compose.runOnIdle { nested.value = true }
+        compose.mainClock.advanceTimeBy(80)
+        compose.onNodeWithContentDescription("main-tab-dock").assertExists()
         awaitDockPresence(false)
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithContentDescription("main-tab-dock").assertDoesNotExist()
@@ -123,15 +125,16 @@ class NestedPageDockVisibilityTest {
         capture("appearance-no-dock.png")
 
         compose.runOnIdle { nested.value = false }
-        compose.mainClock.advanceTimeBy(150)
+        compose.mainClock.advanceTimeBy(80)
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("main-tab-dock").assertDoesNotExist()
-        capture("dock-exit-mid-transition.png")
+        compose.onNodeWithContentDescription("main-tab-dock").assertExists()
+        capture("dock-return-transition.png")
         awaitDockPresence(true)
+        compose.mainClock.advanceTimeBy(250)
         capture("dock-returned-main-tab.png")
         File("build/reports/nested-dock/evidence.txt").apply {
             parentFile!!.mkdirs()
-            writeText("Actual AppearanceScreen + production LoonFloatingBottomBar Compose render, Robolectric Native PixelCopy (GraphicsMode.NATIVE), not a real-device screenshot. Fixed mesh seed/time. Dock semantics absent for nested appearance and mid-exit, restored once the shared transition is idle.\n")
+            writeText("Actual AppearanceScreen + production LoonFloatingBottomBar Compose render, Robolectric Native PixelCopy (GraphicsMode.NATIVE), not a real-device screenshot. Fixed mesh seed/time. Dock semantics remain during its 220ms fade/slide out, are absent for a stable nested appearance page, and return with a 220ms fade/slide when leaving it.\n")
         }
     }
 

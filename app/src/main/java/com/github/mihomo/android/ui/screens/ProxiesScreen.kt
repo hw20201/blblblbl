@@ -734,6 +734,9 @@ private fun LoonGroupHeaderCard(
     }
 }
 
+// Keep the selected node perceptibly pressed without changing its measured layout size.
+internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
+
 // -----------------------------------------------------------------------------
 // Multi-Column Responsive Proxy Node Card (Supports 1, 2, or 3 columns)
 // -----------------------------------------------------------------------------
@@ -770,7 +773,7 @@ private fun LoonProxyItemCard(
     }
 
     val cardBg = if (isSelected) {
-        if (LocalLoonColors.current.isDark) Color(0xFF132238) else Color(0xFFEDF4FF)
+        if (LocalLoonColors.current.isDark) Color(0xFF0A1728) else Color(0xFFE5EEFB)
     } else LoonCard
 
     when (columns) {
@@ -782,6 +785,11 @@ private fun LoonProxyItemCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        val scale = selectedProxyCardScale(isSelected)
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .height(54.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .border(
@@ -880,6 +888,11 @@ private fun LoonProxyItemCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        val scale = selectedProxyCardScale(isSelected)
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .height(62.dp)
                     .clip(cardShape)
                     .then(
@@ -974,6 +987,11 @@ private fun LoonProxyItemCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        val scale = selectedProxyCardScale(isSelected)
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .height(56.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .border(

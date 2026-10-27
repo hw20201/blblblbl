@@ -114,5 +114,47 @@ class SettingsManagerPaletteTest {
         }
     }
 
+    @Test
+    fun namedPaletteIsSavedAndReloadedWithoutChangingActivePalette() {
+        settings.glassPaletteKey = "custom:12AB34"
+        val saved = settings.saveGlassPalette("  Evening  ", "custom:12AB34")
+
+        assertEquals(listOf(SavedGlassPalette("Evening", "custom:12AB34")), saved)
+        assertEquals(saved, SettingsManager(context).savedGlassPalettes)
+        assertEquals("custom:12AB34", settings.glassPaletteKey)
+    }
+
+    @Test
+    fun savingSameNameUpdatesTheExistingEntryCaseInsensitively() {
+        settings.saveGlassPalette("Soft", "cream")
+        val saved = settings.saveGlassPalette("soft", "blue")
+
+        assertEquals(listOf(SavedGlassPalette("soft", "blue")), saved)
+        assertEquals(saved, SettingsManager(context).savedGlassPalettes)
+    }
+
+    @Test
+    fun deletingSavedPalettePreservesOtherSettingsAndRemainingPalettes() {
+        settings.saveGlassPalette("One", "cream")
+        settings.saveGlassPalette("Two", "custom:ABCDEF")
+        settings.glassPaletteKey = "mint"
+        settings.nodeColumns = 3
+
+        val saved = settings.deleteSavedGlassPalette("One")
+
+        assertEquals(listOf(SavedGlassPalette("Two", "custom:ABCDEF")), saved)
+        assertEquals(saved, SettingsManager(context).savedGlassPalettes)
+        assertEquals("mint", settings.glassPaletteKey)
+        assertEquals(3, settings.nodeColumns)
+    }
+
+    @Test
+    fun malformedOrUnsupportedSavedEntriesAreIgnoredSafely() {
+        prefs.edit().putString("glass_saved_palettes_v1", "not-json").commit()
+        assertTrue(settings.savedGlassPalettes.isEmpty())
+        prefs.edit().putString("glass_saved_palettes_v1", """[{"name":"Good","key":"cream"},{"name":"Bad","key":"unknown"}]""").commit()
+        assertEquals(listOf(SavedGlassPalette("Good", "cream")), settings.savedGlassPalettes)
+    }
+
     private fun luminance(c: Color): Float = 0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue
 }

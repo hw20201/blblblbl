@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Nexus</string>
+    <string name="app_name">Arca</string>
     <string name="vpn_running">Nexus 代理已连接</string>
     <string name="vpn_stopped">Nexus 代理已断开</string>
     <string name="vpn_starting">正在启动代理服务…</string>

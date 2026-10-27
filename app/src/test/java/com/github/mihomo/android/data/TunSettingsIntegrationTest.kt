@@ -36,25 +36,63 @@ class TunSettingsIntegrationTest {
     }
 
     @Test
-    fun generatedConfigUsesTheSameIpv6SettingForCoreAndDns() {
+    fun proxyServerIpv6ResolutionStaysEnabledWhileClientDnsFollowsIpv6Setting() {
         val configFile = ConfigManager.prepareConfig(context, null)
         val generated = configFile.readText()
 
-        assertTrue(generated.contains("ipv6: false"))
-        assertTrue(generated.contains("dns:\n  enable: true\n  listen: 127.0.0.1:1053\n  ipv6: false"))
+        val defaultParsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(generated)
+        assertEquals(true, defaultParsed["ipv6"])
+        assertEquals(true, defaultParsed["tcp-concurrent"])
+        assertEquals(false, (defaultParsed["dns"] as Map<*, *>)["ipv6"])
 
         settings.ipv6Enabled = true
         val ipv6Config = ConfigManager.prepareConfig(context, null).readText()
-        assertTrue(ipv6Config.contains("ipv6: true"))
-        assertTrue(ipv6Config.contains("dns:\n  enable: true\n  listen: 127.0.0.1:1053\n  ipv6: true"))
+        val ipv6Parsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(ipv6Config)
+        assertEquals(true, ipv6Parsed["ipv6"])
+        assertEquals(true, (ipv6Parsed["dns"] as Map<*, *>)["ipv6"])
+
     }
 
     @Test
-    fun startupSnapshotWinsOverASettingChangedDuringStartup() {
+    fun unifiedDelaySettingIsInjectedIntoRuntimeConfigAndCannotBeOverriddenByProfile() {
+        assertFalse(settings.unifiedDelayEnabled)
+        val defaultConfig = ConfigManager.prepareConfig(context, null).readText()
+        assertTrue(defaultConfig.contains("unified-delay: false"))
+
+        settings.unifiedDelayEnabled = true
+        val enabledConfig = ConfigManager.prepareConfig(context, null).readText()
+        val parsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(enabledConfig)
+        assertEquals(true, parsed["unified-delay"])
+
+        val profile = java.io.File(context.cacheDir, "unified-delay-profile.yaml")
+        profile.writeText("unified-delay: false\nproxies: []\nrules: [MATCH,DIRECT]\n")
+        val protectedConfig = ConfigManager.prepareConfig(context, profile).readText()
+        val protectedParsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(protectedConfig)
+        assertEquals(true, protectedParsed["unified-delay"])
+        assertEquals(true, protectedParsed["tcp-concurrent"])
+        assertTrue(protectedParsed["proxies"] is List<*>)
+
+        val explicitTcp = java.io.File(context.cacheDir, "tcp-concurrent-profile.yaml")
+        explicitTcp.writeText("tcp-concurrent: false\nproxies: []\nrules: [MATCH,DIRECT]\n")
+        val explicitParsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(
+            ConfigManager.prepareConfig(context, explicitTcp).readText()
+        )
+        assertEquals(false, explicitParsed["tcp-concurrent"])
+    }
+
+    @Test
+    fun hotProfileSwitchPreferenceDefaultsOnAndPersists() {
+        assertTrue(settings.profileHotSwitchEnabled)
+        settings.profileHotSwitchEnabled = false
+        assertFalse(SettingsManager(context).profileHotSwitchEnabled)
+    }
+
+    @Test
+    fun startupSnapshotKeepsClientDnsSettingSeparateFromProxyEndpointResolution() {
         settings.ipv6Enabled = true
         val generated = ConfigManager.prepareConfig(context, null, ipv6Enabled = false).readText()
         val parsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(generated)
-        assertEquals(false, parsed["ipv6"])
+        assertEquals(true, parsed["ipv6"])
         assertEquals(false, (parsed["dns"] as Map<*, *>)["ipv6"])
     }
 

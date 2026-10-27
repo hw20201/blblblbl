@@ -120,7 +120,6 @@ class ShortcutTouchPreviewTest {
     private fun verifyTapAndScroll(variant: ShortcutTouchVariant) {
         var clicks = 0
         content(variant, false, mutableStateOf(null), { clicks++ })
-        val card = compose.onNodeWithTag("shortcut-card-Profiles")
         // The Dashboard's inner card tag can alias another slot's coordinates in this
         // merged semantics tree. Use the positioned parent slot for physical input.
         val slot = compose.onNodeWithTag("shortcut-profiles")

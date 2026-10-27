@@ -76,7 +76,7 @@ fun GlassEffectsScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
                 .padding(
-                    top = headerInset + 8.dp,
+                    top = headerInset + 20.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
                 )
         ) {

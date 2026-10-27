@@ -72,10 +72,12 @@ class ConfigManagerSanitizeTest {
             proxies: []
             external-controller: 127.0.0.1:9090
             mode: global
+            unified-delay: false
             """.trimIndent()
         )
         assertFalse(out.contains("external-controller"))
         assertFalse(out.contains("mode"))
+        assertFalse(out.contains("unified-delay"))
         assertEquals(false, out.contains("global"))
     }
 

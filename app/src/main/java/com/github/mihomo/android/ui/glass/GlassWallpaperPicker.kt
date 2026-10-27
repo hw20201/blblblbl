@@ -86,7 +86,7 @@ fun GlassWallpaperPicker(
 
         Text("混合主色", color = LoonTextSecondary, fontSize = 13.sp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            (0..2).forEach { index ->
+            for (index in 0..2) {
                 val selected = index == selectedColor
                 Row(
                     Modifier.weight(1f).clip(RoundedCornerShape(14.dp))

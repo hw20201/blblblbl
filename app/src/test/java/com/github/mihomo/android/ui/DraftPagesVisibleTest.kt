@@ -38,7 +38,7 @@ class DraftPagesVisibleTest {
             view.layout(0, 0, 400, 900)
         }
         settle()
-        checkPage("dashboard", "NEXUS", "快捷方式", theme)
+        checkPage("dashboard", "ARCA", "快捷方式", theme)
         dock("策略").performClick()
         settle()
         // This empty-state message is actual page content, not the surviving bottom dock.
@@ -48,7 +48,7 @@ class DraftPagesVisibleTest {
         checkPage("settings", "设置", "TUN 堆栈", theme)
         dock("仪表").performClick()
         settle()
-        checkPage("dashboard-return", "NEXUS", "快捷方式", theme)
+        checkPage("dashboard-return", "ARCA", "快捷方式", theme)
     }
 
     private fun dock(text: String) = compose.onNode(

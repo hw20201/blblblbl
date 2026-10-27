@@ -47,4 +47,27 @@ class ShortcutTouchSettingsSelectorTest {
             compose.onNodeWithText(label).assertDoesNotExist()
         }
     }
+    @Test fun runtimeBehaviorSettingsExposeStatefulControls() {
+        val unifiedDelay = mutableStateOf(false)
+        val hotSwitch = mutableStateOf(true)
+        compose.setContent {
+            MihomoTheme(ThemeMode.LIGHT) {
+                SettingsScreen(
+                    scrollState = rememberScrollState(), tunStack = TunStack.DEFAULT,
+                    bootOnStartup = false, allowLan = false, fakeIpEnabled = false,
+                    unifiedDelayEnabled = unifiedDelay.value,
+                    profileHotSwitchEnabled = hotSwitch.value,
+                    onUnifiedDelayChanged = { unifiedDelay.value = it },
+                    onProfileHotSwitchChanged = { hotSwitch.value = it },
+                    onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                    onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
+                )
+            }
+        }
+        compose.onNodeWithTag("settings-profile-hot-switch").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(false, hotSwitch.value) }
+        compose.onNodeWithTag("settings-unified-delay").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(true, unifiedDelay.value) }
+    }
+
 }

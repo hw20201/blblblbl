@@ -8,6 +8,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.kr328.clash.core.model.Proxy
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
+import com.github.mihomo.android.service.TrafficMetrics
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -22,6 +24,47 @@ class DashboardScreenTest {
 
     private val shortcutOrder = listOf("nodes", "profiles", "rules", "request_logs")
     private val noOp: () -> Unit = {}
+
+    @Test fun liveTrafficSamplesUpdateTheLeafCardWithoutChangingDashboardInputs() {
+        val metrics = MutableStateFlow(TrafficMetrics())
+        compose.setContent {
+            DashboardScreen(
+                scrollState = ScrollState(0),
+                vpnState = VpnState(status = VpnState.Status.RUNNING),
+                trafficMetrics = metrics,
+                currentMode = TunnelMode.RULE,
+                activeProfileName = "测试配置",
+                mainGroupName = "",
+                mainGroupProxies = emptyList<Proxy>(),
+                activeNodeName = "",
+                totalNodes = 0,
+                totalRules = 0,
+                visibleShortcuts = shortcutOrder.toSet(),
+                shortcutOrder = shortcutOrder,
+                onToggleVpn = noOp,
+                onModeSelected = {},
+                onSelectProxy = { _, _ -> },
+                onHealthCheck = {},
+                onNavigateToProfiles = noOp,
+                onNavigateToAppRouting = noOp,
+                onNavigateToLogs = noOp,
+                onNavigateToRules = noOp,
+                onNavigateToDns = noOp,
+                onNavigateToRequests = noOp,
+                onNavigateToNetworkShare = noOp,
+                onUpdateVisibleShortcuts = {},
+                onUpdateShortcutOrder = {}
+            )
+        }
+        compose.runOnIdle {
+            metrics.value = TrafficMetrics("5 KB/s", "12 KB/s", "30 MB", "80 MB")
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("traffic-upload-rate").assertTextEquals("5 KB/s")
+        compose.onNodeWithTag("traffic-download-rate").assertTextEquals("12 KB/s")
+        compose.onNodeWithTag("traffic-upload-total").assertTextEquals("Total 30 MB")
+        compose.onNodeWithTag("traffic-download-total").assertTextEquals("Total 80 MB")
+    }
 
     @Test fun oldTestWallpaperChoicesAreNotShownOnTheUserDashboard() {
         compose.setContent {
@@ -161,7 +204,7 @@ class DashboardScreenTest {
         compose.onNodeWithTag("mode-option-direct", useUnmergedTree = true).assertExists()
         val titleBounds = compose.onNodeWithTag("dashboard-nexus-title").fetchSemanticsNode().boundsInRoot
         val panelBounds = compose.onNodeWithTag("mode-picker-panel").fetchSemanticsNode().boundsInRoot
-        assertTrue("picker must expand below the NEXUS header", panelBounds.top >= titleBounds.bottom)
+        assertTrue("picker must expand below the ARCA header", panelBounds.top >= titleBounds.bottom)
         assertTrue("picker should remain a compact window", panelBounds.width < 260f)
         compose.onNodeWithTag("mode-option-global").performClick()
         compose.waitForIdle()
@@ -278,14 +321,12 @@ class DashboardScreenTest {
 
 
     @Test fun homepageTrafficPanelKeepsLiveDirectionsAndShowsOnlyProvidedTotals() {
+        val metrics = MutableStateFlow(TrafficMetrics("12 KB/s", "4 MB/s", "18.2 MB", "2.4 GB"))
         compose.setContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
-                vpnState = VpnState(
-                    status = VpnState.Status.RUNNING,
-                    upSpeed = "12 KB/s", downSpeed = "4 MB/s",
-                    totalUp = "18.2 MB", totalDown = "2.4 GB"
-                ),
+                vpnState = VpnState(status = VpnState.Status.RUNNING),
+                trafficMetrics = metrics,
                 currentMode = TunnelMode.RULE,
                 activeProfileName = "测试配置",
                 mainGroupName = "",

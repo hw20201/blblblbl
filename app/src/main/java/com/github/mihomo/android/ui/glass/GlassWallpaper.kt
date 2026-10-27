@@ -17,6 +17,7 @@ enum class GlassWallpaperMode {
     FLUTED;
 
     companion object {
+        @Suppress("UNUSED_PARAMETER")
         fun fromKey(key: String?): GlassWallpaperMode = FLUTED
     }
 }

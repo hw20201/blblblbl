@@ -51,6 +51,9 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.mihomo.android.data.DashboardData
 import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.service.VpnState
+import com.github.mihomo.android.service.TrafficMetrics
+import com.github.mihomo.android.service.MihomoVpnService
+import kotlinx.coroutines.flow.StateFlow
 import com.github.mihomo.android.ui.glass.PageTitleGlass
 import com.github.mihomo.android.ui.glass.NavigationGlassSurface
 import com.github.mihomo.android.ui.glass.LensStrength
@@ -70,11 +73,30 @@ data class ShortcutDef(
     val onClick: () -> Unit
 )
 
+@Composable
+private fun DashboardTrafficSummary(
+    isRunning: Boolean,
+    lang: String,
+    trafficMetrics: StateFlow<TrafficMetrics>
+) {
+    val metrics by trafficMetrics.collectAsState()
+    LoonTrafficSummaryCard(
+        uploadTitle = AppStrings.get("traffic_up", lang),
+        uploadSpeed = if (isRunning) metrics.upSpeed else "--",
+        downloadTitle = AppStrings.get("traffic_down", lang),
+        downloadSpeed = if (isRunning) metrics.downSpeed else "--",
+        uploadTotal = metrics.totalUp,
+        downloadTotal = metrics.totalDown,
+        totalLabel = if (lang == "zh") "累计" else "Total"
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
     vpnState: VpnState,
+    trafficMetrics: StateFlow<TrafficMetrics> = MihomoVpnService.trafficMetrics,
     requestMonitoringEnabled: Boolean = false,
     currentMode: TunnelMode,
     activeProfileName: String,
@@ -96,6 +118,7 @@ fun DashboardScreen(
     onNavigateToDns: () -> Unit = {},
     onNavigateToRequests: () -> Unit = {},
     onNavigateToNetworkShare: () -> Unit = {},
+    onNavigateToTraffic: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit,
     glassScene: NavigationLensState? = null
@@ -167,10 +190,10 @@ fun DashboardScreen(
 
     val lang = LocalAppLanguage.current
 
-    // All shortcut item definitions available across entire DashboardScreen (cached to eliminate recomposition lag)
+    // Live traffic samples are rendered by a leaf card below. They must not invalidate this
+    // shortcut model (or its grid) on every one-second telemetry update.
     val allShortcutMap = remember(
         lang, activeProfileName, activeNodeName, totalNodes, totalRules, requestMonitoringEnabled,
-        vpnState.upSpeed, vpnState.downSpeed, vpnState.totalUp, vpnState.totalDown,
         vpnState.coreVersion, isRunning, isStarting, vpnState.status
     ) {
         mapOf(
@@ -214,6 +237,11 @@ fun DashboardScreen(
             },
             "network_share" to ShortcutDef("network_share", AppStrings.get("shortcut_network_share", lang), "127.0.0.1:7890", { NetworkShareIllustration() }) {
                 onNavigateToNetworkShare()
+            },
+            "traffic" to ShortcutDef("traffic", AppStrings.get("shortcut_traffic", lang), AppStrings.get("traffic_records_subtitle", lang), {
+                Icon(Icons.Default.DataUsage, contentDescription = null, tint = IosBlue, modifier = Modifier.size(38.dp))
+            }) {
+                onNavigateToTraffic()
             }
         )
     }
@@ -271,14 +299,10 @@ fun DashboardScreen(
                     .padding(top = headerInset + 12.dp, bottom = 110.dp)
             ) {
 
-                LoonTrafficSummaryCard(
-                    uploadTitle = AppStrings.get("traffic_up", lang),
-                    uploadSpeed = if (isRunning) vpnState.upSpeed else "--",
-                    downloadTitle = AppStrings.get("traffic_down", lang),
-                    downloadSpeed = if (isRunning) vpnState.downSpeed else "--",
-                    uploadTotal = vpnState.totalUp,
-                    downloadTotal = vpnState.totalDown,
-                    totalLabel = if (lang == "zh") "累计" else "Total"
+                DashboardTrafficSummary(
+                    isRunning = isRunning,
+                    lang = lang,
+                    trafficMetrics = trafficMetrics
                 )
 
                 Spacer(modifier = Modifier.height(26.dp))
@@ -555,7 +579,7 @@ fun DashboardScreen(
 
             } // Only scrolling content belongs to the recorded scene.
 
-            // Header: NEXUS (LOON style) & Mode Selector + iOS Switch
+            // Header: ARCA (LOON style) & Mode Selector + iOS Switch
             Column(
                 modifier = Modifier
                     .onSizeChanged { headerHeightPx = it.height }
@@ -571,14 +595,14 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     PageTitleGlass(titleScene, modifier = Modifier.testTag("dashboard-nexus-title")) { Text(
-                        text = "NEXUS",
+                        text = "ARCA",
                         color = LoonOrange,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 0.5.sp
                     ) }
 
-                    // Top Right iOS Cupertino Switch (aligned directly with NEXUS title)
+                    // Top Right iOS Cupertino Switch (aligned directly with ARCA title)
                     CupertinoSwitch(
                         checked = isRunning || isStarting,
                         onCheckedChange = { onToggleVpn() }

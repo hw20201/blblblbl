@@ -87,7 +87,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/nexus-release.jks"
       - name: Verify and record APK identity
         env:
-          EXPECTED_CERT_SHA256: "5818b0edbe3d38beff7aef1dc2e6b23f7da22f747b20d5a76ac62aebc6836711"
+          EXPECTED_CERT_SHA256: "e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2"
           SOURCE_REF: ${{ inputs.source_ref || github.ref }}
         run: |
           set -euo pipefail

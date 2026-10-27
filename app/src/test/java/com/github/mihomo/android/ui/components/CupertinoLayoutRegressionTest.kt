@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -81,7 +83,8 @@ class CupertinoLayoutRegressionTest {
                 nodeColumns = 2, onNodeColumnsChanged = {}, onBack = {},
             )
         }
-        compose.onNodeWithText("简体中文").performScrollTo().performClick()
+        compose.onNodeWithTag("appearance-scroll-content").performScrollToNode(hasText("简体中文"))
+        compose.onNodeWithText("简体中文").performClick()
         compose.onAllNodesWithText(AppStrings.get("theme_system")).onLast().performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(listOf("zh", "SYSTEM"), selected)

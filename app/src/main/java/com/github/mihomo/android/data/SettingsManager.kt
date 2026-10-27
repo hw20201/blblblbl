@@ -9,7 +9,9 @@ import com.github.mihomo.android.ui.glass.GlassSurfaceCategory
 import com.github.mihomo.android.ui.glass.GlassWallpaperMode
 import com.github.mihomo.android.ui.glass.GlassWallpaperSettings
 import com.github.mihomo.android.ui.glass.ShortcutGlassLevel
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 enum class PerAppProxyMode {
@@ -32,9 +34,13 @@ private const val DEFAULT_GLASS_PALETTE = "cream"
 
 private val glassSettingsJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+@Serializable
+data class SavedGlassPalette(val name: String, val key: String)
+
 class SettingsManager(context: Context) {
     private companion object {
         const val KEY_GLASS_SETTINGS = "glass_settings_v1"
+        const val KEY_SAVED_GLASS_PALETTES = "glass_saved_palettes_v1"
         const val KEY_WALLPAPER_ENABLED = "glass_wallpaper_enabled"
         const val KEY_WALLPAPER_MODE = "glass_wallpaper_mode"
         const val KEY_WALLPAPER_COLOR_A = "glass_wallpaper_color_a"
@@ -137,11 +143,20 @@ class SettingsManager(context: Context) {
 
     // Migrate once: show newly introduced actions while preserving custom order/visibility.
     private fun migrateShortcuts() {
+        val editor = prefs.edit()
+        var changed = false
+        var visible = prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty().toSet()
         if (!prefs.getBoolean("shortcuts_actions_v1", false)) {
-            val existing = prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty()
-            prefs.edit().putStringSet("visible_shortcuts", existing + DashboardShortcuts.added)
-                .putBoolean("shortcuts_actions_v1", true).apply()
+            visible = visible + DashboardShortcuts.added
+            editor.putBoolean("shortcuts_actions_v1", true)
+            changed = true
         }
+        if (!prefs.getBoolean("traffic_shortcut_v1", false)) {
+            visible = visible + "traffic"
+            editor.putBoolean("traffic_shortcut_v1", true)
+            changed = true
+        }
+        if (changed) editor.putStringSet("visible_shortcuts", visible).apply()
     }
     var visibleShortcuts: Set<String>
         get() {
@@ -206,6 +221,41 @@ class SettingsManager(context: Context) {
     var glassPaletteKey: String
         get() = prefs.getString(KEY_GLASS_PALETTE, DEFAULT_GLASS_PALETTE) ?: DEFAULT_GLASS_PALETTE
         set(value) = prefs.edit().putString(KEY_GLASS_PALETTE, value).apply()
+
+    /** Named local palettes retain the same stable key used by the active palette setting. */
+    val savedGlassPalettes: List<SavedGlassPalette>
+        get() = runCatching {
+            prefs.getString(KEY_SAVED_GLASS_PALETTES, null)
+                ?.let { glassSettingsJson.decodeFromString<List<SavedGlassPalette>>(it) }
+                .orEmpty()
+                .filter { it.name.isNotBlank() && isSupportedPaletteKey(it.key) }
+        }.getOrDefault(emptyList())
+
+    fun saveGlassPalette(name: String, key: String): List<SavedGlassPalette> {
+        val cleanName = name.trim().take(32)
+        require(cleanName.isNotEmpty()) { "Palette name must not be blank" }
+        require(isSupportedPaletteKey(key)) { "Unsupported palette key" }
+        val updated = savedGlassPalettes.toMutableList()
+        val existing = updated.indexOfFirst { it.name.equals(cleanName, ignoreCase = true) }
+        val entry = SavedGlassPalette(cleanName, key)
+        if (existing >= 0) updated[existing] = entry else updated += entry
+        persistSavedGlassPalettes(updated)
+        return updated
+    }
+
+    fun deleteSavedGlassPalette(name: String): List<SavedGlassPalette> {
+        val updated = savedGlassPalettes.filterNot { it.name == name }
+        persistSavedGlassPalettes(updated)
+        return updated
+    }
+
+    private fun persistSavedGlassPalettes(values: List<SavedGlassPalette>) {
+        prefs.edit().putString(KEY_SAVED_GLASS_PALETTES, glassSettingsJson.encodeToString(values)).apply()
+    }
+
+    private fun isSupportedPaletteKey(key: String): Boolean =
+        key in setOf("white", "blue", "cream", "mint", "lavender", "midnight") ||
+            Regex("custom:[0-9a-fA-F]{6}").matches(key)
 
     /** User-selectable straight fluted wallpaper; inactive preserves the existing mesh backdrop. */
     var glassWallpaperSettings: GlassWallpaperSettings
@@ -283,6 +333,16 @@ class SettingsManager(context: Context) {
     var ipv6Enabled: Boolean
         get() = prefs.getBoolean("ipv6_enabled", false)
         set(value) = prefs.edit().putBoolean("ipv6_enabled", value).apply()
+
+    /** Adds Mihomo's unified-delay option to the generated runtime config. */
+    var unifiedDelayEnabled: Boolean
+        get() = prefs.getBoolean("unified_delay_enabled", false)
+        set(value) = prefs.edit().putBoolean("unified_delay_enabled", value).apply()
+
+    /** Apply a newly selected profile to the running Mihomo core without rebuilding the VPN tunnel. */
+    var profileHotSwitchEnabled: Boolean
+        get() = prefs.getBoolean("profile_hot_switch_enabled", true)
+        set(value) = prefs.edit().putBoolean("profile_hot_switch_enabled", value).apply()
 
     var tunMtu: Int
         get() = TunTuning.normalizeMtu(prefs.getInt("tun_mtu", TunTuning.DEFAULT_MTU))

@@ -71,12 +71,16 @@ fun SettingsScreen(
     fakeIpEnabled: Boolean,
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     ipv6Enabled: Boolean = false,
+    unifiedDelayEnabled: Boolean = false,
+    profileHotSwitchEnabled: Boolean = true,
     tunMtu: Int = 9000,
     mipsCongestionController: String = "cubic",
     hapticEnabled: Boolean = true,
     shortcutTouchVariant: ShortcutTouchVariant = ShortcutTouchVariant.GentleFloat,
     onShortcutTouchVariantChanged: (ShortcutTouchVariant) -> Unit = {},
     onIpv6EnabledChanged: (Boolean) -> Unit = {},
+    onUnifiedDelayChanged: (Boolean) -> Unit = {},
+    onProfileHotSwitchChanged: (Boolean) -> Unit = {},
     onTunMtuChanged: (Int) -> Unit = {},
     onMipsCongestionControllerChanged: (String) -> Unit = {},
     onHapticEnabledChanged: (Boolean) -> Unit = {},
@@ -185,6 +189,18 @@ fun SettingsScreen(
                         }
                     }
                 )
+                CupertinoDivider()
+                CupertinoCell(
+                    modifier = Modifier.testTag("settings-profile-hot-switch"),
+                    title = AppStrings.get("settings_profile_hot_switch", lang),
+                    subtitle = AppStrings.get("settings_profile_hot_switch_desc", lang),
+                    icon = Icons.Default.FlashOn,
+                    iconBg = Color(0xFFFF9F0A),
+                    trailing = {
+                        CupertinoSwitch(checked = profileHotSwitchEnabled, onCheckedChange = onProfileHotSwitchChanged)
+                    },
+                    onClick = { onProfileHotSwitchChanged(!profileHotSwitchEnabled) }
+                )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -197,6 +213,10 @@ fun SettingsScreen(
                         onIpv6EnabledChanged(enabled)
                     })
                 })
+                CupertinoDivider()
+                CupertinoCell(modifier = Modifier.testTag("settings-unified-delay"), title = AppStrings.get("settings_unified_delay", lang), subtitle = AppStrings.get("settings_unified_delay_desc", lang), trailing = {
+                    CupertinoSwitch(checked = unifiedDelayEnabled, onCheckedChange = onUnifiedDelayChanged)
+                }, onClick = { onUnifiedDelayChanged(!unifiedDelayEnabled) })
                 CupertinoDivider()
                 CupertinoCell(title = "TUN MTU", value = tunMtu.toString(), showChevron = true,
                     onClick = { mtuDraft = tunMtu.toString(); showMtuDialog = true })

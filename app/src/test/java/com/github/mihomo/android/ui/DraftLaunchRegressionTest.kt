@@ -51,7 +51,7 @@ class DraftLaunchRegressionTest {
             compose.activity.window.decorView.draw(canvas)
             node.endRecording()
         }
-        compose.onNodeWithText("NEXUS").assert(!hasAnyAncestor(hasScrollAction()))
-        compose.onNodeWithText("NEXUS").assertIsDisplayed()
+        compose.onNodeWithText("ARCA").assert(!hasAnyAncestor(hasScrollAction()))
+        compose.onNodeWithText("ARCA").assertIsDisplayed()
     }
 }

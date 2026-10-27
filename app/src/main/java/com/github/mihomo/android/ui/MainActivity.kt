@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
@@ -30,7 +31,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.github.mihomo.android.ui.theme.LocalAppLanguage
 import androidx.lifecycle.lifecycleScope
@@ -45,7 +45,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.mihomo.android.ui.glass.GlassSettings
@@ -82,6 +81,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 enum class SubScreen {
+    TRAFFIC,
     CONFIGURATION_CENTER,
     PROFILES,
     APP_ROUTING,
@@ -102,6 +102,7 @@ private val subScreenSaver: Saver<SubScreen?, String> = Saver(
     restore = { name -> runCatching { SubScreen.valueOf(name) }.getOrNull() }
 )
 
+@Suppress("LargeClass")
 class MainActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
@@ -178,6 +179,8 @@ class MainActivity : ComponentActivity() {
         var overrideTargetProfileId by rememberSaveable { mutableStateOf<String?>(null) }
         var overrideTargetProfile by remember { mutableStateOf<ProfileItem?>(null) }
 
+        // Connection state changes only on lifecycle transitions; traffic samples use a
+        // separate flow so they cannot invalidate the app shell or navigation tree.
         val vpnState by MihomoVpnService.vpnState.collectAsState()
         val requestMonitoringEnabled by RequestLogRepository.monitoringEnabled.collectAsState()
 
@@ -238,12 +241,14 @@ class MainActivity : ComponentActivity() {
         var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
         var glassSettings by remember { mutableStateOf(settingsManager.glassSettings) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
+        var unifiedDelayEnabled by remember { mutableStateOf(settingsManager.unifiedDelayEnabled) }
+        var profileHotSwitchEnabled by remember { mutableStateOf(settingsManager.profileHotSwitchEnabled) }
         var tunMtu by remember { mutableIntStateOf(settingsManager.tunMtu) }
         var mipsCongestionController by remember { mutableStateOf(settingsManager.mipsCongestionController) }
         val settingsScrollState = rememberScrollState()
         val dashboardScrollState = rememberScrollState()
         val configurationCenterScrollState = rememberScrollState()
-        val appearanceScrollState = rememberScrollState()
+        val appearanceListState = rememberLazyListState()
         val glassEffectsScrollState = rememberScrollState()
         val proxiesTabsListState = rememberLazyListState()
         val proxiesListModeState = rememberLazyListState()
@@ -728,8 +733,12 @@ class MainActivity : ComponentActivity() {
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
-        ProvideSoftMeshMotion(paused = { pagerState.isScrollInProgress || dashboardScrollState.isScrollInProgress }) {
-        val context = LocalContext.current
+        ProvideSoftMeshMotion(paused = {
+            pagerState.isScrollInProgress || dashboardScrollState.isScrollInProgress ||
+                proxiesTabsListState.isScrollInProgress || proxiesListModeState.isScrollInProgress ||
+                proxiesGroupRowState.isScrollInProgress || proxiesPerGroupTabStates.values.any { it.isScrollInProgress } ||
+                currentSubScreen != null
+        }) {
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
         val subScreenTransitionState = remember {
@@ -797,6 +806,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToDns = { currentSubScreen = SubScreen.DNS },
                                 onNavigateToRequests = { currentSubScreen = SubScreen.REQUESTS },
                                 onNavigateToNetworkShare = { currentSubScreen = SubScreen.NETWORK_SHARE },
+                                onNavigateToTraffic = { currentSubScreen = SubScreen.TRAFFIC },
                                 onUpdateVisibleShortcuts = { updated ->
                                     visibleShortcuts = updated
                                     settingsManager.visibleShortcuts = updated
@@ -895,6 +905,8 @@ class MainActivity : ComponentActivity() {
                                 settingsManager.shortcutTouchVariant = variant
                             },
                             ipv6Enabled = ipv6Enabled,
+                            unifiedDelayEnabled = unifiedDelayEnabled,
+                            profileHotSwitchEnabled = profileHotSwitchEnabled,
                             tunMtu = tunMtu,
                             mipsCongestionController = mipsCongestionController,
                             themeMode = currentThemeMode,
@@ -926,6 +938,30 @@ class MainActivity : ComponentActivity() {
                                 ipv6Enabled = enabled
                                 settingsManager.ipv6Enabled = enabled
                                 restartTunnelForSettings()
+                            },
+                            onUnifiedDelayChanged = { enabled ->
+                                val previous = settingsManager.unifiedDelayEnabled
+                                unifiedDelayEnabled = enabled
+                                settingsManager.unifiedDelayEnabled = enabled
+                                if (vpnState.status == VpnState.Status.RUNNING) {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        runCatching {
+                                            val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                            val config = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                            ClashCore.load(config).getOrThrow()
+                                        }.onFailure { error ->
+                                            withContext(Dispatchers.Main) {
+                                                unifiedDelayEnabled = previous
+                                                settingsManager.unifiedDelayEnabled = previous
+                                                Toast.makeText(this@MainActivity, "统一延迟配置未能应用：${error.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onProfileHotSwitchChanged = { enabled ->
+                                profileHotSwitchEnabled = enabled
+                                settingsManager.profileHotSwitchEnabled = enabled
                             },
                             onTunMtuChanged = { value ->
                                 tunMtu = TunTuning.normalizeMtu(value)
@@ -1096,10 +1132,33 @@ class MainActivity : ComponentActivity() {
                                     selectedProfileId = selectedProfileId,
                                     onBack = handleSubScreenBack,
                                     onSelectProfile = { profile ->
-                                        selectedProfileId = profile.id
-                                        settingsManager.selectedProfileId = profile.id
-                                        parseActiveProfile()
-                                        Toast.makeText(this@MainActivity, "已生效配置: ${profile.name}", Toast.LENGTH_SHORT).show()
+                                        lifecycleScope.launch {
+                                            val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
+                                            val loaded = if (shouldHotSwitch) withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    val config = ConfigManager.prepareConfig(this@MainActivity, profile.file)
+                                                    ClashCore.load(config).getOrThrow()
+                                                    // Reapply remembered selectors where the new profile exposes the same groups/nodes.
+                                                    settingsManager.getAllSelectedNodes().forEach { (group, node) ->
+                                                        runCatching { ClashCore.patchSelector(group, node) }
+                                                    }
+                                                }
+                                            } else Result.success(Unit)
+                                            if (loaded.isSuccess) {
+                                                selectedProfileId = profile.id
+                                                settingsManager.selectedProfileId = profile.id
+                                                parseActiveProfile()
+                                                liveGroupMap = emptyMap()
+                                                if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "配置切换失败，仍保留当前配置：${loaded.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
                                     },
                                     onAddSubscription = { name, url ->
                                         lifecycleScope.launch {
@@ -1227,6 +1286,9 @@ class MainActivity : ComponentActivity() {
                                     onBack = { currentSubScreen = null }
                                 )
                             }
+                            SubScreen.TRAFFIC -> TrafficRecordsScreen(
+                                onBack = { currentSubScreen = null }
+                            )
                             SubScreen.REQUESTS -> {
                                 RequestLogsScreen(
                                     vpnState = vpnState,
@@ -1298,7 +1360,7 @@ class MainActivity : ComponentActivity() {
                                         settingsManager.showGroupIcons = show
                                     },
                                     onBack = { currentSubScreen = null },
-                                    scrollState = appearanceScrollState
+                                    listState = appearanceListState
                                 )
                             }
                         }

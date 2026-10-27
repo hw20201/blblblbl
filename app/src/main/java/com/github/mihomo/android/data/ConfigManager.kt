@@ -43,13 +43,13 @@ object ConfigManager {
 
     /** Top-level config keys that only the injected runtime header may set. */
     private val PROTECTED_TOP_LEVEL_KEYS = setOf(
-        "mode", "log-level", "ipv6", "mixed-port", "port", "socks-port",
+        "mode", "log-level", "ipv6", "unified-delay", "mixed-port", "port", "socks-port",
         "redir-port", "tproxy-port", "allow-lan", "bind-address",
         "external-controller", "external-controller-cors", "secret",
         "authentication", "skip-auth-prefixes", "lan-allowed-ips", "lan-disallowed-ips",
         "external-ui", "external-ui-name", "external-ui-url",
         "tun", "dns", "interface-name", "routing-mark",
-        "geodata-mode", "geo-auto-update", "geox-url"
+        "geodata-mode", "geo-auto-update", "geox-url", "tcp-concurrent"
     )
 
     fun parseSubscriptionUserInfo(header: String?): SubscriptionUserInfo? {
@@ -443,12 +443,13 @@ object ConfigManager {
                 )
             }
             userDns = extractUserDns(rawContent)
+            val tcpConcurrent = extractUserTcpConcurrent(rawContent) ?: true
             val userContent = sanitizeUserConfig(rawContent)
-            val header = buildRuntimeHeader(settings, userDns, ipv6Enabled)
+            val header = buildRuntimeHeader(settings, userDns, ipv6Enabled, tcpConcurrent)
             targetFile.writeText("$header\n$userContent")
             Log.i(TAG, "Prepared synthesized config with user profile: ${sourceFile.name}")
         } else {
-            val header = buildRuntimeHeader(settings, userDns, ipv6Enabled)
+            val header = buildRuntimeHeader(settings, userDns, ipv6Enabled, tcpConcurrent = true)
             val defaultBody = """
                 proxies: []
                 proxy-groups:
@@ -471,6 +472,21 @@ object ConfigManager {
 
         return targetFile
     }
+    /** Preserve an explicit profile override; otherwise enable Mihomo's fastest-address TCP race. */
+    @Suppress("ThrowsCount")
+    internal fun extractUserTcpConcurrent(raw: String): Boolean? {
+        val parsed = try {
+            org.yaml.snakeyaml.Yaml().load<Any?>(raw) as? Map<*, *>
+                ?: throw IllegalArgumentException("配置根节点必须为 YAML 映射，未应用")
+        } catch (e: org.yaml.snakeyaml.error.YAMLException) {
+            throw IllegalArgumentException("配置 YAML 无效，未应用；请检查订阅内容", e)
+        }
+        val key = parsed.keys.firstOrNull { it?.toString()?.equals("tcp-concurrent", ignoreCase = true) == true }
+            ?: return null
+        return parsed[key] as? Boolean
+            ?: throw IllegalArgumentException("配置项 tcp-concurrent 必须为 true 或 false")
+    }
+
     internal fun extractUserDns(raw: String): Map<String, Any?>? = runCatching {
         val parsed = org.yaml.snakeyaml.Yaml().load<Any?>(raw) as? Map<*, *> ?: return null
         val dns = parsed["dns"] as? Map<*, *> ?: return null
@@ -478,6 +494,12 @@ object ConfigManager {
     }.getOrNull()
 
     private val runtimeOwnedDns = setOf("enable", "listen", "ipv6", "enhanced-mode", "fake-ip-range")
+
+    /** IPv6 capture controls client packets/DNS, not the address family used to reach a proxy server. */
+    internal data class RuntimeIpv6Flags(val proxyServerResolution: Boolean, val clientDns: Boolean)
+
+    internal fun runtimeIpv6Flags(ipv6RoutingEnabled: Boolean) =
+        RuntimeIpv6Flags(proxyServerResolution = true, clientDns = ipv6RoutingEnabled)
     private val defaultFakeIpFilter = listOf("*.lan", "*.local", "localhost.ptlogin2.qq.com", "*.connectivitycheck.android.com", "*.connectivitycheck.gstatic.com", "connectivitycheck.gstatic.com", "connectivitycheck.android.com", "clients3.google.com", "www.google.com/generate_204", "+.msftconnecttest.com", "+.msftncsi.com", "+.qualcomm.com", "+.miui.com", "+.xiaomi.com")
 
     internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
@@ -493,8 +515,14 @@ object ConfigManager {
         return dns
     }
 
-    internal fun buildRuntimeHeader(settings: SettingsManager, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): String {
-        val values = linkedMapOf<String, Any?>("mode" to settings.tunnelMode, "log-level" to settings.logLevel, "ipv6" to ipv6Enabled, "mixed-port" to 7890, "allow-lan" to settings.allowLan)
+    internal fun buildRuntimeHeader(
+        settings: SettingsManager,
+        userDns: Map<String, Any?>?,
+        ipv6Enabled: Boolean = false,
+        tcpConcurrent: Boolean = true
+    ): String {
+        val ipv6Flags = runtimeIpv6Flags(ipv6Enabled)
+        val values = linkedMapOf<String, Any?>("mode" to settings.tunnelMode, "log-level" to settings.logLevel, "ipv6" to ipv6Flags.proxyServerResolution, "unified-delay" to settings.unifiedDelayEnabled, "mixed-port" to 7890, "allow-lan" to settings.allowLan, "tcp-concurrent" to tcpConcurrent)
         if (settings.allowLan) {
             values["authentication"] = listOf(settings.lanCredentials().encoded)
             values["skip-auth-prefixes"] = listOf("127.0.0.1/32", "::1/128")
@@ -502,7 +530,7 @@ object ConfigManager {
         values["geodata-mode"] = false
         values["geo-auto-update"] = false
         values["geox-url"] = linkedMapOf("geoip" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb", "geosite" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat", "mmdb" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb")
-        values["dns"] = buildDnsSection(settings.fakeIpEnabled, userDns, ipv6Enabled)
+        values["dns"] = buildDnsSection(settings.fakeIpEnabled, userDns, ipv6Flags.clientDns)
         val opts = org.yaml.snakeyaml.DumperOptions().apply { defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK; isPrettyFlow = true; indent = 2 }
         return "# Mihomo Android Injected Runtime Config\n" + org.yaml.snakeyaml.Yaml(opts).dump(values).trimEnd()
     }

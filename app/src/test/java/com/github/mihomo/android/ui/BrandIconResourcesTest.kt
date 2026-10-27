@@ -2,6 +2,7 @@ package com.github.mihomo.android.ui
 
 import android.app.Notification
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.drawable.AdaptiveIconDrawable
 import androidx.core.graphics.drawable.toBitmap
 import com.github.mihomo.android.R
@@ -27,6 +28,10 @@ import org.xmlpull.v1.XmlPullParser
 class BrandIconResourcesTest {
     private val androidNs = "http://schemas.android.com/apk/res/android"
 
+    private fun hasCreamWaveColor(pixel: Int): Boolean =
+        Color.red(pixel) > 220 && Color.green(pixel) > 205 &&
+            Color.blue(pixel) > 180 && Color.red(pixel) - Color.blue(pixel) > 8
+
     @Test
     @Config(sdk = [28])
     fun launcherIconsLoadAsAdaptiveIconsWithDarkOpaqueBackgroundAndForeground() {
@@ -37,12 +42,77 @@ class BrandIconResourcesTest {
                 if (xml.eventType == XmlPullParser.START_TAG && xml.name == "path") {
                     val color = xml.getAttributeIntValue(androidNs, "fillColor", 0)
                     assertEquals(255, Color.alpha(color))
-                    assertEquals(Color.BLACK, color)
+                    assertEquals(Color.rgb(7, 22, 41), color)
                     paths++
                 }
             }
             assertEquals(1, paths)
         }
+    }
+
+    @Test
+    @Config(sdk = [31])
+    fun splashWaveLeavesSafeMarginForAndroidSplashScaling() {
+        val bitmap = requireNotNull(
+            RuntimeEnvironment.getApplication().getDrawable(R.drawable.ic_splash_logo)
+        ).toBitmap()
+        var minX = bitmap.width
+        var maxX = -1
+        var creamPixels = 0
+        var bluePixels = 0
+        for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
+            val pixel = bitmap.getPixel(x, y)
+            if (Color.alpha(pixel) > 16 && hasCreamWaveColor(pixel)) {
+                minX = minOf(minX, x)
+                maxX = maxOf(maxX, x)
+                creamPixels++
+            }
+            if (Color.alpha(pixel) > 16 && Color.blue(pixel) > 150 &&
+                Color.blue(pixel) > Color.red(pixel) * 1.5f) bluePixels++
+        }
+        assertTrue("Splash must retain the cream-wave art", creamPixels > 100)
+        assertEquals("Old blue N artwork must be absent", 0, bluePixels)
+        assertTrue("Wave must keep a navy safety border", maxX - minX + 1 < bitmap.width * 0.55)
+    }
+
+    @Test
+    @Config(sdk = [31])
+    fun launcherAndSplashWaveEdgesRetainAntialiasCoverage() {
+        val app = RuntimeEnvironment.getApplication()
+        val foreground = requireNotNull(BitmapFactory.decodeResource(app.resources, R.mipmap.ic_launcher_foreground))
+        fun hasPartialCreamCoverage(bitmap: android.graphics.Bitmap): Boolean {
+            for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
+                val pixel = bitmap.getPixel(x, y)
+                val alpha = Color.alpha(pixel)
+                if (alpha in 1..254 && hasCreamWaveColor(pixel)) return true
+            }
+            return false
+        }
+        fun hasAntialiasedCreamOnNavyEdge(bitmap: android.graphics.Bitmap): Boolean {
+            val navy = floatArrayOf(7f, 22f, 41f)
+            val cream = floatArrayOf(255f, 249f, 233f)
+            var blendedEdgePixels = 0
+            for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
+                val pixel = bitmap.getPixel(x, y)
+                if (Color.alpha(pixel) != 255) continue
+                val rgb = floatArrayOf(Color.red(pixel).toFloat(), Color.green(pixel).toFloat(), Color.blue(pixel).toFloat())
+                val delta = FloatArray(3) { cream[it] - navy[it] }
+                val lengthSquared = delta.sumOf { (it * it).toDouble() }.toFloat()
+                val projection = (0..2).sumOf { ((rgb[it] - navy[it]) * delta[it]).toDouble() }.toFloat() / lengthSquared
+                if (projection !in 0.03f..0.97f) continue
+                val residual = kotlin.math.sqrt((0..2).sumOf {
+                    val difference = rgb[it] - navy[it] - projection * delta[it]
+                    (difference * difference).toDouble()
+                }).toFloat()
+                if (residual < 18f) blendedEdgePixels++
+            }
+            return blendedEdgePixels > 20
+        }
+        assertTrue("Adaptive foreground must preserve antialiased wave edges", hasPartialCreamCoverage(foreground))
+        val splash = requireNotNull(app.getDrawable(R.drawable.ic_splash_logo)).toBitmap()
+        // Splash artwork is composited on an opaque navy tile; test blended RGB edge pixels,
+        // not partial alpha (which can only exist at the tile's rounded outer corners).
+        assertTrue("Splash artwork must preserve antialiased wave edges", hasAntialiasedCreamOnNavyEdge(splash))
     }
 
     @Test
@@ -90,6 +160,7 @@ class BrandIconResourcesTest {
         assertEquals(service.packageName, notification.smallIcon.resPackage)
         assertEquals("com.github.mihomo.android.draftglass", service.packageName)
         assertEquals(R.mipmap.ic_launcher, service.applicationInfo.icon)
+        assertEquals("Arca", service.getString(R.string.app_name))
         assertEquals(service.getString(R.string.app_name), notification.extras.getString(Notification.EXTRA_TITLE))
         assertNotNull(notification.getLargeIcon())
         assertNotNull(notification.extras.get(Notification.EXTRA_LARGE_ICON))

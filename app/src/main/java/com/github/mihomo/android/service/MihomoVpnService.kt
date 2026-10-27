@@ -41,6 +41,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 
+data class TrafficMetrics(
+    val upSpeed: String = "0 B/s",
+    val downSpeed: String = "0 B/s",
+    val totalUp: String = "0 B",
+    val totalDown: String = "0 B"
+)
+
 data class VpnState(
     val status: Status = Status.STOPPED,
     val upSpeed: String = "0 B/s",
@@ -67,6 +74,14 @@ class MihomoVpnService : VpnService() {
 
         private val _vpnState = MutableStateFlow(VpnState())
         val vpnState = _vpnState.asStateFlow()
+
+        // Keep once-per-second traffic telemetry separate from connection state so screens
+        // that only care whether the tunnel is running do not invalidate on every sample.
+        private val _trafficMetrics = MutableStateFlow(TrafficMetrics())
+        val trafficMetrics = _trafficMetrics.asStateFlow()
+
+        // Native log subscription lives for the process, not one VPN service instance.
+        private val coreLogcatSubscription = ProcessLogcatSubscription()
 
         fun start(context: Context) {
             val intent = Intent(context, MihomoVpnService::class.java).apply {
@@ -122,6 +137,7 @@ class MihomoVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        com.github.mihomo.android.data.TrafficRecordRepository.initialize(this)
         createNotificationChannel()
     }
 
@@ -203,14 +219,16 @@ class MihomoVpnService : VpnService() {
                     )
                 }
 
-                // Subscribe to native core logcat
+                // Reuse one native subscriber across VPN restarts to avoid duplicate fan-out.
                 runCatching {
-                    com.github.kr328.clash.core.bridge.Bridge.nativeSubscribeLogcat(object : com.github.kr328.clash.core.bridge.LogcatInterface {
-                        override fun received(jsonPayload: String) {
-                            Log.i("NexusCore", jsonPayload)
-                            com.github.mihomo.android.data.LogRepository.addRawLogcat(jsonPayload)
-                        }
-                    })
+                    coreLogcatSubscription.subscribeIfNeeded {
+                        com.github.kr328.clash.core.bridge.Bridge.nativeSubscribeLogcat(object : com.github.kr328.clash.core.bridge.LogcatInterface {
+                            override fun received(jsonPayload: String) {
+                                Log.i("NexusCore", jsonPayload)
+                                com.github.mihomo.android.data.LogRepository.addRawLogcat(jsonPayload)
+                            }
+                        })
+                    }
                 }
 
                 currentCoroutineContext().ensureActive()
@@ -318,19 +336,19 @@ class MihomoVpnService : VpnService() {
                 delay(1000)
                 val now = ClashCore.queryTrafficNow()
                 val total = ClashCore.queryTrafficTotal()
+                com.github.mihomo.android.data.TrafficRecordRepository.record(total)
 
                 val upStr = now.trafficSpeedUpload()
                 val downStr = now.trafficSpeedDownload()
                 val totalUpStr = total.trafficUpload()
                 val totalDownStr = total.trafficDownload()
 
-                _vpnState.value = _vpnState.value.copy(
+                _trafficMetrics.value = TrafficMetrics(
                     upSpeed = upStr,
                     downSpeed = downStr,
                     totalUp = totalUpStr,
                     totalDown = totalDownStr
                 )
-
                 updateNotification("\u2191 $upStr   \u2193 $downStr")
             }
         }
@@ -383,6 +401,7 @@ class MihomoVpnService : VpnService() {
         } finally {
             vpnInterface = null
             _vpnState.value = VpnState(status = VpnState.Status.STOPPED)
+            _trafficMetrics.value = TrafficMetrics()
         }
     }
 
@@ -467,11 +486,26 @@ class MihomoVpnService : VpnService() {
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         if (_vpnState.value.status != VpnState.Status.STOPPED) {
             _vpnState.value = VpnState(status = VpnState.Status.STOPPED)
+            _trafficMetrics.value = TrafficMetrics()
         }
     }
 
     override fun onRevoke() {
         stopVpn()
         super.onRevoke()
+    }
+}
+
+
+/** Guards a process-lifetime native log subscription against repeated VPN starts. */
+internal class ProcessLogcatSubscription {
+    private var subscribed = false
+
+    @Synchronized
+    fun subscribeIfNeeded(subscribe: () -> Unit) {
+        if (subscribed) return
+        subscribe()
+        // Mark only after registration returns so transient failures can be retried.
+        subscribed = true
     }
 }

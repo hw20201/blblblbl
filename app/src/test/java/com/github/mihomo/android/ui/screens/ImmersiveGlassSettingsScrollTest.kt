@@ -3,6 +3,7 @@ package com.github.mihomo.android.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -37,6 +38,7 @@ class ImmersiveGlassSettingsScrollTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun appearanceScrollsContinuouslyBehindPinnedFrostedTitle() {
+        val appearanceListState = LazyListState()
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
                 CompositionLocalProvider(LocalAppLanguage provides "zh") {
@@ -50,7 +52,8 @@ class ImmersiveGlassSettingsScrollTest {
                                 onShowGroupIconsChanged = {},
                                 nodeColumns = 1,
                                 onNodeColumnsChanged = {},
-                                onBack = {}
+                                onBack = {},
+                                listState = appearanceListState
                             )
                         }
                     }
@@ -69,15 +72,20 @@ class ImmersiveGlassSettingsScrollTest {
         assertTrue("the scroll viewport must start at the top edge", scrollBounds.top <= 1f)
         assertTrue("the scroll viewport must extend below the pinned title", scrollBounds.bottom > headerBefore.bottom)
 
-        val movingContent = compose.onNodeWithText("主题色")
-        val contentBefore = movingContent.fetchSemanticsNode().boundsInRoot
-        // Ask the single page scroll container to reveal a distant item. This checks the
-        // whole settings page scrolls as one surface (without Robolectric touch-edge variance).
-        compose.onNodeWithText("显示策略组远程图标").performScrollTo().assertIsDisplayed()
+        val firstSection = compose.onNodeWithText("外观主题").fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "the first settings group should clear the pinned title by the added spacing",
+            firstSection.top >= headerBefore.bottom + 20f
+        )
+        val firstVisibleItemBefore = appearanceListState.firstVisibleItemIndex
+        // Reveal a distant lazy item through the page's single scroll container. The first
+        // section may be disposed after the jump, so assert list-state movement rather than
+        // querying an off-screen node that LazyColumn no longer composes.
+        scroll.performScrollToNode(hasText("显示策略组远程图标"))
+        compose.onNodeWithText("显示策略组远程图标").assertIsDisplayed()
         compose.waitForIdle()
-        val contentAfter = movingContent.fetchSemanticsNode().boundsInRoot
+        assertTrue("revealing a later setting should advance the page scroll", appearanceListState.firstVisibleItemIndex > firstVisibleItemBefore)
         val titleAfter = title.fetchSemanticsNode().boundsInRoot
-        assertTrue("revealing a later setting should move earlier page content upward", contentAfter.top < contentBefore.top)
         assertEquals("the title capsule stays pinned while content scrolls", titleBefore.top, titleAfter.top, 1f)
         title.assertIsDisplayed()
     }
@@ -115,6 +123,10 @@ class ImmersiveGlassSettingsScrollTest {
         val headerBounds = header.fetchSemanticsNode().boundsInRoot
         val preview = compose.onNodeWithText("实时预览")
         val previewBefore = preview.fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "the first glass setting content should clear the pinned title by the added spacing",
+            previewBefore.top >= headerBounds.bottom + 24f
+        )
         assertTrue("the full-page scroll viewport begins at the screen edge", viewport.top <= 1f)
         assertTrue("the viewport passes behind the pinned title", viewport.bottom > headerBounds.bottom)
 
