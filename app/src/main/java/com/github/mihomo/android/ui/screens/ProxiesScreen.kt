@@ -403,6 +403,11 @@ fun ProxiesScreen(
                     )
                 }
             } else {
+                val listModeRows = remember(visibleGroups, groupMap, nodeColumns) {
+                    visibleGroups.associateWith { groupName ->
+                        (groupMap[groupName]?.proxies ?: emptyList()).chunked(nodeColumns.coerceIn(1, 3))
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -410,6 +415,7 @@ fun ProxiesScreen(
                     LazyColumn(
                         state = listModeState,
                         modifier = Modifier
+                            .testTag("policy-list-mode")
                             .fillMaxSize()
                             .bounceOverscroll(),
                         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
@@ -423,79 +429,47 @@ fun ProxiesScreen(
 
                             item(key = "grp_item_$groupName", contentType = "group_container") {
                                 val isGroupTesting = testingNodes.contains(groupName) || proxies.any { testingNodes.contains("$groupName:${it.name}") || (it.isGroup && testingNodes.contains(it.name)) }
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    LoonGroupHeaderCard(
-                                        groupName = groupName,
-                                        groupType = group?.type ?: "select",
-                                        activeNode = group?.now ?: "",
-                                        iconUrl = iconUrl,
-                                        showGroupIcons = showGroupIcons,
-                                        isExpanded = isExpanded,
-                                        isTesting = isGroupTesting,
-                                        onHealthCheck = {
-                                            onHealthCheck(groupName)
-                                        },
-                                        onToggleExpand = {
-                                            expandedGroups[groupName] = !isExpanded
-                                        }
-                                    )
+                                LoonGroupHeaderCard(
+                                    groupName = groupName,
+                                    groupType = group?.type ?: "select",
+                                    activeNode = group?.now ?: "",
+                                    iconUrl = iconUrl,
+                                    showGroupIcons = showGroupIcons,
+                                    isExpanded = isExpanded,
+                                    isTesting = isGroupTesting,
+                                    onHealthCheck = { onHealthCheck(groupName) },
+                                    onToggleExpand = { expandedGroups[groupName] = !isExpanded }
+                                )
+                            }
 
-                                    AnimatedVisibility(
-                                        visible = isExpanded,
-                                        enter = expandVertically(
-                                            expandFrom = Alignment.Top,
-                                            animationSpec = spring(
-                                                stiffness = Spring.StiffnessMediumLow,
-                                                dampingRatio = Spring.DampingRatioNoBouncy
-                                            )
-                                        ) + fadeIn(animationSpec = tween(150, delayMillis = 30)),
-                                        exit = shrinkVertically(
-                                            shrinkTowards = Alignment.Top,
-                                            animationSpec = spring(
-                                                stiffness = Spring.StiffnessMediumLow,
-                                                dampingRatio = Spring.DampingRatioNoBouncy
-                                            )
-                                        ) + fadeOut(animationSpec = tween(120)),
-                                        modifier = Modifier.clipToBounds()
+                            if (isExpanded) {
+                                val groupNow = group?.now
+                                items(
+                                    items = listModeRows[groupName].orEmpty(),
+                                    key = { row -> "proxy_row_${groupName}_${row.first().name}" },
+                                    contentType = { "proxy_row" }
+                                ) { rowProxies ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val chunkedRows = remember(proxies, nodeColumns) {
-                                            proxies.chunked(nodeColumns.coerceIn(1, 3))
-                                        }
-                                        val groupNow = group?.now
-
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            for (rowProxies in chunkedRows) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    for (proxy in rowProxies) {
-                                                        Box(modifier = Modifier.weight(1f)) {
-                                                            val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$groupName:${proxy.name}")
-                                                            LoonProxyItemCard(
-                                                                proxy = proxy,
-                                                                glassScene = glassScene,
-                                                                isSelected = proxy.name == groupNow,
-                                                                columns = nodeColumns,
-                                                                isTesting = isItemTesting,
-                                                                onClick = { onSelectProxy(groupName, proxy) },
-                                                                onTestSingleNode = { onTestSingleNode(groupName, proxy.name) }
-                                                            )
-                                                        }
-                                                    }
-                                                    val remainder = nodeColumns - rowProxies.size
-                                                    if (remainder > 0) {
-                                                        repeat(remainder) {
-                                                            Spacer(modifier = Modifier.weight(1f))
-                                                        }
-                                                    }
-                                                }
+                                        for (proxy in rowProxies) {
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$groupName:${proxy.name}")
+                                                LoonProxyItemCard(
+                                                    proxy = proxy,
+                                                    glassScene = glassScene,
+                                                    isSelected = proxy.name == groupNow,
+                                                    columns = nodeColumns,
+                                                    isTesting = isItemTesting,
+                                                    onClick = { onSelectProxy(groupName, proxy) },
+                                                    onTestSingleNode = { onTestSingleNode(groupName, proxy.name) }
+                                                )
                                             }
+                                        }
+                                        val remainder = nodeColumns - rowProxies.size
+                                        if (remainder > 0) {
+                                            repeat(remainder) { Spacer(modifier = Modifier.weight(1f)) }
                                         }
                                     }
                                 }
@@ -636,6 +610,7 @@ private fun LoonGroupHeaderCard(
 ) {
     ProxyGlassCard(
         modifier = Modifier
+            .testTag("list-group-header-$groupName")
             .fillMaxWidth()
             .defaultMinSize(minHeight = 56.dp)
             .clip(RoundedCornerShape(20.dp))
@@ -748,7 +723,7 @@ internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected
 
 // Match the neutral gray used by the selected strategy capsule in the reference UI.
 internal val SelectedProxyCardFill = Color(0xFFABB1BC)
-private val SelectedProxyCardText = Color(0xFF1A1D23)
+internal val SelectedProxyCardText = Color(0xFF1A1D23)
 private val SelectedProxyCardMutedText = Color(0xB31A1D23)
 
 // -----------------------------------------------------------------------------

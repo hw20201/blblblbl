@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToIndex
@@ -140,6 +141,35 @@ class ProxiesGlassRenderingTest {
         compose.runOnIdle { GlassDefaults.enabled = false }
         compose.waitForIdle()
         saveScreenshot("proxies-classic-fallback")
+    }
+
+    @Test fun expandedListLazilyComposesRowsAndKeepsProxySelectionClickable() {
+        GlassDefaults.enabled = false
+        val proxies = (0..79).map { Proxy("Node $it", type = "Shadowsocks", delay = 45 + it) }
+        val selected = mutableStateOf("")
+        val group = ProxyGroup("select", proxies, "Node 0")
+        compose.setContent {
+            MihomoTheme(ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                    ProxiesScreen(
+                        groups = listOf("Proxy"), groupMap = mapOf("Proxy" to group),
+                        currentGroup = group, selectedGroupName = "Proxy", currentViewMode = "LIST",
+                        nodeColumns = 1, onViewModeChanged = {}, onShowGroupIconsChanged = {},
+                        onSelectGroup = {}, onSelectProxy = { _, proxy -> selected.value = proxy.name },
+                        onHealthCheck = {}
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("list-group-header-Proxy").performClick()
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText("Node 79").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithTag("policy-list-mode").performScrollToIndex(60)
+        compose.waitForIdle()
+        compose.onNodeWithText("Node 59").assertIsDisplayed()
+        compose.onNodeWithText("Node 59").performClick()
+        compose.runOnIdle { assertEquals("Node 59", selected.value) }
     }
 
     private fun saveScreenshot(name: String) {
