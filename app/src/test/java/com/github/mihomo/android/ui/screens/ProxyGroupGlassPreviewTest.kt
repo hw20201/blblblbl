@@ -148,8 +148,8 @@ class ProxyGroupGlassPreviewTest {
         }
         assertTrue("At least one proxy group title should be visible", visibleGroupBounds.isNotEmpty())
         if (stage != "before" && glass) {
-            assertTrue("New GROUP glass material must actually be exercised",
-                compose.onAllNodesWithTag("proxy-group-glass-material", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            assertTrue("Strategy node rows must not replay a per-card glass backdrop",
+                compose.onAllNodesWithTag("proxy-group-glass-material", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         }
         val mode = if (dark) "dark" else "light"
         val suffix = (if (scrolled) "scroll" else "top") + (if (label.isEmpty()) "" else "-$label")
