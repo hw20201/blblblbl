@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -35,6 +36,9 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import androidx.compose.ui.graphics.toArgb
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w400dp-h900dp-mdpi")
@@ -131,7 +135,29 @@ class ProxiesGlassRenderingTest {
                 compose.onNodeWithText("Osaka").assertIsDisplayed().performClick()
                 compose.waitForIdle()
                 assertEquals("Osaka", selected.value)
-                compose.onNodeWithTag("proxy-selected-glass-material", useUnmergedTree = true).assertExists()
+                compose.onNodeWithTag("proxy-card-Osaka", useUnmergedTree = true).assertExists()
+                compose.onNodeWithTag("proxy-card-Tokyo", useUnmergedTree = true).assertExists()
+                if (count == 1) {
+                    val selectedBounds = compose.onNodeWithTag("proxy-card-Osaka", useUnmergedTree = true)
+                        .fetchSemanticsNode().boundsInRoot
+                    val unselectedBounds = compose.onNodeWithTag("proxy-card-Tokyo", useUnmergedTree = true)
+                        .fetchSemanticsNode().boundsInRoot
+                    val frame = captureScreenshot()
+                    val density = compose.activity.resources.displayMetrics.density
+                    val selectedPixel = frame.getPixel(
+                        (selectedBounds.left + 8f * density).toInt(), selectedBounds.center.y.toInt()
+                    )
+                    val unselectedPixel = frame.getPixel(
+                        (unselectedBounds.left + 8f * density).toInt(), unselectedBounds.center.y.toInt()
+                    )
+                    assertPixelMatches("selected matte is rendered", selectedPixel,
+                        proxyCardSurfaceStyle(selected = true, dark = isDark).fill.toArgb())
+                    assertPixelMatches("unselected matte is rendered", unselectedPixel,
+                        proxyCardSurfaceStyle(selected = false, dark = isDark).fill.toArgb())
+                    assertTrue("selected and unselected rendered fills differ",
+                        selectedPixel != unselectedPixel)
+                    frame.recycle()
+                }
                 saveScreenshot("proxies-${if (isDark) "dark" else "light"}-$count-columns")
             }
         }
@@ -172,14 +198,27 @@ class ProxiesGlassRenderingTest {
         compose.runOnIdle { assertEquals("Node 59", selected.value) }
     }
 
-    private fun saveScreenshot(name: String) {
+    private fun captureScreenshot(): Bitmap {
         val window = compose.activity.window
         val view = window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-        var result = -1
-        compose.runOnIdle { PixelCopy.request(window, bitmap, { result = it }, Handler(Looper.getMainLooper())) }
-        compose.waitForIdle()
-        assertEquals("Robolectric native PixelCopy succeeds (not a real device)", PixelCopy.SUCCESS, result)
+        val result = intArrayOf(-1)
+        val latch = CountDownLatch(1)
+        compose.runOnIdle {
+            PixelCopy.request(window, bitmap, { result[0] = it; latch.countDown() }, Handler(Looper.getMainLooper()))
+        }
+        assertTrue("PixelCopy callback completes", latch.await(5, TimeUnit.SECONDS))
+        assertEquals("Robolectric native PixelCopy succeeds (not a real device)", PixelCopy.SUCCESS, result[0])
+        return bitmap
+    }
+
+    private fun assertPixelMatches(message: String, actual: Int, expected: Int) {
+        fun channelDiff(shift: Int) = kotlin.math.abs(((actual shr shift) and 0xff) - ((expected shr shift) and 0xff))
+        assertTrue(message, channelDiff(16) <= 3 && channelDiff(8) <= 3 && channelDiff(0) <= 3)
+    }
+
+    private fun saveScreenshot(name: String) {
+        val bitmap = captureScreenshot()
         val out = File("build/reports/proxies-glass/$name.png")
         out.parentFile!!.mkdirs()
         out.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }

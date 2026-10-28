@@ -23,8 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
@@ -48,9 +46,6 @@ import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassSurface
 import com.github.mihomo.android.ui.glass.LocalGlassTokens
 import com.github.mihomo.android.ui.glass.NavigationLensState
-import com.github.mihomo.android.ui.glass.ProxyGroupGlass
-import com.github.mihomo.android.ui.glass.useProxyGroupGlass
-import com.github.mihomo.android.ui.glass.proxyCardNeedsOuterBorder
 import com.github.mihomo.android.ui.theme.*
 
 @Composable
@@ -364,7 +359,6 @@ fun ProxiesScreen(
                                         val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$selectedGroupName:${proxy.name}")
                                         LoonProxyItemCard(
                                             proxy = proxy,
-                                            glassScene = glassScene,
                                             isSelected = proxy.name == currentNow,
                                             columns = nodeColumns,
                                             isTesting = isItemTesting,
@@ -458,7 +452,6 @@ fun ProxiesScreen(
                                                 val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$groupName:${proxy.name}")
                                                 LoonProxyItemCard(
                                                     proxy = proxy,
-                                                    glassScene = glassScene,
                                                     isSelected = proxy.name == groupNow,
                                                     columns = nodeColumns,
                                                     isTesting = isItemTesting,
@@ -718,21 +711,12 @@ private fun LoonGroupHeaderCard(
     }
 }
 
-// Keep the selected node perceptibly pressed without changing its measured layout size.
-internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
-
-// Match the neutral gray used by the selected strategy capsule in the reference UI.
-internal val SelectedProxyCardFill = Color(0xFFABB1BC)
-internal val SelectedProxyCardText = Color(0xFF1A1D23)
-private val SelectedProxyCardMutedText = Color(0xB31A1D23)
-
 // -----------------------------------------------------------------------------
 // Multi-Column Responsive Proxy Node Card (Supports 1, 2, or 3 columns)
 // -----------------------------------------------------------------------------
 @Composable
 private fun LoonProxyItemCard(
     proxy: Proxy,
-    glassScene: NavigationLensState? = null,
     isSelected: Boolean,
     columns: Int = 1,
     isTesting: Boolean = false,
@@ -761,7 +745,8 @@ private fun LoonProxyItemCard(
         else -> "--"
     }
 
-    val cardBg = if (isSelected) SelectedProxyCardFill else LoonCard
+    val cardStyle = proxyCardSurfaceStyle(isSelected, LocalLoonColors.current.isDark)
+    val cardBg = if (isSelected) cardStyle.fill else LoonCard
 
     when (columns) {
         // ---------------------------------------------------------------------
@@ -772,19 +757,11 @@ private fun LoonProxyItemCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        val scale = selectedProxyCardScale(isSelected)
-                        scaleX = scale
-                        scaleY = scale
-                    }
                     .height(54.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .then(if (isSelected) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(14.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
-                accent = null,
-                groupScene = glassScene,
                 selected = isSelected
             ) {
                 Row(
@@ -806,7 +783,7 @@ private fun LoonProxyItemCard(
                         Column {
                             Text(
                                 text = displayName,
-                                color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
+                                color = if (isSelected) cardStyle.text else LoonTextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                 maxLines = 1
@@ -814,7 +791,7 @@ private fun LoonProxyItemCard(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = proxy.type.uppercase(),
-                                color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
+                                color = if (isSelected) cardStyle.secondaryText else LoonTextMuted,
                                 fontSize = 9.5.sp
                             )
                         }
@@ -852,7 +829,7 @@ private fun LoonProxyItemCard(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = null,
-                                tint = SelectedProxyCardText,
+                                tint = cardStyle.text,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -865,35 +842,16 @@ private fun LoonProxyItemCard(
         // 2 Columns: Balanced Grid Card (Fixed Height 62dp)
         // ---------------------------------------------------------------------
         2 -> {
-            val groupGlass = GlassDefaults.enabled && useProxyGroupGlass(
-                proxy.isGroup, columns, glassScene != null
-            )
             val cardShape = RoundedCornerShape(14.dp)
             ProxyGlassCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        val scale = selectedProxyCardScale(isSelected)
-                        scaleX = scale
-                        scaleY = scale
-                    }
                     .height(62.dp)
                     .clip(cardShape)
-                    .then(
-                        if (proxyCardNeedsOuterBorder(groupGlass, isSelected)) {
-                            Modifier.border(
-                                width = if (isSelected) 1.5.dp else 0.5.dp,
-                                color = if (isSelected) IosBlue else LoonCardBorder,
-                                shape = cardShape
-                            )
-                        } else Modifier
-                    )
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = cardShape,
-                groupScene = glassScene,
-                accent = null,
                 selected = isSelected
             ) {
                 Column(
@@ -915,7 +873,7 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
+                            color = if (isSelected) cardStyle.text else LoonTextPrimary,
                             fontSize = 12.5.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
@@ -931,7 +889,7 @@ private fun LoonProxyItemCard(
                     ) {
                         Text(
                             text = proxy.type.uppercase(),
-                            color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
+                            color = if (isSelected) cardStyle.secondaryText else LoonTextMuted,
                             fontSize = 8.5.sp,
                             maxLines = 1
                         )
@@ -973,19 +931,11 @@ private fun LoonProxyItemCard(
                 modifier = Modifier
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        val scale = selectedProxyCardScale(isSelected)
-                        scaleX = scale
-                        scaleY = scale
-                    }
                     .height(56.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .then(if (isSelected) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(12.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
-                accent = null,
-                groupScene = glassScene,
                 selected = isSelected
             ) {
                 Column(
@@ -1007,7 +957,7 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
+                            color = if (isSelected) cardStyle.text else LoonTextPrimary,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
@@ -1023,7 +973,7 @@ private fun LoonProxyItemCard(
                     ) {
                         Text(
                             text = proxy.type.uppercase(),
-                            color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
+                            color = if (isSelected) cardStyle.secondaryText else LoonTextMuted,
                             fontSize = 8.sp,
                             maxLines = 1
                         )
@@ -1060,58 +1010,51 @@ private fun LoonProxyItemCard(
 }
 
 
-/** Replays the recorded page backdrop for proxy tiles; selected tiles retain a neutral-gray frost. */
+/**
+ * Dense proxy rows use a stable matte instead of replaying the wallpaper or blurring every row.
+ * This keeps the selection surface legible while avoiding per-row backdrop work during scroll.
+ */
+internal data class ProxyCardSurfaceStyle(
+    val fill: Color,
+    val text: Color,
+    val secondaryText: Color,
+    val edge: Color
+)
+
+internal fun proxyCardSurfaceStyle(selected: Boolean, dark: Boolean): ProxyCardSurfaceStyle = when {
+    dark && selected -> ProxyCardSurfaceStyle(
+        fill = Color(0xFF747678), text = Color(0xFFFFFFFF),
+        secondaryText = Color(0xFFFFFFFF), edge = Color(0xFF96989B)
+    )
+    dark -> ProxyCardSurfaceStyle(
+        fill = Color(0xFF35373A), text = Color(0xFFF1F1F1),
+        secondaryText = Color(0xFFB7B8BA), edge = Color(0xFF55575A)
+    )
+    selected -> ProxyCardSurfaceStyle(
+        fill = Color(0xFFBFC0C2), text = Color(0xFF171819),
+        secondaryText = Color(0xFF4C4D4F), edge = Color(0xFF96989B)
+    )
+    else -> ProxyCardSurfaceStyle(
+        fill = Color(0xFFE5E6E8), text = Color(0xFF252629),
+        secondaryText = Color(0xFF626366), edge = Color(0xFFB8B9BC)
+    )
+}
+
 @Composable
 private fun ProxyGlassCard(
     modifier: Modifier,
     color: Color,
     shape: RoundedCornerShape,
-    accent: Color? = null,
-    groupScene: NavigationLensState? = null,
     selected: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
-    if (GlassDefaults.enabled && groupScene != null) {
-        ProxyGroupGlass(
-            modifier = modifier,
-            shape = shape,
-            scene = groupScene,
-            accent = accent,
-            selectedFill = if (selected) SelectedProxyCardFill else null,
-            content = content
-        )
-    } else if (GlassDefaults.enabled && selected) {
-        val tokens = LocalGlassTokens.current
-        val frost = Brush.linearGradient(listOf(
-            SelectedProxyCardFill.copy(alpha = .92f), SelectedProxyCardFill.copy(alpha = .84f)
-        ))
-        Box(modifier.clip(shape).background(frost)
-            .border(0.8.dp, tokens.edge.copy(alpha = .8f), shape)
-            .testTag("proxy-selected-glass-material"), content = content)
-    } else if (selected) {
-        Surface(modifier = modifier, color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
-    } else if (GlassDefaults.enabled) {
-        val tokens = LocalGlassTokens.current
-        val tint = if (accent == null) tokens.tint else androidx.compose.ui.graphics.lerp(tokens.tintAccent, accent, 0.12f)
-        val fill = Brush.linearGradient(
-            listOf(tint.copy(alpha = tint.alpha * 0.42f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.42f))
-        )
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .background(fill)
-                .border(0.55.dp, tokens.edge.copy(alpha = tokens.edge.alpha * 0.72f), shape)
-                .drawWithCache {
-                    val sheen = Brush.verticalGradient(listOf(
-                        Color.White.copy(alpha = if (tokens.isDark) .025f else .045f),
-                        Color.Transparent
-                    ))
-                    // Cached paint only, behind content: glyphs are never filtered or washed out.
-                    onDrawBehind { drawRect(sheen) }
-                },
-            content = content
-        )
-    } else {
-        Surface(modifier = modifier, color = color, shape = shape) { Box(content = content) }
-    }
+    val dark = LocalLoonColors.current.isDark
+    val style = proxyCardSurfaceStyle(selected, dark)
+    val fill = if (GlassDefaults.enabled || selected) style.fill else color
+    val edge = if (GlassDefaults.enabled || selected) style.edge else LoonCardBorder
+    Box(
+        modifier = modifier.clip(shape).background(fill).border(0.65.dp, edge, shape)
+            .testTag(if (selected) "proxy-selected-glass-material" else "proxy-row-matte-material"),
+        content = content
+    )
 }
