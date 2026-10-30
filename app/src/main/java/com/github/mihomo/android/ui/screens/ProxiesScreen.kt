@@ -758,7 +758,6 @@ private fun LoonProxyItemCard(
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(54.dp)
-                    .clip(RoundedCornerShape(14.dp))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
@@ -848,7 +847,6 @@ private fun LoonProxyItemCard(
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(62.dp)
-                    .clip(cardShape)
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = cardShape,
@@ -932,7 +930,6 @@ private fun LoonProxyItemCard(
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),

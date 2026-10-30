@@ -150,10 +150,20 @@ class ProxiesGlassRenderingTest {
                     val unselectedPixel = frame.getPixel(
                         (unselectedBounds.left + 8f * density).toInt(), unselectedBounds.center.y.toInt()
                     )
+                    val selectedEdgePixel = frame.getPixel(
+                        (selectedBounds.left + 0.25f * density).toInt(), selectedBounds.center.y.toInt()
+                    )
+                    val unselectedEdgePixel = frame.getPixel(
+                        (unselectedBounds.left + 0.25f * density).toInt(), unselectedBounds.center.y.toInt()
+                    )
                     assertPixelMatches("selected matte is rendered", selectedPixel,
                         proxyCardSurfaceStyle(selected = true, dark = isDark).fill.toArgb())
                     assertPixelMatches("unselected matte is rendered", unselectedPixel,
                         proxyCardSurfaceStyle(selected = false, dark = isDark).fill.toArgb())
+                    assertPixelMatches("selected row draws its single matte edge", selectedEdgePixel,
+                        proxyCardSurfaceStyle(selected = true, dark = isDark).edge.toArgb())
+                    assertPixelMatches("unselected row draws its single matte edge", unselectedEdgePixel,
+                        proxyCardSurfaceStyle(selected = false, dark = isDark).edge.toArgb())
                     assertTrue("selected and unselected rendered fills differ",
                         selectedPixel != unselectedPixel)
                     frame.recycle()
