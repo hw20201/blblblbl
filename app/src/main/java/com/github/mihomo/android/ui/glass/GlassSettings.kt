@@ -94,8 +94,14 @@ data class GlassSettings(
     val surfaceOverrides: Map<GlassSurfaceCategory, GlassOptics> = emptyMap(),
     val motion: GlassMotionTuning = GlassMotionTuning.DEFAULT,
     val shortcutGlassLevel: ShortcutGlassLevel = ShortcutGlassLevel.Extreme,
-    val glassPreset: GlassPreset = GlassPreset.CUSTOM
+    val glassPreset: GlassPreset = GlassPreset.CUSTOM,
+    /** Kyant preset's own global optics: each preset edits its own parameter set. */
+    val liquidGlobalOptics: GlassOptics = GlassOptics.DEFAULT
 ) {
+    /** The global optics of the given preset (CUSTOM uses [globalOptics]). */
+    fun globalOpticsFor(preset: GlassPreset): GlassOptics =
+        if (preset == GlassPreset.LIQUID) liquidGlobalOptics.clamped() else globalOptics.clamped()
+
     fun opticsFor(surface: GlassSurfaceCategory): GlassOptics =
         (surfaceOverrides[surface] ?: globalOptics).clamped()
 
@@ -107,6 +113,7 @@ data class GlassSettings(
     fun clamped() = copy(
         schemaVersion = CURRENT_SCHEMA_VERSION,
         globalOptics = globalOptics.clamped(),
+        liquidGlobalOptics = liquidGlobalOptics.clamped(),
         surfaceOverrides = surfaceOverrides.mapValues { it.value.clamped() },
         motion = motion.clamped()
     )

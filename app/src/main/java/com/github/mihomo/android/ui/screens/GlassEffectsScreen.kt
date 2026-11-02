@@ -144,7 +144,7 @@ fun GlassEffectsScreen(
                                 shape = { RoundedCornerShape(24.dp) },
                                 effects = {
                                     blur(with(density) { 2.dp.toPx() })
-                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * optics.refractionScale())
+                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * safe.liquidGlobalOptics.refractionScale())
                                 }
                             )
                             .semantics { contentDescription = "玻璃预览：Kyant 液态" }
@@ -187,22 +187,31 @@ fun GlassEffectsScreen(
                     }
                 }
             }
-            GlassEditorCard(title = "通用材质", subtitle = "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
-                GlassSlider("折射强度", safe.globalOptics.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
-                    "${"%.1f".format(java.util.Locale.ROOT, safe.globalOptics.refractionDp)} dp", "glass-global-refraction") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(refractionDp = it)).clamped())
+            // Each preset edits its own global parameter set: switching presets
+            // switches the values shown and edited here.
+            val global = safe.globalOpticsFor(safe.glassPreset)
+            val updateGlobal: (GlassOptics) -> Unit = { updated ->
+                onSettingsChanged(
+                    if (safe.glassPreset == GlassPreset.LIQUID) safe.copy(liquidGlobalOptics = updated).clamped()
+                    else safe.copy(globalOptics = updated).clamped()
+                )
+            }
+            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；折射强度驱动液态透镜。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
+                GlassSlider("折射强度", global.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
+                    "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
+                    updateGlobal(global.copy(refractionDp = it))
                 }
-                GlassSlider("色散", safe.globalOptics.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
-                    "${"%.1f".format(java.util.Locale.ROOT, safe.globalOptics.dispersionDp)} dp", "glass-global-dispersion") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(dispersionDp = it)).clamped())
+                GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
+                    "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
+                    updateGlobal(global.copy(dispersionDp = it))
                 }
-                GlassSlider("边缘带宽", safe.globalOptics.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
-                    "${safe.globalOptics.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(edgeWidthDp = it)).clamped())
+                GlassSlider("边缘带宽", global.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
+                    "${global.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {
+                    updateGlobal(global.copy(edgeWidthDp = it))
                 }
-                GlassSlider("边缘高光", safe.globalOptics.edgeLightMultiplier, GlassOptics.MIN_EDGE_LIGHT_MULTIPLIER..GlassOptics.MAX_EDGE_LIGHT_MULTIPLIER,
-                    "${"%.2f".format(java.util.Locale.ROOT, safe.globalOptics.edgeLightMultiplier)}×", "glass-global-edge-light") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(edgeLightMultiplier = it)).clamped())
+                GlassSlider("边缘高光", global.edgeLightMultiplier, GlassOptics.MIN_EDGE_LIGHT_MULTIPLIER..GlassOptics.MAX_EDGE_LIGHT_MULTIPLIER,
+                    "${"%.2f".format(java.util.Locale.ROOT, global.edgeLightMultiplier)}×", "glass-global-edge-light") {
+                    updateGlobal(global.copy(edgeLightMultiplier = it))
                 }
             }
             GlassEditorCard(title = "部位微调 · ${categories.first { it.first == selected }.second}",
