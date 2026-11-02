@@ -8,8 +8,8 @@ BUILD="$ROOT/native/build"
 OUT="$ROOT/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$BUILD/out" "$OUT"
 cd "$ROOT/native/golang"
-echo '[native] Preparing pinned Mihomo v1.19.32 source'
-SOURCE=$(go mod download -json github.com/metacubex/mihomo@v1.19.32 | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["Dir"])')
+echo '[native] Preparing pinned Mihomo v1.19.33 source'
+SOURCE=$(go mod download -json github.com/metacubex/mihomo@v1.19.33 | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["Dir"])')
 rm -rf "$BUILD/mihomo"
 cp -R "$SOURCE" "$BUILD/mihomo"
 chmod -R u+w "$BUILD/mihomo"
@@ -26,7 +26,7 @@ echo '[native] Building ARM64 Go core (may take several minutes)'
 go build -mod=readonly -modfile="$BUILD/native.go.mod" -trimpath -buildmode=c-shared \
   -tags 'foss with_gvisor cmfa' -ldflags='-s -w -buildid= -extldflags=-Wl,-z,max-page-size=16384' \
   -o "$BUILD/out/libclash.so" .
-printf '#define GIT_VERSION v1.19.32_88dcbf7_native-mips2\n#define make_Str(x) #x\n#define make_String(x) make_Str(x)\n' > "$BUILD/out/version.h"
+printf '#define GIT_VERSION v1.19.33_3f27ef3_native-mips2\n#define make_Str(x) #x\n#define make_String(x) make_Str(x)\n' > "$BUILD/out/version.h"
 echo '[native] Building checked JNI bridge'
 "$CC" -fPIC -shared -O2 -I"$ROOT/native/cpp" -I"$ROOT/native/golang" -I"$BUILD/out" \
   -Wl,-z,max-page-size=16384 -Wl,-soname,libbridge.so -Wl,--no-undefined \
