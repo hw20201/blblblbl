@@ -80,7 +80,7 @@ static void resolve_symbols(void) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_github_mihomo_android_data_QuickJsGuard_nativeInstall(
+Java_com_github_arca_android_data_QuickJsGuard_nativeInstall(
     JNIEnv *env, jobject instance, jobject context, jlong timeout_ms, jlong memory_bytes) {
     (void)instance;
     if (!context || timeout_ms <= 0 || timeout_ms > 30000 || memory_bytes <= 0) return 0;
@@ -104,7 +104,7 @@ Java_com_github_mihomo_android_data_QuickJsGuard_nativeInstall(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_github_mihomo_android_data_QuickJsGuard_nativeClear(
+Java_com_github_arca_android_data_QuickJsGuard_nativeClear(
     JNIEnv *env, jobject instance, jlong handle) {
     (void)env;
     (void)instance;

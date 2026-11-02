@@ -91,12 +91,12 @@ val verifyNativeLibraries = tasks.register<VerifyNativeLibrariesTask>("verifyNat
 tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 
 android {
-    namespace = "com.github.mihomo.android"
+    namespace = "com.github.arca.android"
     compileSdk = 37
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.github.mihomo.android"
+        applicationId = "com.github.arca.android"
         minSdk = 26
         targetSdk = 35
         versionCode = 59

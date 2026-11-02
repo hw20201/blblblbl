@@ -7,7 +7,7 @@
         errorLine1="                    startActivityAndCollapse(vpnIntent)"
         errorLine2="                                             ~~~~~~~~~">
         <location
-            file="src/main/java/com/github/mihomo/android/service/MihomoTileService.kt"
+            file="src/main/java/com/github/arca/android/service/MihomoTileService.kt"
             line="63"
             column="46" />
     </issue>

@@ -4,7 +4,7 @@
         android:icon="@android:drawable/ic_menu_info_details"
         android:shortcutShortLabel="@string/draft_diagnostics_label">
         <intent android:action="android.intent.action.VIEW"
-            android:targetPackage="com.github.mihomo.android.draftglass"
-            android:targetClass="com.github.mihomo.android.ui.DraftDiagnosticsActivity" />
+            android:targetPackage="com.github.arca.android.draftglass"
+            android:targetClass="com.github.arca.android.ui.DraftDiagnosticsActivity" />
     </shortcut>
 </shortcuts>

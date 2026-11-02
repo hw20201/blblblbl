@@ -23,11 +23,11 @@
 # ---------------------------------------------------------------------------
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault,InnerClasses
 -dontnote kotlinx.serialization.**
--keep,includedescriptorclasses class com.github.mihomo.android.**$$serializer { *; }
--keepclassmembers class com.github.mihomo.android.** {
+-keep,includedescriptorclasses class com.github.arca.android.**$$serializer { *; }
+-keepclassmembers class com.github.arca.android.** {
     *** Companion;
 }
--keepclasseswithmembers class com.github.mihomo.android.** {
+-keepclasseswithmembers class com.github.arca.android.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 
@@ -49,12 +49,12 @@
 -dontwarn org.slf4j.**
 
 # Manifest components and reflectively accessed persisted data.
--keep class com.github.mihomo.android.MihomoApplication { *; }
--keep class com.github.mihomo.android.ui.MainActivity { *; }
--keep class com.github.mihomo.android.service.MihomoVpnService { *; }
--keep class com.github.mihomo.android.service.MihomoTileService { *; }
--keep class com.github.mihomo.android.receiver.BootReceiver { *; }
--keep class com.github.mihomo.android.data.** { *; }
+-keep class com.github.arca.android.MihomoApplication { *; }
+-keep class com.github.arca.android.ui.MainActivity { *; }
+-keep class com.github.arca.android.service.MihomoVpnService { *; }
+-keep class com.github.arca.android.service.MihomoTileService { *; }
+-keep class com.github.arca.android.receiver.BootReceiver { *; }
+-keep class com.github.arca.android.data.** { *; }
 -keepclassmembers enum * {
     public static **[] values();
     public static ** valueOf(java.lang.String);

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application>
-        <activity android:name="com.github.mihomo.android.ui.MainActivity">
+        <activity android:name="com.github.arca.android.ui.MainActivity">
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/draft_shortcuts" />
         </activity>
         <!-- Independent software-rendered crash reports remain available through the
              launcher long-press shortcut, without a second process on every normal start. -->
-        <activity android:name="com.github.mihomo.android.ui.DraftDiagnosticsActivity"
+        <activity android:name="com.github.arca.android.ui.DraftDiagnosticsActivity"
             android:exported="true" android:process=":draft_diagnostics"
             android:hardwareAccelerated="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
