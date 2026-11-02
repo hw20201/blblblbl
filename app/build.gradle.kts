@@ -92,7 +92,7 @@ tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 
 android {
     namespace = "com.github.mihomo.android"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
