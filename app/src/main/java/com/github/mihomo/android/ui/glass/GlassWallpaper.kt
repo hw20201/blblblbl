@@ -29,7 +29,9 @@ data class GlassWallpaperSettings(
     val colorA: Int = COLOR_A,
     val colorB: Int = COLOR_B,
     val colorC: Int = COLOR_C,
-    val colorFlow: Boolean = true
+    val colorFlow: Boolean = true,
+    /** Straight-rib tilt in degrees: negative leans right going down, positive leans left. */
+    val ribAngleDegrees: Float = DEFAULT_RIB_ANGLE_DEGREES
 ) {
     fun colorAt(index: Int): Color = Color(when (index) {
         0 -> colorA
@@ -47,6 +49,9 @@ data class GlassWallpaperSettings(
     }
 
     companion object {
+        const val DEFAULT_RIB_ANGLE_DEGREES = 7f
+        const val MIN_RIB_ANGLE_DEGREES = -7f
+        const val MAX_RIB_ANGLE_DEGREES = 7f
         const val COLOR_A: Int = -4664849 // #FFB8D1EF
         const val COLOR_B: Int = -3222813 // #FFCED2E3
         const val COLOR_C: Int = -4661010 // #FFB8E0EE
@@ -87,7 +92,7 @@ internal fun DrawScope.drawGlassWallpaper(
     )
     drawRect(gradient)
     drawFlutedToneProfile(logicalHeight)
-    drawFlutedRibs()
+    drawFlutedRibs(settings.ribAngleDegrees.coerceIn(GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES, GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES))
 }
 
 /** Script's subdued dark-to-bright-to-dark value profile, with its gentle peak near 75% height. */
@@ -103,8 +108,8 @@ private fun DrawScope.drawFlutedToneProfile(logicalHeight: Float) {
     )
 }
 
-/** 29 evenly spaced fluted ribs, tilted about 7 degrees, leaning left as they go down
- *  (matching the Python generator's tilt direction).
+/** 29 evenly spaced fluted ribs, tilted by the wallpaper angle setting
+ *  (positive leans left as they go down, matching the Python generator's tilt direction).
  *
  *  FIX (2026-10-24, screenshot diagnosis): the old code only drew two thin
  *  bevel lines per rib (1.15dp white / 1.45dp dark). On a real phone that reads
@@ -125,29 +130,29 @@ internal const val FLUTED_RIB_BRIGHT_ALPHA = .25f
 internal fun flutedRibX(index: Int, width: Float): Float =
     (index + .5f) * width / FLUTED_RIB_COUNT.toFloat()
 
-internal fun flutedRibXAtY(index: Int, width: Float, height: Float, y: Float): Float {
+internal fun flutedRibXAtY(index: Int, width: Float, height: Float, y: Float, angleDegrees: Float = FLUTED_RIDGE_ANGLE_DEGREES): Float {
     val safeHeight = height.coerceAtLeast(1f)
-    val slope = kotlin.math.tan(Math.toRadians(FLUTED_RIDGE_ANGLE_DEGREES.toDouble())).toFloat()
+    val slope = kotlin.math.tan(Math.toRadians(angleDegrees.toDouble())).toFloat()
     return flutedRibX(index, width) - (y / safeHeight - .5f) * safeHeight * slope
 }
 
-private fun DrawScope.drawFlutedRibs() {
+private fun DrawScope.drawFlutedRibs(angleDegrees: Float = FLUTED_RIDGE_ANGLE_DEGREES) {
     val safeHeight = size.height.coerceAtLeast(1f)
     val spacing = size.width / FLUTED_RIB_COUNT.toFloat()
-    val slope = kotlin.math.tan(Math.toRadians(FLUTED_RIDGE_ANGLE_DEGREES.toDouble())).toFloat()
+    val slope = kotlin.math.tan(Math.toRadians(angleDegrees.toDouble())).toFloat()
     // Rib direction is (-slope, 1); width direction is its perpendicular (1, slope),
     // normalized. A gradient along the width direction is constant along a rib
-    // and varies only across it, so the ramp follows the 7-degree slant at every height.
+    // and varies only across it, so the ramp follows the rib slant at every height.
     val widthNorm = sqrt(1f + slope * slope)
     val widthDirX = 1f / widthNorm
     val widthDirY = slope / widthNorm
-    val extraRibs = kotlin.math.ceil((safeHeight * slope * .5f) / spacing.coerceAtLeast(1f)).toInt() + 1
+    val extraRibs = kotlin.math.ceil((safeHeight * kotlin.math.abs(slope) * .5f) / spacing.coerceAtLeast(1f)).toInt() + 1
     for (index in -extraRibs..(FLUTED_RIB_COUNT - 1 + extraRibs)) {
-        val centerX = flutedRibXAtY(index, size.width, safeHeight, safeHeight / 2f)
+        val centerX = flutedRibXAtY(index, size.width, safeHeight, safeHeight / 2f, angleDegrees)
         val centerY = safeHeight / 2f
         val half = spacing / 2f
-        val topX = flutedRibXAtY(index, size.width, safeHeight, 0f)
-        val bottomX = flutedRibXAtY(index, size.width, safeHeight, safeHeight)
+        val topX = flutedRibXAtY(index, size.width, safeHeight, 0f, angleDegrees)
+        val bottomX = flutedRibXAtY(index, size.width, safeHeight, safeHeight, angleDegrees)
         val rib = Path().apply {
             moveTo(topX - half, 0f)
             lineTo(topX + half, 0f)
