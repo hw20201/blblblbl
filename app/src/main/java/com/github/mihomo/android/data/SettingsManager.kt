@@ -268,7 +268,7 @@ class SettingsManager(context: Context) {
             colorA = prefs.getInt(KEY_WALLPAPER_COLOR_A, GlassWallpaperSettings.COLOR_A),
             colorB = prefs.getInt(KEY_WALLPAPER_COLOR_B, GlassWallpaperSettings.COLOR_B),
             colorC = prefs.getInt(KEY_WALLPAPER_COLOR_C, GlassWallpaperSettings.COLOR_C),
-            colorFlow = prefs.getBoolean(KEY_WALLPAPER_FLOW, true)
+            colorFlow = prefs.getBoolean(KEY_WALLPAPER_FLOW, true),
             ribAngleDegrees = prefs.getFloat(KEY_WALLPAPER_RIB_ANGLE, GlassWallpaperSettings.DEFAULT_RIB_ANGLE_DEGREES)
         )
         set(value) {
