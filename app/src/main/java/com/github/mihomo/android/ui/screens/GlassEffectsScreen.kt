@@ -1,6 +1,7 @@
 package com.github.mihomo.android.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
@@ -43,6 +44,8 @@ import com.github.mihomo.android.ui.glass.LocalGlassSettings
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.recordNavigationScene
 import com.github.mihomo.android.ui.glass.refractionScale
+import com.github.mihomo.android.ui.glass.edgeLightScale
+import com.github.mihomo.android.ui.glass.edgeScale
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.theme.LoonTextMuted
 import com.github.mihomo.android.ui.theme.LoonTextPrimary
@@ -136,6 +139,7 @@ fun GlassEffectsScreen(
                 }
                 if (GlassDefaults.enabled && safe.glassPreset == GlassPreset.LIQUID) {
                     val density = LocalDensity.current
+                    val liquid = safe.liquidGlobalOptics
                     Box(
                         Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp)
                             .clip(RoundedCornerShape(24.dp))
@@ -144,9 +148,10 @@ fun GlassEffectsScreen(
                                 shape = { RoundedCornerShape(24.dp) },
                                 effects = {
                                     blur(with(density) { 2.dp.toPx() })
-                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * safe.liquidGlobalOptics.refractionScale())
+                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * liquid.refractionScale(), chromaticAberration = liquid.dispersionDp > 0f)
                                 }
                             )
+                            .border(0.5.dp * liquid.edgeScale(), Color.White.copy(alpha = (0.38f * liquid.edgeLightScale()).coerceIn(0f, 1f)), RoundedCornerShape(24.dp))
                             .semantics { contentDescription = "玻璃预览：Kyant 液态" }
                             .testTag("glass-effects-live-lens"),
                         content = previewContent
@@ -196,7 +201,7 @@ fun GlassEffectsScreen(
                     else safe.copy(globalOptics = updated).clamped()
                 )
             }
-            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；折射强度驱动液态透镜。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
+            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；四项分别驱动透镜、色散开关与边缘亮边。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
                 GlassSlider("折射强度", global.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
                     "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
                     updateGlobal(global.copy(refractionDp = it))

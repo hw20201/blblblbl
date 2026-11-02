@@ -2,6 +2,7 @@ package com.github.mihomo.android.ui.glass
 
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -146,17 +147,20 @@ fun GlassSurface(
         else if (tunedMaterial) ShortcutTunedCardShape else shape
     // Kyant preset: sample the recorded mesh background through Kyant's liquid glass
     // instead of the custom AGSL path below. Title capsules and bottom nav keep the
-    // custom path until their own Kyant branch lands.
+    // custom path by design: the custom glass covers them.
     val kyantBackdrop = LocalKyantBackdrop.current
     if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset == GlassPreset.LIQUID && kyantBackdrop != null) {
         val density = LocalDensity.current
         val blurPx = with(density) { 2.dp.toPx() }
         val lensHeightPx = with(density) { 12.dp.toPx() }
-        // The LIQUID preset's own refraction slider drives Kyant's lens strength:
-        // the default 13.5dp maps back to the previous fixed 24dp, and it scales
-        // with the slider. Kyant 2.0.1 has no dispersion/edge counterparts, so
-        // those stay fixed here.
-        val lensAmountPx = with(density) { 24.dp.toPx() } * LocalGlassSettings.current.globalOpticsFor(GlassPreset.LIQUID).refractionScale()
+        // The LIQUID preset's own sliders drive Kyant: refraction scales the lens
+        // amount (default 13.5dp maps back to the previous fixed 24dp), dispersion
+        // toggles Kyant's chromatic-aberration shader (on for any value above 0;
+        // Kyant exposes no graded amount), and edge width/light draw the rim.
+        val liquid = LocalGlassSettings.current.globalOpticsFor(GlassPreset.LIQUID)
+        val lensAmountPx = with(density) { 24.dp.toPx() } * liquid.refractionScale()
+        val rimWidth = 0.5.dp * liquid.edgeScale()
+        val rimAlpha = (0.38f * liquid.edgeLightScale()).coerceIn(0f, 1f)
         Box(
             modifier
                 .clip(effectiveShape)
@@ -165,9 +169,10 @@ fun GlassSurface(
                     shape = { effectiveShape },
                     effects = {
                         blur(blurPx)
-                        lens(lensHeightPx, lensAmountPx)
+                        lens(lensHeightPx, lensAmountPx, chromaticAberration = liquid.dispersionDp > 0f)
                     }
-                ),
+                )
+                .border(rimWidth, Color.White.copy(alpha = rimAlpha), effectiveShape),
             content = content
         )
         return
