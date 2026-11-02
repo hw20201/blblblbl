@@ -25,6 +25,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.github.mihomo.android.ui.glass.GlassMotionTuning
 import com.github.mihomo.android.ui.glass.GlassOptics
 import com.github.mihomo.android.ui.glass.GlassPreset
@@ -59,6 +65,8 @@ fun GlassEffectsScreen(
     val palette = glassPalette
     val lens = rememberNavigationLens()
     val titleScene = rememberNavigationLens()
+    // Preview-only Kyant layer: the preview capsule samples its own striped scene.
+    val previewBackdrop = rememberLayerBackdrop()
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
     val categories = listOf(
@@ -100,7 +108,7 @@ fun GlassEffectsScreen(
             Text("实时预览", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp))
             Box(Modifier.fillMaxWidth().height(142.dp).clip(RoundedCornerShape(26.dp)).testTag("glass-effects-preview")) {
-                Canvas(Modifier.fillMaxSize().recordNavigationScene(lens)) {
+                Canvas(Modifier.fillMaxSize().recordNavigationScene(lens).layerBackdrop(previewBackdrop)) {
                     drawRect(if (palette.isDark) Color(0xFF101A2A) else Color(0xFFE5EAF2))
                     val spacing = 20.dp.toPx()
                     val colors = listOf(Color(0xFF3878E8), Color(0xFFF28155), Color(0xFF61A879), Color(0xFF9B6AC7))
@@ -114,24 +122,49 @@ fun GlassEffectsScreen(
                     drawCircle(Color.White.copy(alpha = .65f), radius = 19.dp.toPx(), center = Offset(size.width * .78f, size.height * .35f))
                     drawCircle(Color(0xFF5656C8).copy(alpha = .75f), radius = 25.dp.toPx(), center = Offset(size.width * .2f, size.height * .72f))
                 }
-                NavigationGlassSurface(
-                    modifier = Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp).semantics { contentDescription = "玻璃预览：折射 ${optics.refractionDp} dp，色散 ${optics.dispersionDp} dp" }
-                        .testTag("glass-effects-live-lens"),
-                    lens = lens,
-                    shape = RoundedCornerShape(24.dp),
-                    cornerRadius = 24.dp,
-                    strength = LensStrength.STRONG,
-                    surfaceCategory = selected,
-                    // Feed the editor's effective value directly to the same renderer used
-                    // by the app surfaces. A fixed 12dp frost blur masked dispersion changes.
-                    opticsOverride = optics,
-                    frosted = false
-                ) {
+                // The live preview must follow the selected preset. NavigationGlassSurface
+                // has no Kyant branch, so without this the preview never changes on preset
+                // switch even though the settings state itself is live. This branch is
+                // preview-only; app surfaces keep their own paths.
+                val previewContent: @Composable BoxScope.() -> Unit = {
                     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.SpaceBetween) {
                         Text(categories.first { it.first == selected }.second, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold)
                         Text("折射与色散会即时显示", color = LoonTextSecondary, fontSize = 12.sp)
                     }
+                }
+                if (GlassDefaults.enabled && safe.glassPreset == GlassPreset.LIQUID) {
+                    val density = LocalDensity.current
+                    Box(
+                        Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .drawBackdrop(
+                                backdrop = previewBackdrop,
+                                shape = { RoundedCornerShape(24.dp) },
+                                effects = {
+                                    blur(with(density) { 2.dp.toPx() })
+                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() })
+                                }
+                            )
+                            .semantics { contentDescription = "玻璃预览：Kyant 液态" }
+                            .testTag("glass-effects-live-lens"),
+                        content = previewContent
+                    )
+                } else {
+                    NavigationGlassSurface(
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp).semantics { contentDescription = "玻璃预览：折射 ${optics.refractionDp} dp，色散 ${optics.dispersionDp} dp" }
+                            .testTag("glass-effects-live-lens"),
+                        lens = lens,
+                        shape = RoundedCornerShape(24.dp),
+                        cornerRadius = 24.dp,
+                        strength = LensStrength.STRONG,
+                        surfaceCategory = selected,
+                        // Feed the editor's effective value directly to the same renderer used
+                        // by the app surfaces. A fixed 12dp frost blur masked dispersion changes.
+                        opticsOverride = optics,
+                        frosted = false,
+                        content = previewContent
+                    )
                 }
             }
             Text("选择玻璃部位", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
