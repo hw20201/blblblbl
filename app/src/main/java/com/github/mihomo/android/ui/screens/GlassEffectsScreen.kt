@@ -1,7 +1,7 @@
 package com.github.mihomo.android.ui.screens
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.border.border
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
