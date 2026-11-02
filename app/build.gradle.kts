@@ -92,7 +92,7 @@ tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 
 android {
     namespace = "com.github.mihomo.android"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
@@ -224,11 +224,14 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     
     // Compose
-    implementation("androidx.compose.ui:ui:1.7.5")
-    implementation("androidx.compose.ui:ui-graphics:1.7.5")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.7.5")
+    implementation("androidx.compose.ui:ui:1.10.0")
+    implementation("androidx.compose.ui:ui-graphics:1.10.0")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.10.0")
+    implementation("androidx.compose.foundation:foundation:1.12.0")
+    implementation("androidx.compose.foundation:foundation-layout:1.12.0")
     implementation("androidx.compose.material3:material3:1.3.1")
-    implementation("androidx.compose.material:material-icons-extended:1.7.5")
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
+    implementation("io.github.kyant0:backdrop:2.0.1")
     
     // Coroutines & Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

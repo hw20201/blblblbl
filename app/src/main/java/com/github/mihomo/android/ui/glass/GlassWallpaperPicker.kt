@@ -163,6 +163,21 @@ fun GlassWallpaperPicker(
             )
         }
 
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("褶皱角度", color = LoonTextPrimary, fontSize = 13.sp)
+                Text("正值向下向左斜，负值向下向右斜；0 为竖直", color = LoonTextMuted, fontSize = 11.sp)
+            }
+            Text("%.1f°".format(settings.ribAngleDegrees), color = LoonTextMuted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
+        }
+        Slider(
+            value = settings.ribAngleDegrees.coerceIn(GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES, GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES),
+            onValueChange = { onSettingsChanged(settings.copy(enabled = true, ribAngleDegrees = it)) },
+            valueRange = GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES..GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES,
+            steps = 139,
+            modifier = Modifier.fillMaxWidth().testTag("wallpaper-rib-angle")
+        )
+
         Box(Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(22.dp)).testTag("wallpaper-live-preview")) {
             Canvas(Modifier.fillMaxSize().recordNavigationScene(lens)) {
                 val seconds = if (settings.colorFlow) progress / (2.0 * Math.PI).toFloat() * 54f else 0f

@@ -56,6 +56,7 @@ class SettingsManager(context: Context) {
         const val KEY_WALLPAPER_COLOR_B = "glass_wallpaper_color_b"
         const val KEY_WALLPAPER_COLOR_C = "glass_wallpaper_color_c"
         const val KEY_WALLPAPER_FLOW = "glass_wallpaper_flow"
+        const val KEY_WALLPAPER_RIB_ANGLE = "glass_wallpaper_rib_angle"
         const val KEY_WALLPAPER_CURVE_SEED = "glass_wallpaper_curve_seed"
         const val KEY_SHORTCUT_GLASS_LEVEL = "shortcut_glass_level"
         const val KEY_SHORTCUT_GLASS_REFRACTION = "shortcut_glass_refraction_dp"
@@ -267,7 +268,8 @@ class SettingsManager(context: Context) {
             colorA = prefs.getInt(KEY_WALLPAPER_COLOR_A, GlassWallpaperSettings.COLOR_A),
             colorB = prefs.getInt(KEY_WALLPAPER_COLOR_B, GlassWallpaperSettings.COLOR_B),
             colorC = prefs.getInt(KEY_WALLPAPER_COLOR_C, GlassWallpaperSettings.COLOR_C),
-            colorFlow = prefs.getBoolean(KEY_WALLPAPER_FLOW, true)
+            colorFlow = prefs.getBoolean(KEY_WALLPAPER_FLOW, true),
+            ribAngleDegrees = prefs.getFloat(KEY_WALLPAPER_RIB_ANGLE, GlassWallpaperSettings.DEFAULT_RIB_ANGLE_DEGREES)
         )
         set(value) {
             prefs.edit()
@@ -276,6 +278,7 @@ class SettingsManager(context: Context) {
                 .putInt(KEY_WALLPAPER_COLOR_B, value.colorB)
                 .putInt(KEY_WALLPAPER_COLOR_C, value.colorC)
                 .putBoolean(KEY_WALLPAPER_FLOW, value.colorFlow)
+                .putFloat(KEY_WALLPAPER_RIB_ANGLE, value.ribAngleDegrees)
                 .apply()
         }
 

@@ -227,7 +227,7 @@ fun DashboardScreen(
             "routing" to ShortcutDef("routing", AppStrings.get("shortcut_routing", lang), "规则与黑白名单", { AppRoutingIllustration() }) {
                 onNavigateToAppRouting()
             },
-            "plugins" to ShortcutDef("plugins", AppStrings.get("shortcut_plugins", lang), if (vpnState.coreVersion.isNotBlank()) "v${vpnState.coreVersion.take(8)}" else "Nexus Core", { PluginsIllustration() }) {
+            "plugins" to ShortcutDef("plugins", AppStrings.get("shortcut_plugins", lang), if (vpnState.coreVersion.isNotBlank()) "v${vpnState.coreVersion.take(8)}" else "Arca Core", { PluginsIllustration() }) {
                 activeDialogTitle = "内核信息"
                 activeDialogContent = "内核版本: ${vpnState.coreVersion.ifBlank { "v1.18.x" }}\n" +
                         "架构支持: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}"

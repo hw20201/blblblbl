@@ -19,6 +19,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -48,6 +50,7 @@ fun NexusGlassBackground(
     modifier: Modifier = Modifier,
     palette: GlassPaletteSpec = LocalGlassPalette.current,
     backdropRecorder: Modifier = Modifier,
+    kyantBackdrop: LayerBackdrop? = null,
     testBackdropVariant: String? = null,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
@@ -117,6 +120,7 @@ fun NexusGlassBackground(
     Box(modifier = modifier.fillMaxSize().clipToBounds()) {
         Box(
             modifier = Modifier.fillMaxSize().graphicsLayer().then(backdropRecorder)
+                .then(if (kyantBackdrop != null) Modifier.layerBackdrop(kyantBackdrop) else Modifier)
                 .then(if (testBackdropId == null) Modifier.background(base).drawBehind {
                     val time = seconds.value // draw-phase read; no foreground recomposition/layout.
                     if (wallpaper.enabled) {

@@ -12,8 +12,8 @@ MIPS 指 **Mihomo IP Stack**，不是 MIPS CPU 架构。应用仍为 Android ARM
 ## 固定来源
 
 - Android Go adapter 的上游来源为 [MetaCubeX/ClashMetaForAndroid](https://github.com/MetaCubeX/ClashMetaForAndroid/tree/3cc102aab3f251ef460a3b6e2835b6c1eb581e73/core/src/main)，提交 `3cc102aab3f251ef460a3b6e2835b6c1eb581e73`；本 fork 保留了修改后的对应源码。该来源说明的是适配层的上游代码脉络，不表示仓库中的 `.so` 是从该项目或 kanwox/Nexus 复制的预编译二进制；桥接二进制的构建与维护者说明见上节。
-- [Mihomo v1.19.32](https://github.com/MetaCubeX/mihomo/tree/v1.19.32)，对应提交 `88dcbf7f1614a67c3b36b848ee3592dfa92ada36`。
-- 该版本锁定 `mipstack v0.0.0-20260930071539-961d4b1c1983` 与 `sing-tun v0.4.27`。其余依赖见 `golang/go.mod` 与 `golang/go.sum`。
+- [Mihomo v1.19.33](https://github.com/MetaCubeX/mihomo/tree/v1.19.33)，对应提交 `3f27ef39f8c96bbfbc8b0b9bb10f5c9ef60149d8`。
+- 该版本锁定 `mipstack v0.0.0-20261019124225-9a80a07eaeb9` 与 `sing-tun v0.4.28`。其余依赖见 `golang/go.mod` 与 `golang/go.sum`。
 - GPL 许可文本见 `LICENSE.mihomo`、`LICENSE.upstream`。MIPS 本身的 MPL-2.0 许可不能替代整个应用的 GPL 合规义务；分发二进制时应同时提供本源码、补丁、构建脚本及依赖来源。
 
 ## 构建

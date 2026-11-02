@@ -54,7 +54,9 @@ import com.github.mihomo.android.ui.glass.GlassPalettes
 import com.github.mihomo.android.ui.glass.GlassDefaults
 import com.github.mihomo.android.ui.glass.GlassWallpaperSettings
 import com.github.mihomo.android.ui.glass.glassPalette
+import com.github.mihomo.android.ui.glass.LocalKyantBackdrop
 import com.github.mihomo.android.ui.glass.NexusGlassBackground
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.github.mihomo.android.ui.glass.ProvideGlassTheme
 import com.github.mihomo.android.ui.glass.ProvideSoftMeshMotion
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
@@ -724,12 +726,15 @@ class MainActivity : ComponentActivity() {
             handleSubScreenBack()
         }
 
+        val kyantBackdrop = rememberLayerBackdrop()
+
         CompositionLocalProvider(
             LocalAppLanguage provides appLanguage,
             // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled },
             LocalShortcutTouchVariant provides shortcutTouchVariant,
             LocalGlassSettings provides glassSettings,
+            LocalKyantBackdrop provides kyantBackdrop,
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
@@ -749,7 +754,8 @@ class MainActivity : ComponentActivity() {
         NexusGlassBackground(
             modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
             palette = glassPalette,
-            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier
+            backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier,
+            kyantBackdrop = kyantBackdrop
         ) {
         Box(
             modifier = Modifier

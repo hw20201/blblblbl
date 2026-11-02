@@ -22,6 +22,11 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -54,6 +59,8 @@ val LocalGlassTokens = staticCompositionLocalOf { GlassPalettes.CREAM.toTokens()
  * The top rim is the single most important cue: a bright hairline that fades at both ends reads as
  * a lens edge, whereas a uniform 1px border reads as a plain card.
  */
+val LocalKyantBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
+
 fun Modifier.glassSurface(tokens: GlassTokens): Modifier =
     this.drawWithContent {
         drawContent()
@@ -137,6 +144,34 @@ fun GlassSurface(
     val tunedMaterial = shortcutContactFrost && LocalShortcutTunedMaterialEnabled.current
     val effectiveShape = if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
         else if (tunedMaterial) ShortcutTunedCardShape else shape
+    // Kyant preset: sample the recorded mesh background through Kyant's liquid glass
+    // instead of the custom AGSL path below. Title capsules and bottom nav keep the
+    // custom path until their own Kyant branch lands.
+    val kyantBackdrop = LocalKyantBackdrop.current
+    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset == GlassPreset.LIQUID && kyantBackdrop != null) {
+        val density = LocalDensity.current
+        val blurPx = with(density) { 2.dp.toPx() }
+        val lensHeightPx = with(density) { 12.dp.toPx() }
+        // The LIQUID preset's own refraction slider drives Kyant's lens strength:
+        // the default 13.5dp maps back to the previous fixed 24dp, and it scales
+        // with the slider. Kyant 2.0.1 has no dispersion/edge counterparts, so
+        // those stay fixed here.
+        val lensAmountPx = with(density) { 24.dp.toPx() } * LocalGlassSettings.current.globalOpticsFor(GlassPreset.LIQUID).refractionScale()
+        Box(
+            modifier
+                .clip(effectiveShape)
+                .drawBackdrop(
+                    backdrop = kyantBackdrop,
+                    shape = { effectiveShape },
+                    effects = {
+                        blur(blurPx)
+                        lens(lensHeightPx, lensAmountPx)
+                    }
+                ),
+            content = content
+        )
+        return
+    }
     val dockLens = LocalShortcutDockLensEnabled.current
     if (shortcutContactFrost && shortcutDockLens && dockLens) {
         ShortcutDockGlassSurface(modifier, effectiveShape, lens, tokens, shortcutRefraction, content)

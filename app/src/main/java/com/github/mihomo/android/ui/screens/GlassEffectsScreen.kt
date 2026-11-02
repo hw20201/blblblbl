@@ -25,8 +25,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.mihomo.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.github.mihomo.android.ui.glass.GlassMotionTuning
 import com.github.mihomo.android.ui.glass.GlassOptics
+import com.github.mihomo.android.ui.glass.GlassPreset
 import com.github.mihomo.android.ui.glass.GlassSettings
 import com.github.mihomo.android.ui.glass.GlassSurfaceCategory
 import com.github.mihomo.android.ui.glass.LensStrength
@@ -35,6 +42,7 @@ import com.github.mihomo.android.ui.glass.PageTitleGlass
 import com.github.mihomo.android.ui.glass.LocalGlassSettings
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.recordNavigationScene
+import com.github.mihomo.android.ui.glass.refractionScale
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.theme.LoonTextMuted
 import com.github.mihomo.android.ui.theme.LoonTextPrimary
@@ -58,6 +66,8 @@ fun GlassEffectsScreen(
     val palette = glassPalette
     val lens = rememberNavigationLens()
     val titleScene = rememberNavigationLens()
+    // Preview-only Kyant layer: the preview capsule samples its own striped scene.
+    val previewBackdrop = rememberLayerBackdrop()
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
     val categories = listOf(
@@ -80,10 +90,26 @@ fun GlassEffectsScreen(
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
                 )
         ) {
+            Text("玻璃预设", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = safe.glassPreset == GlassPreset.CUSTOM,
+                    onClick = { onSettingsChanged(safe.copy(glassPreset = GlassPreset.CUSTOM).clamped()) },
+                    label = { Text("自研") },
+                    modifier = Modifier.weight(1f).testTag("glass-preset-custom")
+                )
+                FilterChip(
+                    selected = safe.glassPreset == GlassPreset.LIQUID,
+                    onClick = { onSettingsChanged(safe.copy(glassPreset = GlassPreset.LIQUID).clamped()) },
+                    label = { Text("Kyant 液态") },
+                    modifier = Modifier.weight(1f).testTag("glass-preset-liquid")
+                )
+            }
             Text("实时预览", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp))
             Box(Modifier.fillMaxWidth().height(142.dp).clip(RoundedCornerShape(26.dp)).testTag("glass-effects-preview")) {
-                Canvas(Modifier.fillMaxSize().recordNavigationScene(lens)) {
+                Canvas(Modifier.fillMaxSize().recordNavigationScene(lens).layerBackdrop(previewBackdrop)) {
                     drawRect(if (palette.isDark) Color(0xFF101A2A) else Color(0xFFE5EAF2))
                     val spacing = 20.dp.toPx()
                     val colors = listOf(Color(0xFF3878E8), Color(0xFFF28155), Color(0xFF61A879), Color(0xFF9B6AC7))
@@ -97,24 +123,49 @@ fun GlassEffectsScreen(
                     drawCircle(Color.White.copy(alpha = .65f), radius = 19.dp.toPx(), center = Offset(size.width * .78f, size.height * .35f))
                     drawCircle(Color(0xFF5656C8).copy(alpha = .75f), radius = 25.dp.toPx(), center = Offset(size.width * .2f, size.height * .72f))
                 }
-                NavigationGlassSurface(
-                    modifier = Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp).semantics { contentDescription = "玻璃预览：折射 ${optics.refractionDp} dp，色散 ${optics.dispersionDp} dp" }
-                        .testTag("glass-effects-live-lens"),
-                    lens = lens,
-                    shape = RoundedCornerShape(24.dp),
-                    cornerRadius = 24.dp,
-                    strength = LensStrength.STRONG,
-                    surfaceCategory = selected,
-                    // Feed the editor's effective value directly to the same renderer used
-                    // by the app surfaces. A fixed 12dp frost blur masked dispersion changes.
-                    opticsOverride = optics,
-                    frosted = false
-                ) {
+                // The live preview must follow the selected preset. NavigationGlassSurface
+                // has no Kyant branch, so without this the preview never changes on preset
+                // switch even though the settings state itself is live. This branch is
+                // preview-only; app surfaces keep their own paths.
+                val previewContent: @Composable BoxScope.() -> Unit = {
                     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.SpaceBetween) {
                         Text(categories.first { it.first == selected }.second, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold)
                         Text("折射与色散会即时显示", color = LoonTextSecondary, fontSize = 12.sp)
                     }
+                }
+                if (GlassDefaults.enabled && safe.glassPreset == GlassPreset.LIQUID) {
+                    val density = LocalDensity.current
+                    Box(
+                        Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .drawBackdrop(
+                                backdrop = previewBackdrop,
+                                shape = { RoundedCornerShape(24.dp) },
+                                effects = {
+                                    blur(with(density) { 2.dp.toPx() })
+                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * safe.liquidGlobalOptics.refractionScale())
+                                }
+                            )
+                            .semantics { contentDescription = "玻璃预览：Kyant 液态" }
+                            .testTag("glass-effects-live-lens"),
+                        content = previewContent
+                    )
+                } else {
+                    NavigationGlassSurface(
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp).semantics { contentDescription = "玻璃预览：折射 ${optics.refractionDp} dp，色散 ${optics.dispersionDp} dp" }
+                            .testTag("glass-effects-live-lens"),
+                        lens = lens,
+                        shape = RoundedCornerShape(24.dp),
+                        cornerRadius = 24.dp,
+                        strength = LensStrength.STRONG,
+                        surfaceCategory = selected,
+                        // Feed the editor's effective value directly to the same renderer used
+                        // by the app surfaces. A fixed 12dp frost blur masked dispersion changes.
+                        opticsOverride = optics,
+                        frosted = false,
+                        content = previewContent
+                    )
                 }
             }
             Text("选择玻璃部位", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -136,22 +187,31 @@ fun GlassEffectsScreen(
                     }
                 }
             }
-            GlassEditorCard(title = "通用材质", subtitle = "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
-                GlassSlider("折射强度", safe.globalOptics.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
-                    "${"%.1f".format(java.util.Locale.ROOT, safe.globalOptics.refractionDp)} dp", "glass-global-refraction") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(refractionDp = it)).clamped())
+            // Each preset edits its own global parameter set: switching presets
+            // switches the values shown and edited here.
+            val global = safe.globalOpticsFor(safe.glassPreset)
+            val updateGlobal: (GlassOptics) -> Unit = { updated ->
+                onSettingsChanged(
+                    if (safe.glassPreset == GlassPreset.LIQUID) safe.copy(liquidGlobalOptics = updated).clamped()
+                    else safe.copy(globalOptics = updated).clamped()
+                )
+            }
+            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；折射强度驱动液态透镜。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
+                GlassSlider("折射强度", global.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
+                    "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
+                    updateGlobal(global.copy(refractionDp = it))
                 }
-                GlassSlider("色散", safe.globalOptics.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
-                    "${"%.1f".format(java.util.Locale.ROOT, safe.globalOptics.dispersionDp)} dp", "glass-global-dispersion") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(dispersionDp = it)).clamped())
+                GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
+                    "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
+                    updateGlobal(global.copy(dispersionDp = it))
                 }
-                GlassSlider("边缘带宽", safe.globalOptics.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
-                    "${safe.globalOptics.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(edgeWidthDp = it)).clamped())
+                GlassSlider("边缘带宽", global.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
+                    "${global.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {
+                    updateGlobal(global.copy(edgeWidthDp = it))
                 }
-                GlassSlider("边缘高光", safe.globalOptics.edgeLightMultiplier, GlassOptics.MIN_EDGE_LIGHT_MULTIPLIER..GlassOptics.MAX_EDGE_LIGHT_MULTIPLIER,
-                    "${"%.2f".format(java.util.Locale.ROOT, safe.globalOptics.edgeLightMultiplier)}×", "glass-global-edge-light") {
-                    onSettingsChanged(safe.copy(globalOptics = safe.globalOptics.copy(edgeLightMultiplier = it)).clamped())
+                GlassSlider("边缘高光", global.edgeLightMultiplier, GlassOptics.MIN_EDGE_LIGHT_MULTIPLIER..GlassOptics.MAX_EDGE_LIGHT_MULTIPLIER,
+                    "${"%.2f".format(java.util.Locale.ROOT, global.edgeLightMultiplier)}×", "glass-global-edge-light") {
+                    updateGlobal(global.copy(edgeLightMultiplier = it))
                 }
             }
             GlassEditorCard(title = "部位微调 · ${categories.first { it.first == selected }.second}",
