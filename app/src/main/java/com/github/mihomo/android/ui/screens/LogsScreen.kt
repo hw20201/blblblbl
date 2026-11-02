@@ -31,6 +31,8 @@ import com.github.mihomo.android.data.LogEntry
 import com.github.mihomo.android.data.LogRepository
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
+import androidx.compose.ui.graphics.Shape
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -273,12 +275,8 @@ fun LogsScreen(
                     }
                 }
             } else {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(16.dp)),
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    color = LoonCard,
+                LogsPanelSurface(
+                    modifier = Modifier.fillMaxSize(),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     LazyColumn(
@@ -449,10 +447,10 @@ fun LogsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Surface(
+                LogsPanelSurface(
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = LoonBg,
-                    modifier = Modifier.fillMaxWidth()
+                    fallbackColor = LoonBg
                 ) {
                     Text(
                         text = entry.message,
@@ -504,5 +502,19 @@ fun LogsScreen(
             containerColor = LoonCard,
             shape = RoundedCornerShape(20.dp)
         )
+    }
+}
+
+@Composable
+private fun LogsPanelSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
+    fallbackColor: Color = LoonCard,
+    content: @Composable () -> Unit
+) {
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier, shape = shape) { content() }
+    } else {
+        Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
     }
 }

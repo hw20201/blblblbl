@@ -29,6 +29,8 @@ import com.github.mihomo.android.data.ScriptItem
 import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
+import androidx.compose.ui.graphics.Shape
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -216,12 +218,8 @@ fun ScriptsScreen(
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 item {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp)),
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                        color = LoonCard,
+                    ScriptsPanelSurface(
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -647,13 +645,12 @@ fun ScriptsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Editor Canvas
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = LoonBg,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
+                ScriptsPanelSurface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    fallbackColor = LoonBg
                 ) {
                     OutlinedTextField(
                         value = scriptCodeInput,
@@ -710,5 +707,19 @@ fun ScriptsScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun ScriptsPanelSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp),
+    fallbackColor: Color = LoonCard,
+    content: @Composable () -> Unit
+) {
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier, shape = shape) { content() }
+    } else {
+        Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
     }
 }
