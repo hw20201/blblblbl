@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ModalBottomSheet
@@ -33,6 +34,7 @@ import androidx.compose.ui.window.Dialog
  * All sheet content roots are plain Columns, so wrapping them in one more
  * Column is layout-safe.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlassModalBottomSheet(
     onDismissRequest: () -> Unit,
@@ -71,6 +73,7 @@ fun GlassModalBottomSheet(
  * Alert dialog with the self-developed glass container, mirroring AlertDialog's
  * slots. When glass is disabled it is exactly AlertDialog.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlassAlertDialog(
     onDismissRequest: () -> Unit,
