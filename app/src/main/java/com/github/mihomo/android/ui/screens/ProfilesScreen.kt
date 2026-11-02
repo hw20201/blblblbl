@@ -39,6 +39,8 @@ import com.github.mihomo.android.data.ConfigManager
 import com.github.mihomo.android.data.ProfileItem
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassSurface
+import androidx.compose.ui.graphics.Shape
 import com.github.mihomo.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -243,7 +245,7 @@ fun ProfilesScreen(
                     val isSelected = item.id == selectedProfileId
                     val isRefreshing = refreshingProfileId == item.id
 
-                    Surface(
+                    ProfilesPanelSurface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .offset { if (isBeingDragged) IntOffset(0, dragOffsetY.roundToInt()) else IntOffset.Zero }
@@ -289,17 +291,11 @@ fun ProfilesScreen(
                                     }
                                 )
                             }
-                            .border(
-                                width = 0.75.dp,
-                                color = LoonCardBorder.copy(alpha = .68f),
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                            .clip(RoundedCornerShape(18.dp))
                             .iosPressable {
                                 haptic.selection()
                                 onSelectProfile(item)
                             },
-                        color = if (isSelected) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .18f else .10f) else LoonCard.copy(alpha = .68f)
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -597,11 +593,9 @@ fun ProfilesScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Grouped Input Fields
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
+                ProfilesPanelSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         TextField(
@@ -1121,5 +1115,19 @@ fun ProfilesScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfilesPanelSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(18.dp),
+    fallbackColor: Color = LoonCard,
+    content: @Composable () -> Unit
+) {
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier, shape = shape) { content() }
+    } else {
+        Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
     }
 }
