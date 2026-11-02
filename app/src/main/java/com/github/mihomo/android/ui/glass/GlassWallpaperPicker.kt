@@ -51,6 +51,7 @@ import com.github.mihomo.android.ui.theme.LoonTextSecondary
 import com.github.mihomo.android.data.SavedWallpaperPalette
 import com.github.mihomo.android.data.SettingsManager
 import com.github.mihomo.android.ui.glass.NavigationGlassSurface
+import com.github.mihomo.android.ui.glass.GlassAlertDialog
 import com.github.mihomo.android.ui.glass.LensStrength
 
 /** Compact wallpaper editor. Straight fluted ribs only; the curved-refraction style was removed. */
@@ -203,7 +204,7 @@ fun GlassWallpaperPicker(
         }
     }
     if (showSaveDialog) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { showSaveDialog = false },
             title = { Text("收纳壁纸配色") },
             text = {

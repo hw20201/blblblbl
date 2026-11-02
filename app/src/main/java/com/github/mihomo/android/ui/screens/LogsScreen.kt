@@ -31,6 +31,8 @@ import com.github.mihomo.android.data.LogEntry
 import com.github.mihomo.android.data.LogRepository
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassAlertDialog
+import com.github.mihomo.android.ui.glass.GlassModalBottomSheet
 import com.github.mihomo.android.ui.glass.GlassSurface
 import androidx.compose.ui.graphics.Shape
 import com.github.mihomo.android.ui.theme.*
@@ -401,7 +403,7 @@ fun LogsScreen(
             else -> IosBlue
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { activeDetailEntry = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -467,7 +469,7 @@ fun LogsScreen(
 
     // Clear logs confirmation dialog
     if (showClearConfirmDialog) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
             title = {
                 Text(

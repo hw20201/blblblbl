@@ -55,6 +55,8 @@ import com.github.mihomo.android.service.TrafficMetrics
 import com.github.mihomo.android.service.MihomoVpnService
 import kotlinx.coroutines.flow.StateFlow
 import com.github.mihomo.android.ui.glass.PageTitleGlass
+import com.github.mihomo.android.ui.glass.GlassAlertDialog
+import com.github.mihomo.android.ui.glass.GlassModalBottomSheet
 import com.github.mihomo.android.ui.glass.NavigationGlassSurface
 import com.github.mihomo.android.ui.glass.LensStrength
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
@@ -732,7 +734,7 @@ fun DashboardScreen(
             // In-Place Quick Node Selector BottomSheet (Full 92% height, smooth expansion)
             // =========================================================================
             if (showQuickNodeSelector) {
-                ModalBottomSheet(
+                GlassModalBottomSheet(
                     onDismissRequest = { showQuickNodeSelector = false },
                     sheetState = quickNodeSheetState,
                     containerColor = LoonCard,
@@ -938,7 +940,7 @@ fun DashboardScreen(
                     .filter { !visibleShortcuts.contains(it) }
                     .mapNotNull { allShortcutMap[it] }
 
-                ModalBottomSheet(
+                GlassModalBottomSheet(
                     onDismissRequest = { showAddShortcutSheet = false },
                     sheetState = addShortcutSheetState,
                     containerColor = LoonCard,
@@ -1039,7 +1041,7 @@ fun DashboardScreen(
 
             // Informational Dialog
             if (activeDialogTitle != null) {
-                AlertDialog(
+                GlassAlertDialog(
                     onDismissRequest = { activeDialogTitle = null },
                     title = {
                         Text(

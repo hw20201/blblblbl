@@ -31,6 +31,7 @@ import com.github.mihomo.android.core.model.TunnelMode
 import com.github.mihomo.android.data.ParsedRule
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassModalBottomSheet
 import com.github.mihomo.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -245,7 +246,7 @@ fun RulesScreen(
             "${rule.type},${rule.target}"
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { inspectedRule = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),

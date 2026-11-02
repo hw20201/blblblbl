@@ -29,6 +29,8 @@ import com.github.mihomo.android.data.ScriptItem
 import com.github.mihomo.android.data.ScriptManager
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassAlertDialog
+import com.github.mihomo.android.ui.glass.GlassModalBottomSheet
 import com.github.mihomo.android.ui.glass.GlassSurface
 import androidx.compose.ui.graphics.Shape
 import com.github.mihomo.android.ui.theme.*
@@ -331,7 +333,7 @@ fun ScriptsScreen(
             Triple("从预设模板创建", "去广告、节点规范化与重定向", Icons.Default.AutoAwesome)
         )
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showActionMenuSheet = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -394,7 +396,7 @@ fun ScriptsScreen(
     // Create Empty Script BottomSheet
     if (showCreateDialog) {
         var nameInput by remember { mutableStateOf("") }
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showCreateDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -448,7 +450,7 @@ fun ScriptsScreen(
         var nameInput by remember { mutableStateOf("") }
         var isDownloading by remember { mutableStateOf(false) }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { if (!isDownloading) showImportUrlDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -542,7 +544,7 @@ fun ScriptsScreen(
             """.trimIndent())
         )
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showTemplateDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -601,7 +603,7 @@ fun ScriptsScreen(
     // Cupertino Code Studio Editor Modal
     if (editingScript != null) {
         val target = editingScript!!
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { editingScript = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -679,7 +681,7 @@ fun ScriptsScreen(
     // Delete Confirmation Dialog
     if (deleteConfirmScript != null) {
         val target = deleteConfirmScript!!
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { deleteConfirmScript = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(20.dp),

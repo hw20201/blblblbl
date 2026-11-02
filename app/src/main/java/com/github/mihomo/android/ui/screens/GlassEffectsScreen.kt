@@ -206,9 +206,32 @@ fun GlassEffectsScreen(
                     "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
                     updateGlobal(global.copy(refractionDp = it))
                 }
-                GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
-                    "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
-                    updateGlobal(global.copy(dispersionDp = it))
+                if (safe.glassPreset == GlassPreset.LIQUID) {
+                    // Kyant exposes dispersion only as a shader switch, so the
+                    // LIQUID preset edits it as on/off; the CUSTOM preset keeps
+                    // the graded slider below for the self-developed shader.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("色散", color = LoonTextPrimary, fontSize = 13.sp)
+                            Text("彩虹边开或关；Kyant 没有强弱档", color = LoonTextSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = global.dispersionDp > 0f,
+                            onCheckedChange = { on ->
+                                updateGlobal(global.copy(dispersionDp = if (on) GlassOptics.DEFAULT.dispersionDp else 0f))
+                            },
+                            modifier = Modifier.testTag("glass-global-dispersion")
+                        )
+                    }
+                } else {
+                    GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
+                        "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
+                        updateGlobal(global.copy(dispersionDp = it))
+                    }
                 }
                 GlassSlider("边缘带宽", global.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
                     "${global.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {

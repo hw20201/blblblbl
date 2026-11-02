@@ -39,6 +39,7 @@ import com.github.mihomo.android.data.ConfigManager
 import com.github.mihomo.android.data.ProfileItem
 import com.github.mihomo.android.ui.components.*
 import com.github.mihomo.android.ui.glass.GlassDefaults
+import com.github.mihomo.android.ui.glass.GlassModalBottomSheet
 import com.github.mihomo.android.ui.glass.GlassSurface
 import androidx.compose.ui.graphics.Shape
 import com.github.mihomo.android.ui.theme.*
@@ -504,7 +505,7 @@ fun ProfilesScreen(
             }
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showAddSheet = false },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -670,7 +671,7 @@ fun ProfilesScreen(
         val target = actionSheetProfile!!
         val isSelected = target.id == selectedProfileId
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { actionSheetProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -808,7 +809,7 @@ fun ProfilesScreen(
             mutableStateOf(((target.autoUpdateInterval / 60).coerceAtLeast(1)).toString())
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { editSheetProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -965,7 +966,7 @@ fun ProfilesScreen(
             }
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { yamlEditorProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -1050,7 +1051,7 @@ fun ProfilesScreen(
     if (deleteConfirmProfile != null) {
         val target = deleteConfirmProfile!!
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { deleteConfirmProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import com.github.mihomo.android.ui.glass.GlassModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -48,7 +49,7 @@ fun OutboundIpSheet(onRefresh: suspend () -> OutboundIpInfo, onDismiss: () -> Un
         }
     }
     LaunchedEffect(Unit) { lookup() }
-    ModalBottomSheet(
+    GlassModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = LoonBg
