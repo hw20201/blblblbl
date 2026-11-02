@@ -42,6 +42,7 @@ import com.github.mihomo.android.ui.glass.PageTitleGlass
 import com.github.mihomo.android.ui.glass.LocalGlassSettings
 import com.github.mihomo.android.ui.glass.glassPalette
 import com.github.mihomo.android.ui.glass.recordNavigationScene
+import com.github.mihomo.android.ui.glass.refractionScale
 import com.github.mihomo.android.ui.glass.rememberNavigationLens
 import com.github.mihomo.android.ui.theme.LoonTextMuted
 import com.github.mihomo.android.ui.theme.LoonTextPrimary
@@ -143,7 +144,7 @@ fun GlassEffectsScreen(
                                 shape = { RoundedCornerShape(24.dp) },
                                 effects = {
                                     blur(with(density) { 2.dp.toPx() })
-                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() })
+                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * optics.refractionScale())
                                 }
                             )
                             .semantics { contentDescription = "玻璃预览：Kyant 液态" }

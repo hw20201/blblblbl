@@ -152,7 +152,10 @@ fun GlassSurface(
         val density = LocalDensity.current
         val blurPx = with(density) { 2.dp.toPx() }
         val lensHeightPx = with(density) { 12.dp.toPx() }
-        val lensAmountPx = with(density) { 24.dp.toPx() }
+        // The refraction slider now drives Kyant's lens strength: the default
+        // 13.5dp maps back to the previous fixed 24dp, and it scales with the slider.
+        // Kyant 2.0.1 has no dispersion/edge counterparts, so those stay fixed here.
+        val lensAmountPx = with(density) { 24.dp.toPx() } * LocalGlassSettings.current.globalOptics.refractionScale()
         Box(
             modifier
                 .clip(effectiveShape)
