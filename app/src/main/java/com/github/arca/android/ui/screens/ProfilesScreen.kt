@@ -39,6 +39,9 @@ import com.github.arca.android.data.ConfigManager
 import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassModalBottomSheet
+import com.github.arca.android.ui.glass.GlassSurface
+import androidx.compose.ui.graphics.Shape
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -243,7 +246,7 @@ fun ProfilesScreen(
                     val isSelected = item.id == selectedProfileId
                     val isRefreshing = refreshingProfileId == item.id
 
-                    Surface(
+                    ProfilesPanelSurface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .offset { if (isBeingDragged) IntOffset(0, dragOffsetY.roundToInt()) else IntOffset.Zero }
@@ -289,17 +292,11 @@ fun ProfilesScreen(
                                     }
                                 )
                             }
-                            .border(
-                                width = 0.75.dp,
-                                color = LoonCardBorder.copy(alpha = .68f),
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                            .clip(RoundedCornerShape(18.dp))
                             .iosPressable {
                                 haptic.selection()
                                 onSelectProfile(item)
                             },
-                        color = if (isSelected) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .18f else .10f) else LoonCard.copy(alpha = .68f)
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -508,7 +505,7 @@ fun ProfilesScreen(
             }
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showAddSheet = false },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -597,11 +594,9 @@ fun ProfilesScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Grouped Input Fields
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = LoonCard,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                    modifier = Modifier.fillMaxWidth()
+                ProfilesPanelSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         TextField(
@@ -676,7 +671,7 @@ fun ProfilesScreen(
         val target = actionSheetProfile!!
         val isSelected = target.id == selectedProfileId
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { actionSheetProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -814,7 +809,7 @@ fun ProfilesScreen(
             mutableStateOf(((target.autoUpdateInterval / 60).coerceAtLeast(1)).toString())
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { editSheetProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -971,7 +966,7 @@ fun ProfilesScreen(
             }
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { yamlEditorProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -1056,7 +1051,7 @@ fun ProfilesScreen(
     if (deleteConfirmProfile != null) {
         val target = deleteConfirmProfile!!
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { deleteConfirmProfile = null },
             containerColor = LoonBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -1121,5 +1116,19 @@ fun ProfilesScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfilesPanelSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(18.dp),
+    fallbackColor: Color = LoonCard,
+    content: @Composable () -> Unit
+) {
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier, shape = shape) { content() }
+    } else {
+        Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
     }
 }

@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.zIndex
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.arca.android.ui.glass.GlassAlertDialog
+import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
@@ -371,7 +373,7 @@ fun SettingsScreen(
             Triple("system", "System", "操作系统原生网络栈"),
             Triple("mips", "MIPS", AppStrings.get("tun_stack_mips_desc", lang))
         )
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showTunDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -448,7 +450,7 @@ fun SettingsScreen(
             Triple("error", "ERROR", "仅记录严重崩溃与错误"),
             Triple("debug", "DEBUG", "输出底层全部调试报文")
         )
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showLogLevelDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -520,7 +522,7 @@ fun SettingsScreen(
 
     // Core Reset Confirmation
     if (showResetDialog) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = { Text("重置核心状态", fontWeight = FontWeight.Bold, color = LoonTextPrimary) },
             text = { Text("确定要重置底层核心状态吗？当前活动的网络连接将被断开并重新初始化。", color = LoonTextSecondary, fontSize = 14.sp) },
@@ -546,7 +548,7 @@ fun SettingsScreen(
     }
 
     if (showShortcutTouchDialog) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { showShortcutTouchDialog = false },
             title = { Text("快捷卡片触感") },
             text = {
@@ -579,7 +581,7 @@ fun SettingsScreen(
         )
     }
     if (showMtuDialog) {
-        AlertDialog(onDismissRequest = { showMtuDialog = false }, title = { Text("TUN MTU") },
+        GlassAlertDialog(onDismissRequest = { showMtuDialog = false }, title = { Text("TUN MTU") },
             text = { OutlinedTextField(value = mtuDraft, onValueChange = { v -> if (v.length <= 5 && v.all(Char::isDigit)) mtuDraft = v }, singleLine = true) },
             confirmButton = { TextButton(onClick = {
                 mtuDraft.toIntOrNull()?.let { value ->
@@ -590,7 +592,7 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { showMtuDialog = false }) { Text("取消") } })
     }
     if (showCongestionDialog) {
-        AlertDialog(onDismissRequest = { showCongestionDialog = false }, title = { Text("MIPS 拥塞控制") },
+        GlassAlertDialog(onDismissRequest = { showCongestionDialog = false }, title = { Text("MIPS 拥塞控制") },
             text = { Column { TunTuning.CONGESTION_CONTROLLERS.forEach { option ->
                 Row(Modifier.fillMaxWidth().clickable {
                     onMipsCongestionControllerChanged(option)

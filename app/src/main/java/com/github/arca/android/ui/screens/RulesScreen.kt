@@ -31,6 +31,7 @@ import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -245,7 +246,7 @@ fun RulesScreen(
             "${rule.type},${rule.target}"
         }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { inspectedRule = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),

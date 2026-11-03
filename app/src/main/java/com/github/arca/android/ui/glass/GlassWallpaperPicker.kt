@@ -51,6 +51,7 @@ import com.github.arca.android.ui.theme.LoonTextSecondary
 import com.github.arca.android.data.SavedWallpaperPalette
 import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.ui.glass.NavigationGlassSurface
+import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.LensStrength
 
 /** Compact wallpaper editor. Straight fluted ribs only; the curved-refraction style was removed. */
@@ -203,7 +204,7 @@ fun GlassWallpaperPicker(
         }
     }
     if (showSaveDialog) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { showSaveDialog = false },
             title = { Text("收纳壁纸配色") },
             text = {

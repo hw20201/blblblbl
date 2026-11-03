@@ -1,6 +1,7 @@
 package com.github.arca.android.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
@@ -43,6 +44,8 @@ import com.github.arca.android.ui.glass.LocalGlassSettings
 import com.github.arca.android.ui.glass.glassPalette
 import com.github.arca.android.ui.glass.recordNavigationScene
 import com.github.arca.android.ui.glass.refractionScale
+import com.github.arca.android.ui.glass.edgeLightScale
+import com.github.arca.android.ui.glass.edgeScale
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.theme.LoonTextMuted
 import com.github.arca.android.ui.theme.LoonTextPrimary
@@ -136,6 +139,7 @@ fun GlassEffectsScreen(
                 }
                 if (GlassDefaults.enabled && safe.glassPreset == GlassPreset.LIQUID) {
                     val density = LocalDensity.current
+                    val liquid = safe.liquidGlobalOptics
                     Box(
                         Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp)
                             .clip(RoundedCornerShape(24.dp))
@@ -144,9 +148,10 @@ fun GlassEffectsScreen(
                                 shape = { RoundedCornerShape(24.dp) },
                                 effects = {
                                     blur(with(density) { 2.dp.toPx() })
-                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * safe.liquidGlobalOptics.refractionScale())
+                                    lens(with(density) { 12.dp.toPx() }, with(density) { 24.dp.toPx() } * liquid.refractionScale(), chromaticAberration = liquid.dispersionDp > 0f)
                                 }
                             )
+                            .border(0.5.dp * liquid.edgeScale(), Color.White.copy(alpha = (0.38f * liquid.edgeLightScale()).coerceIn(0f, 1f)), RoundedCornerShape(24.dp))
                             .semantics { contentDescription = "玻璃预览：Kyant 液态" }
                             .testTag("glass-effects-live-lens"),
                         content = previewContent
@@ -196,14 +201,37 @@ fun GlassEffectsScreen(
                     else safe.copy(globalOptics = updated).clamped()
                 )
             }
-            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；折射强度驱动液态透镜。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
+            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；四项分别驱动透镜、色散开关与边缘亮边。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
                 GlassSlider("折射强度", global.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
                     "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
                     updateGlobal(global.copy(refractionDp = it))
                 }
-                GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
-                    "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
-                    updateGlobal(global.copy(dispersionDp = it))
+                if (safe.glassPreset == GlassPreset.LIQUID) {
+                    // Kyant exposes dispersion only as a shader switch, so the
+                    // LIQUID preset edits it as on/off; the CUSTOM preset keeps
+                    // the graded slider below for the self-developed shader.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("色散", color = LoonTextPrimary, fontSize = 13.sp)
+                            Text("彩虹边开或关；Kyant 没有强弱档", color = LoonTextSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = global.dispersionDp > 0f,
+                            onCheckedChange = { on ->
+                                updateGlobal(global.copy(dispersionDp = if (on) GlassOptics.DEFAULT.dispersionDp else 0f))
+                            },
+                            modifier = Modifier.testTag("glass-global-dispersion")
+                        )
+                    }
+                } else {
+                    GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
+                        "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
+                        updateGlobal(global.copy(dispersionDp = it))
+                    }
                 }
                 GlassSlider("边缘带宽", global.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
                     "${global.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {

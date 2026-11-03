@@ -29,6 +29,10 @@ import com.github.arca.android.data.ScriptItem
 import com.github.arca.android.data.ScriptManager
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassAlertDialog
+import com.github.arca.android.ui.glass.GlassModalBottomSheet
+import com.github.arca.android.ui.glass.GlassSurface
+import androidx.compose.ui.graphics.Shape
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -216,12 +220,8 @@ fun ScriptsScreen(
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 item {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp)),
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
-                        color = LoonCard,
+                    ScriptsPanelSurface(
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -333,7 +333,7 @@ fun ScriptsScreen(
             Triple("从预设模板创建", "去广告、节点规范化与重定向", Icons.Default.AutoAwesome)
         )
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showActionMenuSheet = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -396,7 +396,7 @@ fun ScriptsScreen(
     // Create Empty Script BottomSheet
     if (showCreateDialog) {
         var nameInput by remember { mutableStateOf("") }
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showCreateDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -450,7 +450,7 @@ fun ScriptsScreen(
         var nameInput by remember { mutableStateOf("") }
         var isDownloading by remember { mutableStateOf(false) }
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { if (!isDownloading) showImportUrlDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -544,7 +544,7 @@ fun ScriptsScreen(
             """.trimIndent())
         )
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { showTemplateDialog = false },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -603,7 +603,7 @@ fun ScriptsScreen(
     // Cupertino Code Studio Editor Modal
     if (editingScript != null) {
         val target = editingScript!!
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { editingScript = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
@@ -647,13 +647,12 @@ fun ScriptsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Editor Canvas
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = LoonBg,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, LoonCardBorder),
+                ScriptsPanelSurface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    fallbackColor = LoonBg
                 ) {
                     OutlinedTextField(
                         value = scriptCodeInput,
@@ -682,7 +681,7 @@ fun ScriptsScreen(
     // Delete Confirmation Dialog
     if (deleteConfirmScript != null) {
         val target = deleteConfirmScript!!
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { deleteConfirmScript = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(20.dp),
@@ -710,5 +709,19 @@ fun ScriptsScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun ScriptsPanelSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp),
+    fallbackColor: Color = LoonCard,
+    content: @Composable () -> Unit
+) {
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier, shape = shape) { content() }
+    } else {
+        Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
     }
 }

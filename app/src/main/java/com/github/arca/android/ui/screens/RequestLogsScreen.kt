@@ -29,6 +29,7 @@ import com.github.arca.android.data.RequestLogRepository
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.theme.*
 import java.text.SimpleDateFormat
@@ -428,7 +429,7 @@ fun RequestLogsScreen(
     if (inspectedRequest != null) {
         val req = inspectedRequest!!
 
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = { inspectedRequest = null },
             containerColor = LoonCard,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
