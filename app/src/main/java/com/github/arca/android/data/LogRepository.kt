@@ -29,8 +29,14 @@ object LogRepository {
         try {
             val element = json.parseToJsonElement(payload)
             val obj = element.jsonObject
-            val type = obj["type"]?.jsonPrimitive?.content ?: "info"
-            val msg = obj["payload"]?.jsonPrimitive?.content ?: payload
+            // The native Go bridge emits {level, message, time}; keep accepting
+            // the older {type, payload} shape used by existing integrations.
+            val type = obj["type"]?.jsonPrimitive?.content
+                ?: obj["level"]?.jsonPrimitive?.content
+                ?: "info"
+            val msg = obj["payload"]?.jsonPrimitive?.content
+                ?: obj["message"]?.jsonPrimitive?.content
+                ?: payload
             addLog(type, msg)
         } catch (_: Exception) {
             addLog("info", payload)

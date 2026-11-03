@@ -29,6 +29,7 @@ import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunStack
 import com.github.arca.android.service.VpnState
+import com.github.arca.android.service.TrafficMetrics
 import com.github.arca.android.ui.components.LoonFloatingBottomBar
 import com.github.arca.android.ui.glass.*
 import com.github.arca.android.ui.theme.LocalAppLanguage
@@ -40,6 +41,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.MutableStateFlow
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w400dp-h900dp-mdpi")
@@ -78,8 +80,19 @@ class DestinationPagesRenderingTest {
         LogRepository.clear()
         LogRepository.addLog("info", "[TCP] 192.168.1.12:52643 --> api.example.com:443 match DomainSuffix using Proxy")
         LogRepository.addLog("info", "[DNS] 192.168.1.12:52644 --> resolver.example:53 match Domain using DIRECT")
-        show { RequestLogsScreen(VpnState(status = VpnState.Status.RUNNING), onBack = {}) }
+        val metrics = MutableStateFlow(TrafficMetrics("5 KB/s", "12 KB/s", "1.0 MB", "2.0 MB"))
+        show {
+            RequestLogsScreen(
+                VpnState(status = VpnState.Status.RUNNING),
+                onBack = {},
+                trafficMetrics = metrics
+            )
+        }
         compose.onNodeWithText("api.example.com:443").assertIsDisplayed()
+        compose.onNodeWithText("5 KB/s", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("12 KB/s", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("1.0 MB", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("2.0 MB", substring = true).assertIsDisplayed()
         capture("requests-light")
         LogRepository.clear()
     }

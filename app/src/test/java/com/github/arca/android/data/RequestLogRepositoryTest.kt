@@ -30,6 +30,17 @@ class RequestLogRepositoryTest {
     }
 
     @Test
+    fun `native level message logcat JSON reaches request flow`() {
+        val payload = """{"level":"INFO","message":"[TCP] 10.0.0.1:1234 --\u003e example.com:443 match Domain using Proxy","time":123456789}"""
+
+        LogRepository.addRawLogcat(payload)
+
+        val request = RequestLogRepository.requestsFlow.value.single()
+        assertEquals("info", request.level)
+        assertEquals("[TCP] 10.0.0.1:1234 --> example.com:443 match Domain using Proxy", request.message)
+    }
+
+    @Test
     fun `only actual protocol connection records are captured`() {
         LogRepository.addLog("info", "service started")
         LogRepository.addLog("warning", "TCP handshake failed")

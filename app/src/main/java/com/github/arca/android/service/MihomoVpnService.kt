@@ -43,7 +43,9 @@ import java.io.File
 
 data class TrafficMetrics(
     val upSpeed: String = "0 B/s",
-    val downSpeed: String = "0 B/s"
+    val downSpeed: String = "0 B/s",
+    val totalUp: String = "0 B",
+    val totalDown: String = "0 B"
 )
 
 data class VpnState(
@@ -396,11 +398,17 @@ class MihomoVpnService : VpnService() {
                 val now = ClashCore.queryTrafficNow()
                 val proxyTotal = ClashCore.queryProxyTrafficTotal()
                 com.github.arca.android.data.TrafficRecordRepository.recordProxy(proxyTotal)
+                val total = ClashCore.queryTrafficTotal()
 
                 val upStr = now.trafficSpeedUpload()
                 val downStr = now.trafficSpeedDownload()
 
-                _trafficMetrics.value = TrafficMetrics(upSpeed = upStr, downSpeed = downStr)
+                _trafficMetrics.value = TrafficMetrics(
+                    upSpeed = upStr,
+                    downSpeed = downStr,
+                    totalUp = total.trafficUpload(),
+                    totalDown = total.trafficDownload()
+                )
                 val text = "\u2191 $upStr   \u2193 $downStr"
                 // Skip identical rebuilds (idle link) - NotificationManager IPC is not free.
                 if (text != lastNotified) {

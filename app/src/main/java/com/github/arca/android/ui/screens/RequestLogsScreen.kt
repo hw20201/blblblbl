@@ -26,11 +26,14 @@ import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.LogEntry
 import com.github.arca.android.data.RequestLogRepository
 import com.github.arca.android.service.VpnState
+import com.github.arca.android.service.MihomoVpnService
+import com.github.arca.android.service.TrafficMetrics
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.theme.*
+import kotlinx.coroutines.flow.StateFlow
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -94,7 +97,8 @@ internal fun parseRequestLog(entry: LogEntry): StructuredRequest {
 @Composable
 fun RequestLogsScreen(
     vpnState: VpnState,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    trafficMetrics: StateFlow<TrafficMetrics> = MihomoVpnService.trafficMetrics
 ) {
     val clipboardManager = LocalClipboardManager.current
     val lang = LocalAppLanguage.current
@@ -102,6 +106,7 @@ fun RequestLogsScreen(
 
     val rawLogs by RequestLogRepository.requestsFlow.collectAsState()
     val monitoringEnabled by RequestLogRepository.monitoringEnabled.collectAsState()
+    val metrics by trafficMetrics.collectAsState()
     val isPaused = !monitoringEnabled
     var searchQuery by remember { mutableStateOf("") }
     var selectedProtocol by remember { mutableStateOf("ALL") }
@@ -198,7 +203,7 @@ fun RequestLogsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("↑ 上传  /  ↓ 下载", fontSize = 10.sp, color = LoonTextMuted)
                             Text(
-                                text = "${vpnState.upSpeed.ifBlank { "0 B/s" }}  /  ${vpnState.downSpeed.ifBlank { "0 B/s" }}",
+                                text = "${metrics.upSpeed.ifBlank { "0 B/s" }}  /  ${metrics.downSpeed.ifBlank { "0 B/s" }}",
                                 fontSize = 13.sp, fontWeight = FontWeight.Bold, color = IosBlue, maxLines = 1
                             )
                         }
@@ -207,7 +212,7 @@ fun RequestLogsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("累计流量", fontSize = 10.sp, color = LoonTextMuted)
                             Text(
-                                text = "${vpnState.totalUp.ifBlank { "0 B" }}  /  ${vpnState.totalDown.ifBlank { "0 B" }}",
+                                text = "${metrics.totalUp.ifBlank { "0 B" }}  /  ${metrics.totalDown.ifBlank { "0 B" }}",
                                 fontSize = 13.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary, maxLines = 1
                             )
                         }
