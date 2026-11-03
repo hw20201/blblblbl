@@ -52,7 +52,6 @@ fun NetworkShareScreen(
     vpnState: VpnState,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     val lang = LocalAppLanguage.current
     val clipboardManager = LocalClipboardManager.current
     val isRunning = vpnState.status == VpnState.Status.RUNNING

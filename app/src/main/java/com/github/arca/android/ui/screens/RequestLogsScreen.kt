@@ -96,7 +96,6 @@ fun RequestLogsScreen(
     vpnState: VpnState,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val lang = LocalAppLanguage.current
     val haptic = rememberIosHaptic()
