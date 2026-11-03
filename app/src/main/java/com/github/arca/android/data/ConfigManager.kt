@@ -107,16 +107,12 @@ object ConfigManager {
         val decoded = decodeBase64Text(content)
         if (decoded != null) {
             parseRoot(decoded)?.let { return validateYaml(decoded, it) }
-            if (isProxyUriList(decoded)) {
-                throw IllegalArgumentException(
-                    "这是 Base64 节点链接订阅，不是 Clash/Mihomo YAML；当前不能直接导入，请改用输出 Clash/Mihomo YAML 的订阅地址"
-                )
+            require(!isProxyUriList(decoded)) {
+                "这是 Base64 节点链接订阅，不是 Clash/Mihomo YAML；当前不能直接导入，请改用输出 Clash/Mihomo YAML 的订阅地址"
             }
         }
-        if (isProxyUriList(content)) {
-            throw IllegalArgumentException(
-                "这是节点链接列表，不是 Clash/Mihomo YAML；当前不能直接导入，请改用输出 Clash/Mihomo YAML 的订阅地址"
-            )
+        require(!isProxyUriList(content)) {
+            "这是节点链接列表，不是 Clash/Mihomo YAML；当前不能直接导入，请改用输出 Clash/Mihomo YAML 的订阅地址"
         }
         throw IllegalArgumentException(
             "配置不是有效的 Clash/Mihomo YAML，未保存；请检查订阅地址或文件格式"
