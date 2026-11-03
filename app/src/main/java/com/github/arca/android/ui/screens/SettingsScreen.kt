@@ -3,7 +3,6 @@ package com.github.arca.android.ui.screens
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
-import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -91,6 +90,7 @@ fun SettingsScreen(
     onAllowLanChanged: (Boolean) -> Unit,
     onNavigateToConfigurationCenter: () -> Unit,
     onNavigateToLogs: () -> Unit,
+    onNavigateToConnections: () -> Unit = {},
     onNavigateToAppearance: () -> Unit = {},
     onNavigateToDns: () -> Unit = {},
     onNavigateToGlassEffects: () -> Unit = {},
@@ -155,7 +155,7 @@ fun SettingsScreen(
                 CupertinoCell(
                     title = "开机自启动",
                     icon = Icons.Default.PowerSettingsNew,
-                    iconBg = Color(0xFF34C759),
+                    iconBg = AppPalette.iconGreen,
                     trailing = {
                         CupertinoSwitch(
                             checked = bootOnStartup,
@@ -168,7 +168,7 @@ fun SettingsScreen(
                 CupertinoCell(
                     title = "局域网共享",
                     icon = Icons.Default.WifiTethering,
-                    iconBg = Color(0xFF32ADE6),
+                    iconBg = AppPalette.iconSky,
                     trailing = {
                         CupertinoSwitch(
                             checked = allowLan,
@@ -182,7 +182,7 @@ fun SettingsScreen(
                     title = "系统 VPN",
                     value = "始终开启",
                     icon = Icons.Default.Security,
-                    iconBg = Color(0xFFFF9500),
+                    iconBg = AppPalette.iconOrange,
                     showChevron = true,
                     onClick = {
                         runCatching {
@@ -197,7 +197,7 @@ fun SettingsScreen(
                     title = AppStrings.get("settings_profile_hot_switch", lang),
                     subtitle = AppStrings.get("settings_profile_hot_switch_desc", lang),
                     icon = Icons.Default.FlashOn,
-                    iconBg = Color(0xFFFF9F0A),
+                    iconBg = AppPalette.iconAmber,
                     trailing = {
                         CupertinoSwitch(checked = profileHotSwitchEnabled, onCheckedChange = onProfileHotSwitchChanged)
                     },
@@ -207,7 +207,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            SettingsGroupHeader("network-tun", "网络与 TUN", "隧道协议、地址族与网络参数", Icons.Default.Public, Color(0xFF30B0C7))
+            SettingsGroupHeader("network-tun", "网络与 TUN", "隧道协议、地址族与网络参数", Icons.Default.Public, AppPalette.iconTeal)
             Spacer(Modifier.height(8.dp))
             CupertinoGroupedSection {
                 CupertinoCell(title = "IPv6", subtitle = AppStrings.get("settings_ipv6_desc", lang), trailing = {
@@ -229,14 +229,14 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(20.dp))
-            SettingsGroupHeader("routing-services", "分流与服务", "配置资源、DNS 与规则入口", Icons.Default.FolderZip, Color(0xFFAF52DE))
+            SettingsGroupHeader("routing-services", "分流与服务", "配置资源、DNS 与规则入口", Icons.Default.FolderZip, AppPalette.iconPurple)
             Spacer(Modifier.height(8.dp))
             CupertinoGroupedSection {
                 CupertinoCell(
                     title = "配置中心",
                     subtitle = "配置文件、订阅、脚本与路由资源",
                     icon = Icons.Default.FolderZip,
-                    iconBg = Color(0xFFAF52DE),
+                    iconBg = AppPalette.iconPurple,
                     showChevron = true,
                     onClick = onNavigateToConfigurationCenter
                 )
@@ -245,7 +245,7 @@ fun SettingsScreen(
                     title = "DNS 设置",
                     value = if (fakeIpEnabled) "Fake-IP" else "Redir-Host",
                     icon = Icons.Default.Public,
-                    iconBg = Color(0xFF30B0C7),
+                    iconBg = AppPalette.iconTeal,
                     showChevron = true,
                     onClick = onNavigateToDns
                 )
@@ -255,7 +255,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Settings controls stay compact; only the five major groups receive a spacious glass header.
-            SettingsGroupHeader("preferences-debug", "个性化与调试", "外观、交互反馈与调试工具", Icons.Default.Palette, Color(0xFFFF2D55))
+            SettingsGroupHeader("preferences-debug", "个性化与调试", "外观、交互反馈与调试工具", Icons.Default.Palette, AppPalette.iconPink)
             Spacer(Modifier.height(8.dp))
             CupertinoGroupedSection {
                 CupertinoCell(
@@ -266,7 +266,7 @@ fun SettingsScreen(
                         ThemeMode.DARK -> "深色"
                     },
                     icon = Icons.Default.Palette,
-                    iconBg = Color(0xFFFF2D55),
+                    iconBg = AppPalette.iconPink,
                     showChevron = true,
                     onClick = onNavigateToAppearance
                 )
@@ -280,7 +280,7 @@ fun SettingsScreen(
                         ShortcutTouchVariant.BuoyantSpring -> "C"
                     },
                     icon = Icons.Default.TouchApp,
-                    iconBg = Color(0xFF007AFF),
+                    iconBg = AppPalette.iconBlue,
                     showChevron = true,
                     onClick = { showShortcutTouchDialog = true }
                 )
@@ -289,7 +289,7 @@ fun SettingsScreen(
                     title = "玻璃效果",
                     subtitle = "折射、色散、部位覆盖与跟手倾斜",
                     icon = Icons.Default.AutoAwesome,
-                    iconBg = Color(0xFF7B61D1),
+                    iconBg = AppPalette.iconLavender,
                     showChevron = true,
                     onClick = onNavigateToGlassEffects
                 )
@@ -301,9 +301,18 @@ fun SettingsScreen(
                 })
                 CupertinoDivider()
                 CupertinoCell(
+                    title = "活动连接",
+                    subtitle = "查看实时连接，可单条或全部断开",
+                    icon = Icons.Default.SwapHoriz,
+                    iconBg = AppPalette.iconTeal,
+                    showChevron = true,
+                    onClick = onNavigateToConnections
+                )
+                CupertinoDivider()
+                CupertinoCell(
                     title = "核心日志",
                     icon = Icons.Default.Terminal,
-                    iconBg = Color(0xFF8E8E93),
+                    iconBg = AppPalette.iconGray,
                     showChevron = true,
                     onClick = onNavigateToLogs
                 )
@@ -312,7 +321,7 @@ fun SettingsScreen(
                     title = "日志级别",
                     value = currentLogLevel.uppercase(),
                     icon = Icons.Default.Tune,
-                    iconBg = Color(0xFF5856D6),
+                    iconBg = AppPalette.iconIndigo,
                     showChevron = true,
                     onClick = { showLogLevelDialog = true }
                 )
@@ -320,28 +329,28 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            SettingsGroupHeader("maintenance-about", "维护与关于", "应用与核心版本、维护操作", Icons.Default.SystemUpdate, Color(0xFF34C759))
+            SettingsGroupHeader("maintenance-about", "维护与关于", "应用与核心版本、维护操作", Icons.Default.SystemUpdate, AppPalette.iconGreen)
             Spacer(Modifier.height(8.dp))
             CupertinoGroupedSection {
                 CupertinoCell(
                     title = "应用版本",
                     value = "v$installedVersion",
                     icon = Icons.Default.SystemUpdate,
-                    iconBg = Color(0xFF34C759)
+                    iconBg = AppPalette.iconGreen
                 )
                 CupertinoDivider()
                 CupertinoCell(
                     title = "核心版本",
                     value = coreVersion.ifBlank { "v1.18.x" },
                     icon = Icons.Default.Memory,
-                    iconBg = Color(0xFF8E8E93),
+                    iconBg = AppPalette.iconGray,
                     showChevron = false
                 )
                 CupertinoDivider()
                 CupertinoCell(
                     title = "重置核心状态",
                     icon = Icons.Default.RestartAlt,
-                    iconBg = Color(0xFFFF3B30),
+                    iconBg = AppPalette.iconRed,
                     showChevron = true,
                     onClick = { showResetDialog = true }
                 )
@@ -531,7 +540,7 @@ fun SettingsScreen(
                     showResetDialog = false
                     scope.launch {
                         withContext(Dispatchers.IO) { ClashCore.reset() }
-                        Toast.makeText(context, "核心已重置", Toast.LENGTH_SHORT).show()
+                        AppNotice.show("核心已重置")
                     }
                 }) {
                     Text("重置", color = IosRed, fontWeight = FontWeight.Bold)

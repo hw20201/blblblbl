@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -168,7 +167,7 @@ fun RulesScreen(
                     val typeColor = when {
                         rule.type.contains("DOMAIN", ignoreCase = true) -> IosBlue
                         rule.type.contains("GEOIP", ignoreCase = true) -> IosOrange
-                        rule.type.contains("IP-CIDR", ignoreCase = true) -> Color(0xFF5856D6)
+                        rule.type.contains("IP-CIDR", ignoreCase = true) -> AppPalette.iconIndigo
                         rule.type.contains("RULE-SET", ignoreCase = true) -> IosGreen
                         else -> LoonTextSecondary
                     }
@@ -320,7 +319,7 @@ fun RulesScreen(
                     Button(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(fullRuleText))
-                            Toast.makeText(context, "已复制完整规则", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("已复制完整规则")
                             inspectedRule = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = IosBlue),

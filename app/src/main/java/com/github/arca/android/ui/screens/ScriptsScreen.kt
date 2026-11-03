@@ -1,7 +1,6 @@
 package com.github.arca.android.ui.screens
 
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -109,12 +108,12 @@ fun ScriptsScreen(
                         code = content
                     )
                     refresh()
-                    Toast.makeText(context, "已导入本地脚本: $scriptName", Toast.LENGTH_SHORT).show()
+                    AppNotice.show("已导入本地脚本: $scriptName")
                 } else {
-                    Toast.makeText(context, "脚本内容为空", Toast.LENGTH_SHORT).show()
+                    AppNotice.show("脚本内容为空")
                 }
             }.onFailure {
-                Toast.makeText(context, "读取脚本失败: ${it.message}", Toast.LENGTH_SHORT).show()
+                AppNotice.show("读取脚本失败: ${it.message}")
             }
         }
     }
@@ -169,7 +168,7 @@ fun ScriptsScreen(
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = null,
-                            tint = Color(0xFF5856D6),
+                            tint = AppPalette.iconIndigo,
                             modifier = Modifier.size(34.dp)
                         )
                     }
@@ -271,9 +270,9 @@ fun ScriptsScreen(
                                                             updatingScriptIds = updatingScriptIds - script.id
                                                             if (res.isSuccess) {
                                                                 refresh()
-                                                                Toast.makeText(context, "脚本更新成功", Toast.LENGTH_SHORT).show()
+                                                                AppNotice.show("脚本更新成功")
                                                             } else {
-                                                                Toast.makeText(context, "更新失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                                                                AppNotice.show("更新失败: ${res.exceptionOrNull()?.message}")
                                                             }
                                                         }
                                                     }
@@ -432,7 +431,7 @@ fun ScriptsScreen(
                         ScriptManager.saveLocalScript(context, name, "", "http-response", defaultCode)
                         refresh()
                         showCreateDialog = false
-                        Toast.makeText(context, "脚本创建成功", Toast.LENGTH_SHORT).show()
+                        AppNotice.show("脚本创建成功")
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = IosBlue),
@@ -493,9 +492,9 @@ fun ScriptsScreen(
                                 if (res.isSuccess) {
                                     refresh()
                                     showImportUrlDialog = false
-                                    Toast.makeText(context, "导入成功", Toast.LENGTH_SHORT).show()
+                                    AppNotice.show("导入成功")
                                 } else {
-                                    Toast.makeText(context, "下载失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                                    AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}")
                                 }
                             }
                         }
@@ -574,12 +573,12 @@ fun ScriptsScreen(
                                 ScriptManager.saveLocalScript(context, tplName, "", "rule", tplCode)
                                 refresh()
                                 showTemplateDialog = false
-                                Toast.makeText(context, "已基于模板创建: $tplName", Toast.LENGTH_SHORT).show()
+                                AppNotice.show("已基于模板创建: $tplName")
                             }
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFAF52DE), modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AppPalette.iconPurple, modifier = Modifier.size(22.dp))
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(tplName, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
@@ -637,7 +636,7 @@ fun ScriptsScreen(
                             ScriptManager.updateScriptCode(context, target, scriptCodeInput)
                             refresh()
                             editingScript = null
-                            Toast.makeText(context, "代码已保存", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("代码已保存")
                         }
                     ) {
                         Text("保存", color = IosBlue, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -697,7 +696,7 @@ fun ScriptsScreen(
                         ScriptManager.deleteScript(context, target.id)
                         refresh()
                         deleteConfirmScript = null
-                        Toast.makeText(context, "脚本已删除", Toast.LENGTH_SHORT).show()
+                        AppNotice.show("脚本已删除")
                     }
                 ) {
                     Text("删除", color = IosRed, fontWeight = FontWeight.Bold)

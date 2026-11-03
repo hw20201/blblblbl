@@ -360,6 +360,32 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeVerityPublicKeys(JNIEnv *en
 }
 
 JNIEXPORT jstring JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativeQueryConnections(JNIEnv *env, jobject thiz) {
+    TRACE_METHOD();
+
+    scoped_string response = queryConnections();
+
+    return new_string(response);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativeCloseConnection(JNIEnv *env, jobject thiz,
+                                                                    jstring id) {
+    TRACE_METHOD();
+
+    scoped_string _id = get_string(id);
+
+    return (jboolean) closeConnection(_id);
+}
+
+JNIEXPORT void JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativeCloseAllConnections(JNIEnv *env, jobject thiz) {
+    TRACE_METHOD();
+
+    closeAllConnections();
+}
+
+JNIEXPORT jstring JNICALL
 Java_com_github_kr328_clash_core_bridge_Bridge_nativeQueryProviders(JNIEnv *env, jobject thiz) {
     TRACE_METHOD();
 

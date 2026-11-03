@@ -268,8 +268,8 @@ fun DashboardScreen(
     } else {
         Brush.verticalGradient(
             colors = listOf(
-                Color(0xFFFFF6EE),
-                Color(0xFFF9F9FD),
+                AppPalette.dashboardWashTop,
+                AppPalette.dashboardWashMid,
                 LoonBg
             ),
             startY = 0f,
@@ -561,7 +561,7 @@ fun DashboardScreen(
             if (vpnState.error != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Surface(
-                    color = Color(0xFFFFEBEE),
+                    color = AppPalette.dangerSoftBg,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -886,13 +886,7 @@ fun DashboardScreen(
                                                     color = LoonOrange
                                                 )
                                             } else {
-                                                val delayColor = when {
-                                                    proxy.delay == -2 -> RedDanger
-                                                    proxy.delay in 1..250 -> LoonGreen
-                                                    proxy.delay in 251..600 -> Color(0xFFF59E0B)
-                                                    proxy.delay > 600 -> RedDanger
-                                                    else -> LoonTextMuted
-                                                }
+                                                val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
                                                 val delayText = when {
                                                     proxy.delay == -2 -> "超时"
                                                     proxy.delay > 0 -> "${proxy.delay} ms"

@@ -6,7 +6,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -34,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.github.arca.android.ui.theme.LocalAppLanguage
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.arca.android.core.ClashCore
@@ -81,6 +81,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import com.github.arca.android.ui.components.AppNotice
+import com.github.arca.android.ui.components.AppNoticeHost
 
 enum class SubScreen {
     TRAFFIC,
@@ -95,7 +97,8 @@ enum class SubScreen {
     REQUESTS,
     NETWORK_SHARE,
     APPEARANCE,
-    GLASS_EFFECTS
+    GLASS_EFFECTS,
+    CONNECTIONS
 }
 
 /** Persists the current sub-screen across configuration changes. */
@@ -115,7 +118,7 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK) {
             MihomoVpnService.start(this)
         } else {
-            Toast.makeText(this, "需要授予 VPN 权限才能建立代理", Toast.LENGTH_SHORT).show()
+            AppNotice.show("需要授予 VPN 权限才能建立代理")
         }
     }
 
@@ -123,8 +126,32 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* optional handler */ }
 
+    /** Link handed over by clash://install-config; confirmed by the user before downloading. */
+    private val pendingSubscriptionLink = kotlinx.coroutines.flow.MutableStateFlow<SubscriptionLink?>(null)
+
+    private fun handleIncomingIntent(intent: android.content.Intent?) {
+        val data = intent?.data ?: return
+        val scheme = data.scheme?.lowercase() ?: return
+        if (scheme !in SubscriptionLinkParser.SCHEMES) return
+        val link = SubscriptionLinkParser.parse(data)
+        if (link == null) {
+            AppNotice.error("无法识别订阅链接：仅支持 HTTPS 订阅地址")
+        } else {
+            pendingSubscriptionLink.value = link
+        }
+        // Do not re-trigger the import on rotation / recreation.
+        intent?.data = null
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) handleIncomingIntent(intent)
         // Pages draw into the system-bar areas; each screen owns its own inset handling.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         settingsManager = SettingsManager(this)
@@ -669,9 +696,13 @@ class MainActivity : ComponentActivity() {
         // Dynamic refresh when VPN is connected
         LaunchedEffect(vpnState.status) {
             if (vpnState.status == VpnState.Status.RUNNING) {
-                while (isActive) {
-                    refreshProxiesOnline()
-                    delay(3000)
+                // Only poll while the UI is visible: a backgrounded / screen-off Activity keeps its
+                // composition alive, and this loop used to keep crossing JNI every 3 s all night.
+                lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                    while (isActive) {
+                        refreshProxiesOnline()
+                        delay(3000)
+                    }
                 }
             } else if (vpnState.status == VpnState.Status.STOPPED) {
                 liveGroupMap = emptyMap()
@@ -705,9 +736,9 @@ class MainActivity : ComponentActivity() {
                         if (res.isSuccess) {
                             val imported = res.getOrNull()
                             reloadProfiles()
-                            Toast.makeText(this@MainActivity, "成功导入配置: ${imported?.name}", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("成功导入配置: ${imported?.name}")
                         } else {
-                            Toast.makeText(this@MainActivity, "导入失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                            AppNotice.show("导入失败: ${res.exceptionOrNull()?.message}", long = true)
                         }
                     }
                 }
@@ -726,7 +757,12 @@ class MainActivity : ComponentActivity() {
             handleSubScreenBack()
         }
 
+        // Each recorded background owns its own Kyant layer. Sharing one LayerBackdrop between the
+        // tab background and the sub-screen overlay let the overlay take over (and on exit release)
+        // the recording, so tab glass went blank after returning from a shortcut, and a draw during
+        // the exit transition could touch a released layer.
         val kyantBackdrop = rememberLayerBackdrop()
+        val overlayKyantBackdrop = rememberLayerBackdrop()
 
         CompositionLocalProvider(
             LocalAppLanguage provides appLanguage,
@@ -960,7 +996,7 @@ class MainActivity : ComponentActivity() {
                                             withContext(Dispatchers.Main) {
                                                 unifiedDelayEnabled = previous
                                                 settingsManager.unifiedDelayEnabled = previous
-                                                Toast.makeText(this@MainActivity, "统一延迟配置未能应用：${error.message}", Toast.LENGTH_LONG).show()
+                                                AppNotice.show("统一延迟配置未能应用：${error.message}", long = true)
                                             }
                                         }
                                     }
@@ -987,6 +1023,7 @@ class MainActivity : ComponentActivity() {
                                 currentSubScreen = SubScreen.CONFIGURATION_CENTER
                             },
                             onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
+                            onNavigateToConnections = { currentSubScreen = SubScreen.CONNECTIONS },
                             onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                             onNavigateToDns = { currentSubScreen = SubScreen.DNS },
                             onNavigateToGlassEffects = { currentSubScreen = SubScreen.GLASS_EFFECTS }
@@ -1109,7 +1146,8 @@ class MainActivity : ComponentActivity() {
                     label = "SubScreenOverlayTransition"
                 ) { subScreen ->
                     if (subScreen != null) {
-                    NexusGlassBackground(palette = glassPalette, backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(overlayWallpaperScene) else Modifier, kyantBackdrop = kyantBackdrop) {
+                    NexusGlassBackground(palette = glassPalette, backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(overlayWallpaperScene) else Modifier, kyantBackdrop = overlayKyantBackdrop) {
+                    CompositionLocalProvider(LocalKyantBackdrop provides overlayKyantBackdrop) {
                         when (subScreen) {
                             SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
                                 onNavigateToProfiles = {
@@ -1157,13 +1195,9 @@ class MainActivity : ComponentActivity() {
                                                 parseActiveProfile()
                                                 liveGroupMap = emptyMap()
                                                 if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
-                                                Toast.makeText(
-                                                    this@MainActivity,
-                                                    if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                AppNotice.show(if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}")
                                             } else {
-                                                Toast.makeText(this@MainActivity, "配置切换失败，仍保留当前配置：${loaded.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                AppNotice.show("配置切换失败，仍保留当前配置：${loaded.exceptionOrNull()?.message}", long = true)
                                             }
                                         }
                                     },
@@ -1172,9 +1206,9 @@ class MainActivity : ComponentActivity() {
                                             val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
                                             if (res.isSuccess) {
                                                 reloadProfiles()
-                                                Toast.makeText(this@MainActivity, "订阅添加成功", Toast.LENGTH_SHORT).show()
+                                                AppNotice.show("订阅添加成功")
                                             } else {
-                                                Toast.makeText(this@MainActivity, "下载失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}", long = true)
                                             }
                                         }
                                     },
@@ -1190,11 +1224,26 @@ class MainActivity : ComponentActivity() {
                                                 val res = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url)
                                                 if (res.isSuccess) {
                                                     reloadProfiles()
-                                                    Toast.makeText(this@MainActivity, "订阅更新成功", Toast.LENGTH_SHORT).show()
+                                                    AppNotice.show("订阅更新成功")
                                                 } else {
-                                                    Toast.makeText(this@MainActivity, "更新失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                    AppNotice.show("更新失败: ${res.exceptionOrNull()?.message}", long = true)
                                                 }
                                             }
+                                        }
+                                    },
+                                    onRefreshAllSubscriptions = {
+                                        val remote = profiles.filter { !it.url.isNullOrBlank() }
+                                        if (remote.isEmpty()) {
+                                            AppNotice.info("没有可更新的远程订阅")
+                                        } else {
+                                            var failed = 0
+                                            for (p in remote) {
+                                                val res = ConfigManager.updateSubscription(this@MainActivity, p.id, p.name, p.url!!)
+                                                if (res.isFailure) failed++
+                                            }
+                                            reloadProfiles()
+                                            if (failed == 0) AppNotice.success("已更新 ${remote.size} 个订阅")
+                                            else AppNotice.error("${remote.size - failed} 个成功，$failed 个更新失败")
                                         }
                                     },
                                     onDeleteProfile = { profile ->
@@ -1296,6 +1345,10 @@ class MainActivity : ComponentActivity() {
                             SubScreen.TRAFFIC -> TrafficRecordsScreen(
                                 onBack = { currentSubScreen = null }
                             )
+                            SubScreen.CONNECTIONS -> ConnectionsScreen(
+                                vpnState = vpnState,
+                                onBack = { currentSubScreen = null }
+                            )
                             SubScreen.REQUESTS -> {
                                 RequestLogsScreen(
                                     vpnState = vpnState,
@@ -1371,6 +1424,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                    } // overlay Kyant provider
                     }
                 }
             }
@@ -1411,6 +1465,29 @@ class MainActivity : ComponentActivity() {
                     lens = navigationLens
                 )
             }
+            // One-click import confirmation (clash://install-config).
+            val incomingLink by pendingSubscriptionLink.collectAsState()
+            incomingLink?.let { link ->
+                SubscriptionImportDialog(
+                    link = link,
+                    onDismiss = { pendingSubscriptionLink.value = null },
+                    onConfirm = { name ->
+                        pendingSubscriptionLink.value = null
+                        lifecycleScope.launch {
+                            AppNotice.info("正在下载订阅…")
+                            val res = ConfigManager.downloadSubscription(this@MainActivity, link.url, name)
+                            if (res.isSuccess) {
+                                reloadProfiles()
+                                AppNotice.success("订阅已导入：${res.getOrNull()?.name}")
+                            } else {
+                                AppNotice.error("导入失败：${res.exceptionOrNull()?.message}")
+                            }
+                        }
+                    }
+                )
+            }
+            // Unified glass notices (replaces Toast); drawn above pages and the dock.
+            AppNoticeHost()
         } // scene + dock overlay
         } // end shared background motion
         } // end ProvideGlassTheme

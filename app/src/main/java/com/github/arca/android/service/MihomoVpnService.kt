@@ -69,6 +69,7 @@ class MihomoVpnService : VpnService() {
         const val ACTION_RESTART = "com.github.arca.android.service.RESTART"
         private const val NOTIFICATION_CHANNEL_ID = "mihomo_vpn_service"
         private const val NOTIFICATION_ID = 1001
+        private const val SCREEN_OFF_SAMPLE_MS = 30_000L
 
         private val _vpnState = MutableStateFlow(VpnState())
         val vpnState = _vpnState.asStateFlow()
@@ -137,6 +138,7 @@ class MihomoVpnService : VpnService() {
         super.onCreate()
         com.github.arca.android.data.TrafficRecordRepository.initialize(this)
         createNotificationChannel()
+        registerScreenReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -327,10 +329,69 @@ class MihomoVpnService : VpnService() {
         }
     }
 
+    /**
+     * Light power saving: while the screen is off the core keeps routing normally (native suspend
+     * is deliberately not used, it would stall new connections on a locked device), but the
+     * once-per-second JNI sampling, speed StateFlow and notification rebuild pause. Proxy traffic
+     * accounting continues at a slow cadence so daily records stay accurate.
+     */
+    @Volatile
+    private var screenInteractive = true
+    private var screenReceiverRegistered = false
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    screenInteractive = false
+                    // Return idle heap to the OS once instead of keeping it during sleep.
+                    if (_vpnState.value.status == VpnState.Status.RUNNING) {
+                        runCatching { com.github.kr328.clash.core.bridge.Bridge.nativeForceGc() }
+                    }
+                }
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                    if (!screenInteractive) {
+                        screenInteractive = true
+                        // Wake the sampler immediately so the notification is fresh on unlock.
+                        if (_vpnState.value.status == VpnState.Status.RUNNING) startTrafficMonitor()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun registerScreenReceiver() {
+        if (screenReceiverRegistered) return
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this, screenReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            screenReceiverRegistered = true
+        }.onFailure { Log.w(TAG, "Screen receiver unavailable; power saving disabled", it) }
+        screenInteractive = (getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive ?: true
+    }
+
+    private fun unregisterScreenReceiver() {
+        if (!screenReceiverRegistered) return
+        runCatching { unregisterReceiver(screenReceiver) }
+        screenReceiverRegistered = false
+    }
+
     private fun startTrafficMonitor() {
         trafficMonitorJob?.cancel()
         trafficMonitorJob = serviceScope.launch(Dispatchers.Default) {
+            var lastNotified = ""
             while (isActive && _vpnState.value.status == VpnState.Status.RUNNING) {
+                if (!screenInteractive) {
+                    delay(SCREEN_OFF_SAMPLE_MS)
+                    val proxyTotal = ClashCore.queryProxyTrafficTotal()
+                    com.github.arca.android.data.TrafficRecordRepository.recordProxy(proxyTotal)
+                    continue
+                }
                 delay(1000)
                 val now = ClashCore.queryTrafficNow()
                 val proxyTotal = ClashCore.queryProxyTrafficTotal()
@@ -340,7 +401,12 @@ class MihomoVpnService : VpnService() {
                 val downStr = now.trafficSpeedDownload()
 
                 _trafficMetrics.value = TrafficMetrics(upSpeed = upStr, downSpeed = downStr)
-                updateNotification("\u2191 $upStr   \u2193 $downStr")
+                val text = "\u2191 $upStr   \u2193 $downStr"
+                // Skip identical rebuilds (idle link) - NotificationManager IPC is not free.
+                if (text != lastNotified) {
+                    updateNotification(text)
+                    lastNotified = text
+                }
             }
         }
     }
@@ -468,6 +534,7 @@ class MihomoVpnService : VpnService() {
         stopRequested = true
         // The service can be destroyed without ACTION_STOP (process death, low memory), so the
         // native tunnel and the shared state are cleaned up here as well.
+        unregisterScreenReceiver()
         trafficMonitorJob?.cancel()
         startJob?.cancel()
         serviceScope.cancel()

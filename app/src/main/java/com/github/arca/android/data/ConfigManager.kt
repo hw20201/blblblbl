@@ -52,6 +52,31 @@ object ConfigManager {
         "geodata-mode", "geo-auto-update", "geox-url", "tcp-concurrent"
     )
 
+    /** Bundled core release; used when the native library has not been loaded yet. */
+    private const val BUNDLED_CORE_VERSION = "v1.19.33"
+
+    @Volatile
+    private var cachedUserAgent: String? = null
+
+    /**
+     * Real core version in the subscription UA. Panels choose the delivered format by these tokens
+     * (`clash.meta` / `mihomo`), so advertising the old 1.18 build could get Meta-only fields dropped.
+     */
+    internal fun subscriptionUserAgent(): String = cachedUserAgent ?: run {
+        val raw = runCatching { com.github.arca.android.core.ClashCore.getCoreVersion() }.getOrNull().orEmpty()
+        val version = coreReleaseFromBuildString(raw)
+        val plain = version.removePrefix("v")
+        "clash.meta/$plain mihomo/$plain ClashMeta/$plain Clash".also {
+            // Only cache a value read from the loaded core; retry later otherwise.
+            if (version != BUNDLED_CORE_VERSION || raw.startsWith("v")) cachedUserAgent = it
+        }
+    }
+
+    /** "v1.19.33_3f27ef3_native-mips2" -> "v1.19.33"; anything unparsable -> bundled version. */
+    internal fun coreReleaseFromBuildString(raw: String): String =
+        Regex("""^v?(\d+\.\d+\.\d+)""").find(raw.trim())?.groupValues?.get(1)?.let { "v$it" }
+            ?: BUNDLED_CORE_VERSION
+
     fun parseSubscriptionUserInfo(header: String?): SubscriptionUserInfo? {
         if (header.isNullOrBlank()) return null
         var upload = 0L
@@ -165,7 +190,7 @@ object ConfigManager {
             requireSecureRemoteUrl(url)
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "ClashMeta/1.18.0 Mihomo/1.18.0 Clash/1.0.0")
+                .header("User-Agent", subscriptionUserAgent())
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
@@ -210,7 +235,7 @@ object ConfigManager {
             requireSecureRemoteUrl(url)
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "ClashMeta/1.18.0 Mihomo/1.18.0 Clash/1.0.0")
+                .header("User-Agent", subscriptionUserAgent())
                 .build()
 
             httpClient.newCall(request).execute().use { response ->

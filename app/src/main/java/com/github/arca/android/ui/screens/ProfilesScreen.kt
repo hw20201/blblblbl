@@ -1,9 +1,12 @@
 package com.github.arca.android.ui.screens
 
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -97,7 +100,9 @@ fun ProfilesScreen(
     onRefreshSubscription: (ProfileItem) -> Unit = onUpdateProfile,
     onImportLocalFile: (() -> Unit)? = null,
     onReorderProfiles: ((List<ProfileItem>) -> Unit)? = null,
-    onNavigateToOverride: ((ProfileItem) -> Unit)? = null
+    onNavigateToOverride: ((ProfileItem) -> Unit)? = null,
+    /** Pull-to-refresh: updates every remote subscription; suspends until all finish. */
+    onRefreshAllSubscriptions: (suspend () -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -115,6 +120,8 @@ fun ProfilesScreen(
     var draggedProfileId by remember { mutableStateOf<String?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     val lazyListState = rememberLazyListState()
+    val pullState = rememberPullToRefreshState()
+    var pullRefreshing by remember { mutableStateOf(false) }
 
     // File Picker for replacing profile
     var targetReplacingProfile by remember { mutableStateOf<ProfileItem?>(null) }
@@ -127,7 +134,7 @@ fun ProfilesScreen(
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val content = stream.bufferedReader().readText()
                     ConfigManager.saveProfileContent(context, target.id, content)
-                    Toast.makeText(context, "已成功替换配置文件内容", Toast.LENGTH_SHORT).show()
+                    AppNotice.show("已成功替换配置文件内容")
                     val updated = target.copy(lastUpdated = System.currentTimeMillis())
                     onUpdateProfile(updated)
                     if (target.id == selectedProfileId) {
@@ -135,7 +142,7 @@ fun ProfilesScreen(
                     }
                 }
             }.onFailure {
-                Toast.makeText(context, "读取本地文件失败: ${it.message}", Toast.LENGTH_SHORT).show()
+                AppNotice.show("读取本地文件失败: ${it.message}")
             }
         }
         targetReplacingProfile = null
@@ -232,11 +239,34 @@ fun ProfilesScreen(
                 }
             }
         } else {
+            PullToRefreshBox(
+                isRefreshing = pullRefreshing,
+                onRefresh = {
+                    val refreshAll = onRefreshAllSubscriptions
+                    if (refreshAll != null && !pullRefreshing) {
+                        scope.launch {
+                            pullRefreshing = true
+                            try { refreshAll() } finally { pullRefreshing = false }
+                        }
+                    }
+                },
+                state = pullState,
+                modifier = Modifier.fillMaxSize(),
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullState,
+                        isRefreshing = pullRefreshing,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        containerColor = LoonCard,
+                        color = IosBlue
+                    )
+                }
+            ) {
             LazyColumn(
                 state = lazyListState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .bounceOverscroll()
+                    .bounceOverscroll(allowTop = false)
                     .padding(horizontal = 16.dp),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -476,6 +506,7 @@ fun ProfilesScreen(
                     }
                 }
             }
+            } // pull-to-refresh
         }
     }
 
@@ -572,7 +603,7 @@ fun ProfilesScreen(
                                     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
                                     if (text.isNotBlank()) {
                                         subUrl = text
-                                        Toast.makeText(context, "已粘贴剪贴板内容", Toast.LENGTH_SHORT).show()
+                                        AppNotice.show("已粘贴剪贴板内容")
                                     }
                                 }
                             },
@@ -721,7 +752,7 @@ fun ProfilesScreen(
                     CupertinoCell(
                         title = "编辑配置参数",
                         icon = Icons.Default.Tune,
-                        iconBg = Color(0xFFFF9500),
+                        iconBg = AppPalette.iconOrange,
                         onClick = {
                             actionSheetProfile = null
                             editSheetProfile = target
@@ -732,7 +763,7 @@ fun ProfilesScreen(
                     CupertinoCell(
                         title = "在线查看 / 编辑 YAML",
                         icon = Icons.Default.Code,
-                        iconBg = Color(0xFF5856D6),
+                        iconBg = AppPalette.iconIndigo,
                         onClick = {
                             actionSheetProfile = null
                             yamlEditorProfile = target
@@ -743,7 +774,7 @@ fun ProfilesScreen(
                     CupertinoCell(
                         title = "JS 脚本覆写",
                         icon = Icons.Default.Javascript,
-                        iconBg = Color(0xFFAF52DE),
+                        iconBg = AppPalette.iconPurple,
                         onClick = {
                             actionSheetProfile = null
                             onNavigateToOverride?.invoke(target)
@@ -754,7 +785,7 @@ fun ProfilesScreen(
                     CupertinoCell(
                         title = "替换为本地文件",
                         icon = Icons.Default.FileUpload,
-                        iconBg = Color(0xFF32ADE6),
+                        iconBg = AppPalette.iconSky,
                         onClick = {
                             actionSheetProfile = null
                             targetReplacingProfile = target
@@ -941,7 +972,7 @@ fun ProfilesScreen(
                             }
                             onUpdateProfile(updated)
                             editSheetProfile = null
-                            Toast.makeText(context, "配置修改已保存", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("配置修改已保存")
                         },
                     color = IosBlue
                 ) {
@@ -996,7 +1027,7 @@ fun ProfilesScreen(
                             .clickable {
                                 val ok = ConfigManager.saveProfileContent(context, target.id, yamlText)
                                 if (ok) {
-                                    Toast.makeText(context, "配置内容已保存", Toast.LENGTH_SHORT).show()
+                                    AppNotice.show("配置内容已保存")
                                     val updated = target.copy(lastUpdated = System.currentTimeMillis())
                                     onUpdateProfile(updated)
                                     if (target.id == selectedProfileId) {
@@ -1004,7 +1035,7 @@ fun ProfilesScreen(
                                     }
                                     yamlEditorProfile = null
                                 } else {
-                                    Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                                    AppNotice.show("保存失败")
                                 }
                             },
                         color = IosBlue

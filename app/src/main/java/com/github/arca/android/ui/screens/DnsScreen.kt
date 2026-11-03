@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,7 +193,7 @@ fun DnsScreen(
                                             }
                                         }
                                     }
-                                    Toast.makeText(context, "已成功刷新 Fake-IP 映射与 DNS 缓存", Toast.LENGTH_SHORT).show()
+                                    AppNotice.show("已成功刷新 Fake-IP 映射与 DNS 缓存")
                                 }
                         ) {
                             Row(
@@ -287,7 +286,7 @@ fun DnsScreen(
                                             if (lastQueryResult!!.isFakeIp) {
                                                 Text(
                                                     text = "Fake-IP",
-                                                    color = Color(0xFFF59E0B),
+                                                    color = AppPalette.iconYellowAmber,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     modifier = Modifier.padding(end = 6.dp)
@@ -332,8 +331,8 @@ fun DnsScreen(
                             Triple("119.29.29.29", "Tencent DNSPod (国内解析)", LoonGreen),
                             Triple("https://doh.pub/dns-query", "DNSPod DoH 安全加密", LoonBlue),
                             Triple("https://223.5.5.5/dns-query", "AliDNS DoH 安全加密", LoonBlue),
-                            Triple("1.1.1.1", "Cloudflare DNS (国外回退)", Color(0xFFF59E0B)),
-                            Triple("8.8.8.8", "Google DNS (国外回退)", Color(0xFFF59E0B))
+                            Triple("1.1.1.1", "Cloudflare DNS (国外回退)", AppPalette.iconYellowAmber),
+                            Triple("8.8.8.8", "Google DNS (国外回退)", AppPalette.iconYellowAmber)
                         )
 
                         servers.forEach { (ip, label, badgeColor) ->

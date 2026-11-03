@@ -1,7 +1,6 @@
 package com.github.arca.android.ui.screens
 
 import android.content.Intent
-import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -136,7 +135,7 @@ fun LogsScreen(
                             }
                             context.startActivity(Intent.createChooser(sendIntent, "导出日志"))
                         } else {
-                            Toast.makeText(context, "当前无日志可导出", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("当前无日志可导出")
                         }
                     },
                     modifier = Modifier.size(34.dp)
@@ -439,7 +438,7 @@ fun LogsScreen(
                     IconButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(entry.message))
-                            Toast.makeText(context, "已复制单条日志", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("已复制单条日志")
                             activeDetailEntry = null
                         }
                     ) {
@@ -490,7 +489,7 @@ fun LogsScreen(
                     onClick = {
                         LogRepository.clear()
                         showClearConfirmDialog = false
-                        Toast.makeText(context, "日志已清空", Toast.LENGTH_SHORT).show()
+                        AppNotice.show("日志已清空")
                     }
                 ) {
                     Text("清空", color = IosRed, fontWeight = FontWeight.Bold)

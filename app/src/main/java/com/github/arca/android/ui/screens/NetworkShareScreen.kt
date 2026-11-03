@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -98,7 +97,7 @@ fun NetworkShareScreen(
 
     fun copyToClipboard(label: String, text: String) {
         clipboardManager.setText(AnnotatedString(text))
-        Toast.makeText(context, "已复制 $label 到剪贴板", Toast.LENGTH_SHORT).show()
+        AppNotice.show("已复制 $label 到剪贴板")
     }
 
     // The same scrolling surface reaches behind the transparent status/navigation bars;

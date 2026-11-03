@@ -33,6 +33,7 @@ import com.github.arca.android.ui.glass.recordNavigationScene
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.theme.LoonBg
 import com.github.arca.android.ui.theme.LoonTextSecondary
+import com.github.arca.android.ui.theme.AppPalette
 
 /** Navigation hub; existing managers and screens retain ownership of their resources. */
 @Composable
@@ -64,14 +65,14 @@ fun ConfigurationCenterScreen(
             ConfigurationCenterSection("配置 / 订阅", "configuration-center-section-header-0") {
                 CupertinoCell(
                     title = "配置文件与订阅", subtitle = "导入本地配置、管理配置及刷新订阅",
-                    icon = Icons.Default.FolderOpen, iconBg = Color(0xFF3B82F6),
+                    icon = Icons.Default.FolderOpen, iconBg = AppPalette.iconBrightBlue,
                     showChevron = true, onClick = onNavigateToProfiles
                 )
             }
             ConfigurationCenterSection("脚本", "configuration-center-section-header-1") {
                 CupertinoCell(
                     title = "脚本管理", subtitle = "管理全局脚本；单配置覆写仍在配置详情中设置",
-                    icon = Icons.Default.Code, iconBg = Color(0xFF3B82F6),
+                    icon = Icons.Default.Code, iconBg = AppPalette.iconBrightBlue,
                     showChevron = true, onClick = onNavigateToScripts
                 )
             }
@@ -82,13 +83,13 @@ fun ConfigurationCenterScreen(
             ) {
                 CupertinoCell(
                     title = "规则资源", subtitle = "查看与筛选当前配置中的规则",
-                    icon = Icons.Default.Rule, iconBg = Color(0xFFF59E0B),
+                    icon = Icons.Default.Rule, iconBg = AppPalette.iconYellowAmber,
                     showChevron = true, onClick = onNavigateToRules
                 )
                 CupertinoIndentedDivider(startIndent = 56.dp)
                 CupertinoCell(
                     title = "应用分流", subtitle = "管理按应用代理设置",
-                    icon = Icons.Default.Apps, iconBg = Color(0xFF8B5CF6),
+                    icon = Icons.Default.Apps, iconBg = AppPalette.iconViolet,
                     showChevron = true, onClick = onNavigateToAppRouting
                 )
             }

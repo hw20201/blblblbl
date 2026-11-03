@@ -1,5 +1,10 @@
 package com.github.arca.android.ui.screens
 
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshState
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -48,7 +53,8 @@ import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.glass.LocalGlassTokens
 import com.github.arca.android.ui.glass.NavigationLensState
-import com.github.arca.android.ui.glass.ProxyGroupGlass
+import com.github.arca.android.ui.glass.LightGlassSurface
+import com.github.arca.android.ui.glass.LightGlassSelectedTint
 import com.github.arca.android.ui.glass.useProxyGroupGlass
 import com.github.arca.android.ui.glass.proxyCardNeedsOuterBorder
 import com.github.arca.android.ui.theme.*
@@ -147,6 +153,7 @@ fun ProxiesScreen(
     }
 
     val lang = LocalAppLanguage.current
+    val pullState = rememberPullToRefreshState()
     val titleScene = rememberNavigationLens()
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
@@ -162,7 +169,7 @@ fun ProxiesScreen(
         ) {
         // Settings BottomSheet (Smooth, modern, non-cluttered bottom sheet)
         if (showOptionsMenu) {
-            ModalBottomSheet(
+            com.github.arca.android.ui.glass.GlassModalBottomSheet(
                 onDismissRequest = { showOptionsMenu = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = LoonCard,
@@ -339,15 +346,21 @@ fun ProxiesScreen(
                 }
                 val currentNow = currentGroup?.now
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
+                PullToRefreshBox(
+                    isRefreshing = isAnyTesting,
+                    onRefresh = {
+                        if (selectedGroupName.isNotBlank()) onHealthCheck(selectedGroupName)
+                        else if (visibleGroups.isNotEmpty()) onHealthCheck(visibleGroups.first())
+                    },
+                    state = pullState,
+                    modifier = Modifier.fillMaxSize(),
+                    indicator = { ProxiesPullIndicator(pullState, isAnyTesting, headerInset) }
                 ) {
                     LazyColumn(
                         state = activeTabState,
                         modifier = Modifier.testTag("policy-node-list")
                             .fillMaxSize()
-                            .bounceOverscroll(),
+                            .bounceOverscroll(allowTop = false),
                         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -403,15 +416,19 @@ fun ProxiesScreen(
                     )
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
+                PullToRefreshBox(
+                    isRefreshing = isAnyTesting,
+                    // Blank group = test every visible group.
+                    onRefresh = { onHealthCheck("") },
+                    state = pullState,
+                    modifier = Modifier.fillMaxSize(),
+                    indicator = { ProxiesPullIndicator(pullState, isAnyTesting, headerInset) }
                 ) {
                     LazyColumn(
                         state = listModeState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .bounceOverscroll(),
+                            .bounceOverscroll(allowTop = false),
                         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -639,7 +656,7 @@ private fun LoonGroupHeaderCard(
             .fillMaxWidth()
             .defaultMinSize(minHeight = 56.dp)
             .clip(RoundedCornerShape(20.dp))
-            .border(1.dp, LoonCardBorder, RoundedCornerShape(20.dp))
+            .then(if (GlassDefaults.enabled) Modifier else Modifier.border(1.dp, LoonCardBorder, RoundedCornerShape(20.dp)))
             .clickable { onToggleExpand() },
         color = LoonCard,
         shape = RoundedCornerShape(20.dp),
@@ -747,9 +764,9 @@ private fun LoonGroupHeaderCard(
 internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
 
 // Match the neutral gray used by the selected strategy capsule in the reference UI.
-internal val SelectedProxyCardFill = Color(0xFFABB1BC)
-private val SelectedProxyCardText = Color(0xFF1A1D23)
-private val SelectedProxyCardMutedText = Color(0xB31A1D23)
+internal val SelectedProxyCardFill = LightGlassSelectedTint
+private val SelectedProxyCardText = AppPalette.selectedOnFrost
+private val SelectedProxyCardMutedText = AppPalette.selectedOnFrostMuted
 
 // -----------------------------------------------------------------------------
 // Multi-Column Responsive Proxy Node Card (Supports 1, 2, or 3 columns)
@@ -773,13 +790,7 @@ private fun LoonProxyItemCard(
 
     val isTimeout = proxy.delay == -2 || proxy.delay >= 65535
     val isValidDelay = proxy.delay in 1..65534
-    val delayColor = when {
-        isTimeout -> IosRed
-        isValidDelay && proxy.delay <= 250 -> IosGreen
-        isValidDelay && proxy.delay <= 600 -> IosOrange
-        isValidDelay && proxy.delay > 600 -> IosRed
-        else -> LoonTextMuted
-    }
+    val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
     val delayText = when {
         isTimeout -> "超时"
         isValidDelay -> "${proxy.delay} ms"
@@ -804,7 +815,7 @@ private fun LoonProxyItemCard(
                     }
                     .height(54.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .then(if (isSelected) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(14.dp)))
+                    .then(if (isSelected || GlassDefaults.enabled) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(14.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
@@ -906,7 +917,7 @@ private fun LoonProxyItemCard(
                     .height(62.dp)
                     .clip(cardShape)
                     .then(
-                        if (proxyCardNeedsOuterBorder(groupGlass, isSelected)) {
+                        if (!GlassDefaults.enabled && proxyCardNeedsOuterBorder(groupGlass, isSelected)) {
                             Modifier.border(
                                 width = if (isSelected) 1.5.dp else 0.5.dp,
                                 color = if (isSelected) IosBlue else LoonCardBorder,
@@ -1005,7 +1016,7 @@ private fun LoonProxyItemCard(
                     }
                     .height(56.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .then(if (isSelected) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(12.dp)))
+                    .then(if (isSelected || GlassDefaults.enabled) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(12.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
@@ -1085,58 +1096,48 @@ private fun LoonProxyItemCard(
 }
 
 
-/** Replays the recorded page backdrop for proxy tiles; selected tiles retain a neutral-gray frost. */
+/**
+ * Node capsules use the low-cost self-developed light glass: no backdrop replay, shader or blur,
+ * so long node lists stay cheap. Group header cards keep the same material for consistency.
+ */
 @Composable
 private fun ProxyGlassCard(
     modifier: Modifier,
     color: Color,
     shape: RoundedCornerShape,
     accent: Color? = null,
-    groupScene: NavigationLensState? = null,
+    @Suppress("UNUSED_PARAMETER") groupScene: NavigationLensState? = null,
     selected: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
-    if (GlassDefaults.enabled && groupScene != null) {
-        ProxyGroupGlass(
-            modifier = modifier,
+    if (GlassDefaults.enabled) {
+        LightGlassSurface(
+            modifier = if (selected) modifier.testTag("proxy-selected-glass-material") else modifier,
             shape = shape,
-            scene = groupScene,
+            selected = selected,
             accent = accent,
-            selectedFill = if (selected) SelectedProxyCardFill else null,
             content = content
         )
-    } else if (GlassDefaults.enabled && selected) {
-        val tokens = LocalGlassTokens.current
-        val frost = Brush.linearGradient(listOf(
-            SelectedProxyCardFill.copy(alpha = .92f), SelectedProxyCardFill.copy(alpha = .84f)
-        ))
-        Box(modifier.clip(shape).background(frost)
-            .border(0.8.dp, tokens.edge.copy(alpha = .8f), shape)
-            .testTag("proxy-selected-glass-material"), content = content)
     } else if (selected) {
         Surface(modifier = modifier, color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
-    } else if (GlassDefaults.enabled) {
-        val tokens = LocalGlassTokens.current
-        val tint = if (accent == null) tokens.tint else androidx.compose.ui.graphics.lerp(tokens.tintAccent, accent, 0.12f)
-        val fill = Brush.linearGradient(
-            listOf(tint.copy(alpha = tint.alpha * 0.42f), tokens.tintEnd.copy(alpha = tokens.tintEnd.alpha * 0.42f))
-        )
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .background(fill)
-                .border(0.55.dp, tokens.edge.copy(alpha = tokens.edge.alpha * 0.72f), shape)
-                .drawWithCache {
-                    val sheen = Brush.verticalGradient(listOf(
-                        Color.White.copy(alpha = if (tokens.isDark) .025f else .045f),
-                        Color.Transparent
-                    ))
-                    // Cached paint only, behind content: glyphs are never filtered or washed out.
-                    onDrawBehind { drawRect(sheen) }
-                },
-            content = content
-        )
     } else {
         Surface(modifier = modifier, color = color, shape = shape) { Box(content = content) }
     }
+}
+
+/** Pull indicator placed below the pinned glass header instead of under it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.ProxiesPullIndicator(
+    state: PullToRefreshState,
+    isRefreshing: Boolean,
+    headerInset: androidx.compose.ui.unit.Dp
+) {
+    PullToRefreshDefaults.Indicator(
+        state = state,
+        isRefreshing = isRefreshing,
+        modifier = Modifier.align(Alignment.TopCenter).padding(top = headerInset),
+        containerColor = LoonCard,
+        color = IosBlue
+    )
 }

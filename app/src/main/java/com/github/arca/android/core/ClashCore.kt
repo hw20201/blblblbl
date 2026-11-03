@@ -339,6 +339,35 @@ object ClashCore {
         -2
     }
 
+    /** null = native library predates the connection contract (rebuild native to enable). */
+    @Volatile
+    private var connectionsSupported: Boolean? = null
+
+    fun supportsConnections(): Boolean = connectionsSupported ?: runCatching {
+        Bridge.nativeQueryConnections(); true
+    }.getOrElse { it !is UnsatisfiedLinkError }.also { connectionsSupported = it }
+
+    fun queryConnections(): com.github.arca.android.core.model.ConnectionSnapshot? {
+        if (connectionsSupported == false) return null
+        return try {
+            val raw = Bridge.nativeQueryConnections()
+            connectionsSupported = true
+            json.decodeFromString<com.github.arca.android.core.model.ConnectionSnapshot>(raw)
+        } catch (e: UnsatisfiedLinkError) {
+            connectionsSupported = false
+            null
+        } catch (e: Throwable) {
+            Log.w(TAG, "queryConnections failed: ${e.message}")
+            com.github.arca.android.core.model.ConnectionSnapshot()
+        }
+    }
+
+    fun closeConnection(id: String): Boolean = runCatching { Bridge.nativeCloseConnection(id) }.getOrDefault(false)
+
+    fun closeAllConnections() {
+        runCatching { Bridge.nativeCloseAllConnections() }
+    }
+
     fun healthCheckAll() {
         runCatching { Bridge.nativeHealthCheckAll() }
     }

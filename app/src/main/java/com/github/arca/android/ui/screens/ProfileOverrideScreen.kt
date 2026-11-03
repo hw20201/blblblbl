@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,7 +82,7 @@ fun ProfileOverrideScreen(
                                 }
                             }
                         }
-                        Toast.makeText(context, "覆写设置已保存", Toast.LENGTH_SHORT).show()
+                        AppNotice.show("覆写设置已保存")
                         onBack()
                     }
                 ) {
@@ -109,7 +108,7 @@ fun ProfileOverrideScreen(
                         title = profile.name,
                         value = if (profile.url != null) "远程订阅" else "本地文件",
                         icon = Icons.Default.FolderZip,
-                        iconBg = Color(0xFFAF52DE),
+                        iconBg = AppPalette.iconPurple,
                         showChevron = false
                     )
                     CupertinoDivider()
@@ -117,7 +116,7 @@ fun ProfileOverrideScreen(
                         title = "管理脚本中心",
                         subtitle = "导入、创建或编写脚本代码",
                         icon = Icons.Default.Code,
-                        iconBg = Color(0xFF5856D6),
+                        iconBg = AppPalette.iconIndigo,
                         showChevron = true,
                         onClick = onNavigateToScripts
                     )
@@ -157,7 +156,7 @@ fun ProfileOverrideScreen(
                                 title = script.name,
                                 subtitle = script.type.uppercase(),
                                 icon = Icons.Default.Javascript,
-                                iconBg = if (isChecked) IosBlue else Color(0xFF8E8E93),
+                                iconBg = if (isChecked) IosBlue else AppPalette.iconGray,
                                 trailing = {
                                     CupertinoSwitch(
                                         checked = isChecked,

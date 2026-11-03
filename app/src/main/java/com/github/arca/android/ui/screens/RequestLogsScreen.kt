@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -295,7 +294,7 @@ fun RequestLogsScreen(
                             "TCP" -> IosBlue
                             "UDP" -> IosGreen
                             "DNS" -> IosOrange
-                            else -> Color(0xFFAF52DE)
+                            else -> AppPalette.iconPurple
                         }
 
                         // A quiet rail ties adjacent records into a timeline without adding
@@ -463,7 +462,7 @@ fun RequestLogsScreen(
                     IconButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(req.destination))
-                            Toast.makeText(context, "已复制请求目标", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("已复制请求目标")
                         }
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = "复制", tint = IosBlue, modifier = Modifier.size(20.dp))
@@ -523,7 +522,7 @@ fun RequestLogsScreen(
                     Button(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(req.rawMessage))
-                            Toast.makeText(context, "已复制全量日志", Toast.LENGTH_SHORT).show()
+                            AppNotice.show("已复制全量日志")
                             inspectedRequest = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = IosBlue),

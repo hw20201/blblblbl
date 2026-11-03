@@ -1,0 +1,48 @@
+name: Nexus Native Build
+
+# Rebuilds libclash.so + libbridge.so (Go 1.26 + NDK r28c) and uploads them with the
+# regenerated native/SHA256SUMS. Copy the artifact into app/src/main/jniLibs/arm64-v8a/
+# and native/SHA256SUMS, commit, then run the normal "Nexus Build" workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: native/golang/go.sum
+      - name: Set up Android NDK r28c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          add-to-path: false
+      - name: Build native libraries
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq patch
+          bash scripts/build-native.sh
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p out/jniLibs/arm64-v8a out/native
+          cp app/src/main/jniLibs/arm64-v8a/libclash.so app/src/main/jniLibs/arm64-v8a/libbridge.so out/jniLibs/arm64-v8a/
+          cp native/SHA256SUMS out/native/
+          cat native/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-native-arm64-v8a
+          path: out/
+          if-no-files-found: error

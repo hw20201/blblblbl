@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -135,11 +134,7 @@ fun AppearanceScreen(
                                 currentLanguage = code
                                 settingsManager.appLanguage = code
                                 onLanguageChanged(code)
-                                Toast.makeText(
-                                    context,
-                                    "${AppStrings.get("language_updated", code)}: $label",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                AppNotice.show("${AppStrings.get("language_updated", code)}: $label")
                             }
                         )
                         if (index < langs.lastIndex) CupertinoIndentedDivider(startIndent = 16.dp)

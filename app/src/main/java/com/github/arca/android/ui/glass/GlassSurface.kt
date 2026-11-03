@@ -164,6 +164,9 @@ fun GlassSurface(
         Box(
             modifier
                 .clip(effectiveShape)
+                // Safety net: if the Kyant layer has not recorded yet (first frame after a page
+                // returns, or a detached recorder) the panel still reads as glass, not a hole.
+                .background(fill)
                 .drawBackdrop(
                     backdrop = kyantBackdrop,
                     shape = { effectiveShape },

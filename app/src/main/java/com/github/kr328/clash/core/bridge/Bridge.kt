@@ -113,6 +113,11 @@ object Bridge {
     )
     external fun nativeLoad(completable: CompletableDeferred<Unit>, path: String)
     external fun nativeQueryProviders(): String
+    // Contract 3: live connection list. Older libraries lack these symbols -> UnsatisfiedLinkError,
+    // which ClashCore turns into "unsupported" instead of crashing.
+    external fun nativeQueryConnections(): String
+    external fun nativeCloseConnection(id: String): Boolean
+    external fun nativeCloseAllConnections()
     external fun nativeUpdateProvider(
         completable: CompletableDeferred<Unit>,
         type: String,
