@@ -76,6 +76,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -400,7 +401,26 @@ class MainActivity : ComponentActivity() {
 
         // Refresh proxy groups dynamically when core is running
         val delayCache = remember { mutableStateMapOf<String, Int>() }
+        val delaySnapshot by remember { derivedStateOf { delayCache.toMap() } }
         val nodeLastTestedTimes = remember { mutableMapOf<String, Long>() }
+        var computedGroupMap by remember { mutableStateOf<Map<String, ProxyGroup>>(emptyMap()) }
+
+        // A large subscription can contain thousands of proxy objects. Coalesce bursts of
+        // per-node delay updates, then build the display-only copies off the UI thread.
+        LaunchedEffect(parsedProfile.groups, liveGroupMap) {
+            val baseGroups = parsedProfile.groups
+            val liveGroups = liveGroupMap
+            val selectedNodes = withContext(Dispatchers.IO) {
+                baseGroups.keys.associateWith { settingsManager.getSelectedNode(it) }
+            }
+            snapshotFlow { delayCache.toMap() }.collectLatest { delays ->
+                delay(48L)
+                val displayGroups = withContext(Dispatchers.Default) {
+                    buildProxyDisplayGroups(baseGroups, liveGroups, selectedNodes, delays)
+                }
+                computedGroupMap = displayGroups
+            }
+        }
 
         fun refreshProxiesOnline() {
             // Skip refresh while speed tests are running to avoid clobbering results
@@ -811,13 +831,13 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().graphicsLayer { clip = true }) {
                     when (page) {
                         0 -> {
-                            val rawProxies = liveGroupMap[mainProxyGroupName]?.proxies
-                                ?: (parsedProfile.groups[mainProxyGroupName]?.proxies ?: emptyList())
-                            val mainGroupProxies = rawProxies.map { p ->
-                                val scopedKey = "$mainProxyGroupName:${p.name}"
-                                val d = delayCache[p.name] ?: delayCache[scopedKey]
-                                if (d != null) p.copy(delay = d) else p
-                            }
+                            val mainGroupProxies = computedGroupMap[mainProxyGroupName]?.proxies
+                                ?: buildDashboardProxyList(
+                                    liveGroupMap[mainProxyGroupName]?.proxies
+                                        ?: parsedProfile.groups[mainProxyGroupName]?.proxies.orEmpty(),
+                                    mainProxyGroupName,
+                                    delaySnapshot
+                                )
                             val currentMainActiveNode = (liveGroupMap[mainProxyGroupName]?.now
                                 ?: parsedProfile.groups[mainProxyGroupName]?.now
                                 ?: settingsManager.getSelectedNode(mainProxyGroupName)
@@ -862,27 +882,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         1 -> {
-                            val computedGroupMap = remember(parsedProfile.groups, liveGroupMap, delayCache.toMap()) {
-                                parsedProfile.groups.mapValues { (gName, baseGroup) ->
-                                    val live = liveGroupMap[gName]
-                                    val liveProxyMap = live?.proxies?.associateBy { it.name } ?: emptyMap()
-                                    val savedNode = settingsManager.getSelectedNode(gName)
-                                    val resolvedNow = if (!savedNode.isNullOrBlank() && baseGroup.proxies.any { it.name == savedNode }) {
-                                        savedNode
-                                    } else {
-                                        live?.now?.ifBlank { baseGroup.now } ?: baseGroup.now
-                                    }
-                                    baseGroup.copy(
-                                        now = resolvedNow,
-                                        proxies = baseGroup.proxies.map { bp ->
-                                            val p = liveProxyMap[bp.name] ?: bp
-                                            val scopedKey = "$gName:${bp.name}"
-                                            val cached = delayCache[bp.name] ?: delayCache[scopedKey]
-                                            if (cached != null) p.copy(delay = cached) else p
-                                        }
-                                    )
-                                }
-                            }
                             val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
 
                             ProxiesScreen(
