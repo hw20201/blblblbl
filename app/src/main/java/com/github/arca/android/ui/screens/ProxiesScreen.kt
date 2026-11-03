@@ -1111,13 +1111,22 @@ private fun ProxyGlassCard(
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
     if (GlassDefaults.enabled) {
-        LightGlassSurface(
-            modifier = if (selected) modifier.testTag("proxy-selected-glass-material") else modifier,
-            shape = shape,
-            selected = selected,
-            accent = accent,
-            content = content
-        )
+        // Keep the glass-material tag on its own inner node, as ProxyGroupGlass did:
+        // the caller's modifier already carries the proxy-card tag, and a single node
+        // can only hold one testTag, so merging the two tags loses one of them.
+        Box(modifier) {
+            Box(
+                Modifier.matchParentSize()
+                    .testTag(if (selected) "proxy-selected-glass-material" else "proxy-group-glass-material")
+            )
+            LightGlassSurface(
+                modifier = Modifier.matchParentSize(),
+                shape = shape,
+                selected = selected,
+                accent = accent,
+                content = content
+            )
+        }
     } else if (selected) {
         Surface(modifier = modifier, color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
     } else {
