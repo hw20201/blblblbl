@@ -1,0 +1,75 @@
+name: Arca Release No-R8 Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Release APK without R8
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Build Release APK with fixed signing key, R8 off
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          export RELEASE_STORE_FILE="$RUNNER_TEMP/nexus-release.jks"
+          trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
+          test -s "$RELEASE_STORE_FILE"
+          unset RELEASE_KEYSTORE_BASE64
+          ./gradlew assembleRelease -Pnexus.r8=false --no-daemon --no-configuration-cache
+      - name: Remove signing material even after failure
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nexus-release.jks"
+      - name: Verify and record APK identity
+        env:
+          EXPECTED_CERT_SHA256: "e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2"
+        run: |
+          set -euo pipefail
+          mkdir -p build_output
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > build_output/signature.txt
+          ACTUAL_CERT_SHA256=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' build_output/signature.txt)
+          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > build_output/apk-info.txt
+          grep -q "package: name='com.github.arca.android'" build_output/apk-info.txt
+          cp "$APK" build_output/arca-release-nor8.apk
+          git rev-parse HEAD > build_output/source-commit.txt
+          (cd build_output && sha256sum *.apk > SHA256SUMS)
+      - name: Upload APK and verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arca-release-nor8-apk
+          path: build_output/
+          if-no-files-found: error
