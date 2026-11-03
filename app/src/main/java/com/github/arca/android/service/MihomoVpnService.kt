@@ -314,6 +314,8 @@ class MihomoVpnService : VpnService() {
             } catch (e: Throwable) {
                 Log.e(TAG, "Failed to start Nexus VPN", e)
                 com.github.arca.android.data.LogRepository.addLog("error", "启动失败: ${e.message}")
+                val diagFrames = e.stackTrace.take(18).joinToString("\n") { "  at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})" }
+                com.github.arca.android.data.LogRepository.addLog("error", "启动失败诊断: ${e.javaClass.name}: ${e.message}\n$diagFrames")
                 ClashCore.stopTun()
                 runCatching { vpnInterface?.close() }
                 vpnInterface = null

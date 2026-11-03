@@ -59,4 +59,4 @@
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
--keepattributes Signature,MethodParameters,Exceptions,EnclosingMethod
+-keepattributes Signature,MethodParameters,Exceptions,EnclosingMethod,SourceFile,LineNumberTable
