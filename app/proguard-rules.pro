@@ -43,6 +43,7 @@
 # SnakeYAML / Gson / OkHttp ship their own (or need no) keep rules; silence the
 # optional-dependency warnings they emit.
 -dontwarn org.yaml.snakeyaml.**
+-keeppackagenames org.yaml.snakeyaml.**
 -dontwarn com.google.gson.**
 -dontwarn okhttp3.**
 -dontwarn okio.**
