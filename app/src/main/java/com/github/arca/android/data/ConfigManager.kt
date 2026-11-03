@@ -1,12 +1,14 @@
 package com.github.arca.android.data
 
 import android.content.Context
+import android.util.AtomicFile
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 data class ProfileItem(
@@ -72,6 +74,87 @@ object ConfigManager {
             }
         }
         return if (total > 0L || expire > 0L) SubscriptionUserInfo(upload, download, total, expire) else null
+    }
+
+    /** Accept Clash/Mihomo YAML, including a Base64-encoded YAML document, before saving it. */
+    internal fun normalizeProfileContent(raw: String): String {
+        val content = raw.removePrefix("\uFEFF").trim()
+        require(content.isNotEmpty()) { "配置内容为空，未保存" }
+
+        fun parseRoot(text: String): Map<*, *>? = try {
+            val options = org.yaml.snakeyaml.LoaderOptions().apply { codePointLimit = 100 * 1024 * 1024 }
+            org.yaml.snakeyaml.Yaml(org.yaml.snakeyaml.constructor.SafeConstructor(options))
+                .load<Any?>(text) as? Map<*, *>
+        } catch (_: org.yaml.snakeyaml.error.YAMLException) {
+            null
+        }
+
+        fun validateYaml(text: String, root: Map<*, *>): String {
+            val proxies = root.entries.firstOrNull { it.key?.toString().equals("proxies", ignoreCase = true) }?.value
+            val proxyProviders = root.entries.firstOrNull { it.key?.toString().equals("proxy-providers", ignoreCase = true) }?.value
+            require(proxies == null || proxies is List<*>) { "配置项 proxies 必须是列表，未保存" }
+            require(proxyProviders == null || proxyProviders is Map<*, *>) { "配置项 proxy-providers 必须是映射，未保存" }
+            val hasProxies = (proxies as? List<*>)?.isNotEmpty() == true
+            val hasProviders = (proxyProviders as? Map<*, *>)?.isNotEmpty() == true
+            require(hasProxies || hasProviders) {
+                "配置必须包含非空 proxies 或 proxy-providers，未保存"
+            }
+            return text
+        }
+
+        parseRoot(content)?.let { return validateYaml(content, it) }
+
+        val decoded = decodeBase64Text(content)
+        if (decoded != null) {
+            parseRoot(decoded)?.let { return validateYaml(decoded, it) }
+            if (isProxyUriList(decoded)) {
+                throw IllegalArgumentException(
+                    "这是 Base64 节点链接订阅，不是 Clash/Mihomo YAML；当前不能直接导入，请改用输出 Clash/Mihomo YAML 的订阅地址"
+                )
+            }
+        }
+        if (isProxyUriList(content)) {
+            throw IllegalArgumentException(
+                "这是节点链接列表，不是 Clash/Mihomo YAML；当前不能直接导入，请改用输出 Clash/Mihomo YAML 的订阅地址"
+            )
+        }
+        throw IllegalArgumentException(
+            "配置不是有效的 Clash/Mihomo YAML，未保存；请检查订阅地址或文件格式"
+        )
+    }
+
+    private fun decodeBase64Text(content: String): String? {
+        val compact = content.filterNot(Char::isWhitespace)
+        if (compact.length < 12 || !compact.matches(Regex("[A-Za-z0-9+/=_-]+"))) return null
+        val decoder = if ('-' in compact || '_' in compact) Base64.getUrlDecoder() else Base64.getDecoder()
+        val bytes = runCatching { decoder.decode(compact) }.getOrNull() ?: return null
+        val decoded = bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF").trim()
+        return decoded.takeIf { it.isNotEmpty() && '\u0000' !in it }
+    }
+
+    private fun isProxyUriList(content: String): Boolean {
+        val prefixes = listOf("vmess://", "vless://", "ss://", "ssr://", "trojan://", "hysteria://", "hysteria2://", "tuic://", "socks://", "socks5://")
+        val lines = content.lineSequence().map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.toList()
+        return lines.isNotEmpty() && lines.all { line -> prefixes.any { line.startsWith(it, ignoreCase = true) } }
+    }
+
+    /** Validate completely before replacing the profile; AtomicFile restores the prior file on I/O failure. */
+    internal fun writeValidatedProfile(file: File, rawContent: String) {
+        val content = normalizeProfileContent(rawContent)
+        val parent = file.parentFile ?: error("配置文件没有父目录")
+        if (!parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
+            error("无法创建配置目录")
+        }
+        val atomicFile = AtomicFile(file)
+        val stream = atomicFile.startWrite()
+        try {
+            stream.write(content.toByteArray(Charsets.UTF_8))
+            stream.fd.sync()
+            atomicFile.finishWrite(stream)
+        } catch (error: Throwable) {
+            runCatching { atomicFile.failWrite(stream) }
+            throw error
+        }
     }
 
     internal fun extractProfileName(name: String?, response: okhttp3.Response?, body: String, url: String): String {
@@ -180,7 +263,7 @@ object ConfigManager {
                 val body = response.body?.string() ?: error("响应内容为空")
                 val id = java.util.UUID.randomUUID().toString()
                 val file = getProfilesDir(context).resolve("$id.yaml")
-                file.writeText(body)
+                writeValidatedProfile(file, body)
 
                 val resolvedName = extractProfileName(name, response, body, url)
                 val item = ProfileItem(
@@ -225,7 +308,7 @@ object ConfigManager {
                 val body = response.body?.string() ?: error("响应内容为空")
                 // Overwrite the EXISTING file without creating a duplicate ID!
                 val file = getProfilesDir(context).resolve("$id.yaml")
-                file.writeText(body)
+                writeValidatedProfile(file, body)
 
                 val existing = getProfiles(context).find { it.id == id }
                 val item = ProfileItem(
@@ -253,7 +336,7 @@ object ConfigManager {
     fun saveLocalProfile(context: Context, name: String, content: String): ProfileItem {
         val id = java.util.UUID.randomUUID().toString()
         val file = getProfilesDir(context).resolve("$id.yaml")
-        file.writeText(content)
+        writeValidatedProfile(file, content)
         val item = ProfileItem(id, name, null, file, System.currentTimeMillis())
         saveProfileMetadata(context, item)
         return item
@@ -342,7 +425,7 @@ object ConfigManager {
     fun saveProfileContent(context: Context, id: String, content: String): Boolean {
         return runCatching {
             val file = getProfilesDir(context).resolve("$id.yaml")
-            file.writeText(content)
+            writeValidatedProfile(file, content)
             val prefs = context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE)
             prefs.edit().putLong("${id}_updated", System.currentTimeMillis()).apply()
             invalidateProfilesCache()
@@ -442,6 +525,7 @@ object ConfigManager {
                     targetScriptIds = targetIds
                 )
             }
+            rawContent = normalizeProfileContent(rawContent)
             userDns = extractUserDns(rawContent)
             val tcpConcurrent = extractUserTcpConcurrent(rawContent) ?: true
             val userContent = sanitizeUserConfig(rawContent)

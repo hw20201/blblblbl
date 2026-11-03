@@ -404,7 +404,6 @@ object ProfileParser {
     private fun extractCachedProviderProxies(data: Map<String, Any?>, profile: File, context: Context?): Map<String, String> {
         val providers = data["proxy-providers"] as? Map<*, *> ?: return emptyMap()
         val result = linkedMapOf<String, String>()
-        val providersDir = context?.filesDir?.resolve("clash/providers")
         for ((_, raw) in providers) {
             val provider = raw as? Map<*, *> ?: continue
             val candidates = providerCacheFiles(provider, profile, context)
@@ -416,18 +415,22 @@ object ProfileParser {
     private fun providerCacheFiles(provider: Map<*, *>, profile: File, context: Context?): List<File> {
         val path = provider["path"]?.toString()?.takeIf { it.isNotBlank() }
         val url = provider["url"]?.toString()?.takeIf { it.isNotBlank() }
-        val providersDir = context?.filesDir?.resolve("clash/providers")
+        // ClashCore.load passes filesDir to native load; Go therefore writes providers to
+        // filesDir/providers. Keep the Clash-home location as a legacy fallback.
+        val providerDirs = context?.let {
+            listOf(it.filesDir.resolve("providers"), it.filesDir.resolve("clash/providers"))
+        }.orEmpty()
         return buildList {
             if (path != null) {
                 val configured = File(path)
                 add(configured)
                 if (!configured.isAbsolute) add(File(profile.parentFile, path))
-                if (providersDir != null) add(File(providersDir, path.removePrefix("./")))
+                providerDirs.forEach { add(File(it, path.removePrefix("./"))) }
             }
-            if (url != null && providersDir != null) {
+            if (url != null) {
                 val md5 = java.security.MessageDigest.getInstance("MD5").digest(url.toByteArray())
                     .joinToString("") { "%02x".format(it) }
-                add(File(providersDir, "proxies/$md5"))
+                providerDirs.forEach { add(File(it, "proxies/$md5")) }
             }
         }.distinctBy { it.absolutePath }
     }

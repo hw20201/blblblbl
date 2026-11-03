@@ -65,7 +65,7 @@ class TunSettingsIntegrationTest {
         assertEquals(true, parsed["unified-delay"])
 
         val profile = java.io.File(context.cacheDir, "unified-delay-profile.yaml")
-        profile.writeText("unified-delay: false\nproxies: []\nrules: [MATCH,DIRECT]\n")
+        profile.writeText("unified-delay: false\nproxies:\n  - name: test-node\n    type: ss\n    server: 127.0.0.1\n    port: 8388\n    cipher: aes-128-gcm\n    password: test\nrules: [MATCH,DIRECT]\n")
         val protectedConfig = ConfigManager.prepareConfig(context, profile).readText()
         val protectedParsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(protectedConfig)
         assertEquals(true, protectedParsed["unified-delay"])
@@ -73,7 +73,7 @@ class TunSettingsIntegrationTest {
         assertTrue(protectedParsed["proxies"] is List<*>)
 
         val explicitTcp = java.io.File(context.cacheDir, "tcp-concurrent-profile.yaml")
-        explicitTcp.writeText("tcp-concurrent: false\nproxies: []\nrules: [MATCH,DIRECT]\n")
+        explicitTcp.writeText("tcp-concurrent: false\nproxies:\n  - name: test-node\n    type: ss\n    server: 127.0.0.1\n    port: 8388\n    cipher: aes-128-gcm\n    password: test\nrules: [MATCH,DIRECT]\n")
         val explicitParsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any>>(
             ConfigManager.prepareConfig(context, explicitTcp).readText()
         )

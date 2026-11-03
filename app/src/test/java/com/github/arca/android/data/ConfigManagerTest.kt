@@ -3,6 +3,7 @@ package com.github.arca.android.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfigManagerTest {
@@ -86,5 +87,46 @@ class ConfigManagerTest {
             url = "https://sub.fastproxy.io:8443/download"
         )
         assertEquals("sub.fastproxy.io", name)
+    }
+
+    @Test
+    fun `normalizes Clash YAML and Base64 encoded Clash YAML`() {
+        val yaml = """
+            proxies:
+              - name: node-a
+                type: ss
+            proxy-groups:
+              - name: PROXY
+                type: select
+                proxies: [node-a]
+        """.trimIndent()
+
+        assertEquals(yaml, ConfigManager.normalizeProfileContent(yaml))
+        val encoded = java.util.Base64.getEncoder().encodeToString(yaml.toByteArray(Charsets.UTF_8))
+        assertEquals(yaml, ConfigManager.normalizeProfileContent(encoded))
+    }
+
+    @Test
+    fun `rejects node URI subscriptions instead of treating them as YAML`() {
+        val plainError = org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            ConfigManager.normalizeProfileContent("vmess://example-token\nss://example-token")
+        }
+        assertTrue(plainError.message.orEmpty().contains("节点链接列表"))
+
+        val links = "vmess://example-token\nss://example-token"
+        val encoded = java.util.Base64.getEncoder().encodeToString(links.toByteArray(Charsets.UTF_8))
+        val base64Error = org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            ConfigManager.normalizeProfileContent(encoded)
+        }
+        assertTrue(base64Error.message.orEmpty().contains("Base64 节点链接订阅"))
+    }
+
+    @Test
+    fun `rejects YAML roots that cannot start a proxy core`() {
+        listOf("plain text", "- one\n- two", "rules: [MATCH,DIRECT]", "proxies: []\nproxy-providers: {}").forEach { input ->
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                ConfigManager.normalizeProfileContent(input)
+            }
+        }
     }
 }
