@@ -1108,7 +1108,7 @@ class MainActivity : ComponentActivity() {
                     label = "SubScreenOverlayTransition"
                 ) { subScreen ->
                     if (subScreen != null) {
-                    NexusGlassBackground(palette = glassPalette) {
+                    NexusGlassBackground(palette = glassPalette, kyantBackdrop = kyantBackdrop) {
                         when (subScreen) {
                             SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
                                 onNavigateToProfiles = {
@@ -1335,6 +1335,11 @@ class MainActivity : ComponentActivity() {
                                 onSettingsChanged = { updated ->
                                     glassSettings = updated.clamped()
                                     settingsManager.glassSettings = glassSettings
+                                },
+                                wallpaperSettings = GlassDefaults.wallpaper,
+                                onWallpaperSettingsChanged = { value ->
+                                    GlassDefaults.wallpaper = value
+                                    settingsManager.glassWallpaperSettings = value
                                 },
                                 onBack = { currentSubScreen = null },
                                 scrollState = glassEffectsScrollState

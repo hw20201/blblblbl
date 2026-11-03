@@ -36,6 +36,7 @@ import com.github.arca.android.ui.glass.GlassMotionTuning
 import com.github.arca.android.ui.glass.GlassOptics
 import com.github.arca.android.ui.glass.GlassPreset
 import com.github.arca.android.ui.glass.GlassSettings
+import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LensStrength
 import com.github.arca.android.ui.glass.NavigationGlassSurface
@@ -59,6 +60,8 @@ import androidx.compose.ui.geometry.Offset
 fun GlassEffectsScreen(
     settings: GlassSettings,
     onSettingsChanged: (GlassSettings) -> Unit,
+    wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
+    onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = {},
     onBack: () -> Unit,
     scrollState: ScrollState = rememberScrollState()
 ) {
@@ -287,6 +290,13 @@ fun GlassEffectsScreen(
                     onSettingsChanged(safe.copy(motion = safe.motion.copy(smoothing = it)).clamped())
                 }
             }
+            GlassEditorCard(title = "液态玻璃壁纸", subtitle = "壁纸褶皱的倾斜角度；改动会同时打开壁纸。") {
+                GlassSlider("褶皱角度", wallpaperSettings.ribAngleDegrees,
+                    GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES..GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES,
+                    "${"%.1f".format(java.util.Locale.ROOT, wallpaperSettings.ribAngleDegrees)}°", "glass-wallpaper-rib-angle") {
+                    onWallpaperSettingsChanged(wallpaperSettings.copy(enabled = true, ribAngleDegrees = it))
+                }
+            }
             Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { onSettingsChanged(GlassSettings.DEFAULT) }, modifier = Modifier.testTag("glass-effects-reset-all")) {
                     Text("恢复全部默认")
@@ -322,7 +332,7 @@ fun GlassEffectsScreen(
 @Composable
 private fun GlassEditorCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
     Surface(Modifier.fillMaxWidth().padding(top = 10.dp), shape = RoundedCornerShape(22.dp),
-        color = if (glassPalette.isDark) Color(0xFF202938).copy(alpha = .86f) else Color.White.copy(alpha = .76f),
+        color = if (glassPalette.isDark) Color(0xFF202938).copy(alpha = .94f) else Color.White.copy(alpha = .92f),
         tonalElevation = 0.dp, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
