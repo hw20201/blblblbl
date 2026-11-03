@@ -40,6 +40,7 @@ import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LensStrength
 import com.github.arca.android.ui.glass.NavigationGlassSurface
+import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.LocalGlassSettings
 import com.github.arca.android.ui.glass.glassPalette
@@ -62,6 +63,7 @@ fun GlassEffectsScreen(
     onSettingsChanged: (GlassSettings) -> Unit,
     wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
     onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = {},
+    wallpaperScene: NavigationLensState? = null,
     onBack: () -> Unit,
     scrollState: ScrollState = rememberScrollState()
 ) {
@@ -204,7 +206,7 @@ fun GlassEffectsScreen(
                     else safe.copy(globalOptics = updated).clamped()
                 )
             }
-            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；四项分别驱动透镜、色散开关与边缘亮边。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。") {
+            GlassEditorCard(title = "通用材质", subtitle = if (safe.glassPreset == GlassPreset.LIQUID) "Kyant 预设的通用参数；四项分别驱动透镜、色散开关与边缘亮边。" else "作为所有部位的默认值；单独覆盖的部位不会受影响。", lens = wallpaperScene) {
                 GlassSlider("折射强度", global.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
                     "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
                     updateGlobal(global.copy(refractionDp = it))
@@ -246,7 +248,7 @@ fun GlassEffectsScreen(
                 }
             }
             GlassEditorCard(title = "部位微调 · ${categories.first { it.first == selected }.second}",
-                subtitle = "关闭时继承通用材质；打开后只影响这一类玻璃。") {
+                subtitle = "关闭时继承通用材质；打开后只影响这一类玻璃。", lens = wallpaperScene) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("使用独立参数", color = LoonTextPrimary, fontSize = 14.sp)
@@ -276,7 +278,7 @@ fun GlassEffectsScreen(
                     Text("重置此部位")
                 }
             }
-            GlassEditorCard(title = "跟手动态", subtitle = "仅影响快捷卡片的跟手倾斜；幅度有上限，避免晃动过头。") {
+            GlassEditorCard(title = "跟手动态", subtitle = "仅影响快捷卡片的跟手倾斜；幅度有上限，避免晃动过头。", lens = wallpaperScene) {
                 GlassSlider("倾斜幅度", safe.motion.tiltGain, GlassMotionTuning.MIN_TILT_GAIN..GlassMotionTuning.MAX_TILT_GAIN,
                     "${"%.2f".format(java.util.Locale.ROOT, safe.motion.tiltGain)}×", "glass-motion-gain") {
                     onSettingsChanged(safe.copy(motion = safe.motion.copy(tiltGain = it)).clamped())
@@ -290,7 +292,7 @@ fun GlassEffectsScreen(
                     onSettingsChanged(safe.copy(motion = safe.motion.copy(smoothing = it)).clamped())
                 }
             }
-            GlassEditorCard(title = "液态玻璃壁纸", subtitle = "壁纸褶皱的倾斜角度；改动会同时打开壁纸。") {
+            GlassEditorCard(title = "液态玻璃壁纸", subtitle = "壁纸褶皱的倾斜角度；改动会同时打开壁纸。", lens = wallpaperScene) {
                 GlassSlider("褶皱角度", wallpaperSettings.ribAngleDegrees,
                     GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES..GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES,
                     "${"%.1f".format(java.util.Locale.ROOT, wallpaperSettings.ribAngleDegrees)}°", "glass-wallpaper-rib-angle") {
@@ -330,14 +332,36 @@ fun GlassEffectsScreen(
 }
 
 @Composable
-private fun GlassEditorCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth().padding(top = 10.dp), shape = RoundedCornerShape(22.dp),
-        color = if (glassPalette.isDark) Color(0xFF202938).copy(alpha = .94f) else Color.White.copy(alpha = .92f),
-        tonalElevation = 0.dp, shadowElevation = 3.dp) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-            Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
-            content()
+private fun GlassEditorCard(title: String, subtitle: String, lens: NavigationLensState? = null, content: @Composable () -> Unit) {
+    // Root fix for the wallpaper ribs showing through as hard white lines: sample the
+    // recorded overlay wallpaper through a real frosted lens (blur + refraction) instead
+    // of a translucent fill. The scene holds only the wallpaper (content is a sibling
+    // of the recorded background box), so there is no feedback. Glass off or no scene
+    // falls back to the opaque-ish Surface below.
+    if (GlassDefaults.enabled && lens != null) {
+        NavigationGlassSurface(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            lens = lens,
+            shape = RoundedCornerShape(22.dp),
+            cornerRadius = 22.dp,
+            strength = LensStrength.STANDARD,
+            frosted = true
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
+                content()
+            }
+        }
+    } else {
+        Surface(Modifier.fillMaxWidth().padding(top = 10.dp), shape = RoundedCornerShape(22.dp),
+            color = if (glassPalette.isDark) Color(0xFF202938).copy(alpha = .94f) else Color.White.copy(alpha = .92f),
+            tonalElevation = 0.dp, shadowElevation = 3.dp) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
+                content()
+            }
         }
     }
 }

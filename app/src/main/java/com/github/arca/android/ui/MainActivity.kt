@@ -746,6 +746,7 @@ class MainActivity : ComponentActivity() {
         }) {
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
+        val overlayWallpaperScene = rememberNavigationLens()
         val subScreenTransitionState = remember {
             androidx.compose.animation.core.MutableTransitionState(currentSubScreen != null)
         }
@@ -1108,7 +1109,7 @@ class MainActivity : ComponentActivity() {
                     label = "SubScreenOverlayTransition"
                 ) { subScreen ->
                     if (subScreen != null) {
-                    NexusGlassBackground(palette = glassPalette, kyantBackdrop = kyantBackdrop) {
+                    NexusGlassBackground(palette = glassPalette, backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(overlayWallpaperScene) else Modifier, kyantBackdrop = kyantBackdrop) {
                         when (subScreen) {
                             SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
                                 onNavigateToProfiles = {
@@ -1341,6 +1342,7 @@ class MainActivity : ComponentActivity() {
                                     GlassDefaults.wallpaper = value
                                     settingsManager.glassWallpaperSettings = value
                                 },
+                                wallpaperScene = overlayWallpaperScene,
                                 onBack = { currentSubScreen = null },
                                 scrollState = glassEffectsScrollState
                             )
