@@ -1,0 +1,122 @@
+--- a/dns/util.go
++++ b/dns/util.go
+@@ -154,9 +154,11 @@
+ 		}
+ 		c = u.Unwrap()
+ 	}
+-	c = wrapClientWithEdns0Subnet(c, params)
++	// Arca defaults to never forwarding or adding EDNS Client Subnet (ECS).
++	// DNS requests can carry ECS supplied by an application; remove it for every
++	// upstream, independent of resolver URL parameters.
+ 	c = wrapClientWithDisableTypes(c, params)
+-	return c
++	return clientWithoutEdns0Subnet{dnsClient: c}
+ }
+ 
+ // isWrapperOnlyParam reports whether a param only affects the wrapper layer and not
+@@ -240,6 +242,35 @@
+ 	return c
+ }
+ 
++type clientWithoutEdns0Subnet struct {
++	dnsClient
++}
++
++func (c clientWithoutEdns0Subnet) ExchangeContext(ctx context.Context, message *D.Msg) (*D.Msg, error) {
++	message = message.Copy()
++	stripEdns0Subnet(message)
++	response, err := c.dnsClient.ExchangeContext(ctx, message)
++	if err == nil && response != nil {
++		response = response.Copy()
++		stripEdns0Subnet(response)
++	}
++	return response, err
++}
++
++func (c clientWithoutEdns0Subnet) Unwrap() dnsClient { return c.dnsClient }
++
++func stripEdns0Subnet(message *D.Msg) {
++	for _, record := range message.Extra {
++		opt, ok := record.(*D.OPT)
++		if !ok {
++			continue
++		}
++		opt.Option = slices.DeleteFunc(opt.Option, func(option D.EDNS0) bool {
++			return option.Option() == D.EDNS0SUBNET
++		})
++	}
++}
++
+ type clientWithEdns0Subnet struct {
+ 	dnsClient
+ 	ecsPrefix   netip.Prefix
+--- a/dns/arca_no_ecs_test.go
++++ b/dns/arca_no_ecs_test.go
+@@ -0,0 +1,67 @@
++package dns
++
++import (
++	"context"
++	"testing"
++
++	D "github.com/miekg/dns"
++)
++
++type arcaEcsCaptureClient struct {
++	request  *D.Msg
++	response *D.Msg
++}
++
++func (c *arcaEcsCaptureClient) ExchangeContext(_ context.Context, message *D.Msg) (*D.Msg, error) {
++	c.request = message.Copy()
++	return c.response.Copy(), nil
++}
++func (c *arcaEcsCaptureClient) Address() string  { return "test" }
++func (c *arcaEcsCaptureClient) ResetConnection() {}
++
++func countEcs(message *D.Msg) int {
++	count := 0
++	for _, record := range message.Extra {
++		opt, ok := record.(*D.OPT)
++		if !ok {
++			continue
++		}
++		for _, option := range opt.Option {
++			if option.Option() == D.EDNS0SUBNET {
++				count++
++			}
++		}
++	}
++	return count
++}
++
++func TestArcaDNSUpstreamsStripECSEvenWhenResolverURLRequestsIt(t *testing.T) {
++	request := new(D.Msg)
++	request.SetQuestion("example.com.", D.TypeA)
++	opt := &D.OPT{Hdr: D.RR_Header{Name: ".", Rrtype: D.TypeOPT}}
++	opt.SetUDPSize(1232)
++	opt.Option = append(opt.Option, &D.EDNS0_SUBNET{Code: D.EDNS0SUBNET, Family: 1, SourceNetmask: 24, Address: []byte{203, 0, 113, 0}})
++	request.Extra = append(request.Extra, opt)
++
++	response := new(D.Msg)
++	response.SetReply(request)
++	responseOpt := &D.OPT{Hdr: D.RR_Header{Name: ".", Rrtype: D.TypeOPT}}
++	responseOpt.Option = append(responseOpt.Option, &D.EDNS0_SUBNET{Code: D.EDNS0SUBNET, Family: 1, SourceNetmask: 24, Address: []byte{203, 0, 113, 0}})
++	response.Extra = append(response.Extra, responseOpt)
++
++	raw := &arcaEcsCaptureClient{response: response}
++	client := rewrapClient(raw, map[string]string{"ecs": "203.0.113.0/24", "ecs-override": "true"})
++	got, err := client.ExchangeContext(context.Background(), request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if countEcs(raw.request) != 0 {
++		t.Fatal("ECS was sent to the upstream resolver")
++	}
++	if countEcs(got) != 0 {
++		t.Fatal("ECS was returned to the client")
++	}
++	if request.Extra[0].(*D.OPT).Option[0].Option() != D.EDNS0SUBNET {
++		t.Fatal("the original client request was mutated")
++	}
++}

@@ -2,6 +2,8 @@ package com.github.arca.android.core
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
 import android.net.VpnService
 import android.os.Build
 import android.util.Log
@@ -38,15 +40,22 @@ object ClashCore {
     private var initialized = false
 
     @Volatile
+    private var networkCallbackRegistered = false
+
+    @Volatile
     var isCoreLoaded = false
         private set
 
-    fun notifyNetworkChanged(context: Context) {
+    fun notifyNetworkChanged(context: Context, network: Network? = null, properties: LinkProperties? = null) {
         runCatching {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val activeNet = cm?.activeNetwork
-            val linkProps = cm?.getLinkProperties(activeNet)
-            val dnsServers = linkProps?.dnsServers?.mapNotNull { it.hostAddress }?.filter { !it.contains(":") } ?: emptyList()
+            val linkProps = properties ?: if (network != null) cm?.getLinkProperties(network)
+                else cm?.getLinkProperties(cm.activeNetwork)
+            // Keep IPv6 resolvers too; the native resolver understands both address families.
+            // Android may append a scope to link-local IPv6 literals, which net.ParseIP cannot use.
+            val dnsServers = linkProps?.dnsServers?.mapNotNull { address ->
+                address.hostAddress?.substringBefore('%')?.takeIf { it.isNotBlank() }
+            } ?: emptyList()
             val dnsStr = if (dnsServers.isNotEmpty()) dnsServers.joinToString(",") else "223.5.5.5,119.29.29.29"
             Bridge.nativeNotifyDnsChanged(dnsStr)
             Bridge.nativeNotifyTimeZoneChanged(
@@ -59,6 +68,24 @@ object ClashCore {
         }
     }
 
+    @Synchronized
+    private fun registerNetworkCallback(context: Context) {
+        if (networkCallbackRegistered || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        runCatching {
+            cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    notifyNetworkChanged(context, network)
+                }
+
+                override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                    notifyNetworkChanged(context, network, linkProperties)
+                }
+            })
+            networkCallbackRegistered = true
+        }.onFailure { Log.w(TAG, "Failed to register default network callback", it) }
+    }
+
     /** Idempotent; safe to call from any thread. Native loading and asset extraction are heavy. */
     @Synchronized
     fun init(context: Context) {
@@ -66,6 +93,7 @@ object ClashCore {
         Bridge.init(context)
         initialized = true
         notifyNetworkChanged(context)
+        registerNetworkCallback(context.applicationContext)
         Log.i(TAG, "Mihomo Core initialized. Version: ${getCoreVersion()}")
     }
 

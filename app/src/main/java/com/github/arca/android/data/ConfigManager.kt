@@ -518,7 +518,7 @@ object ConfigManager {
         LinkedHashMap<String, Any?>().apply { dns.forEach { (k, v) -> if (k != null) put(k.toString(), v) } }
     }.getOrNull()
 
-    private val runtimeOwnedDns = setOf("enable", "listen", "ipv6", "enhanced-mode", "fake-ip-range")
+    private val runtimeOwnedDns = setOf("enable", "listen", "ipv6", "enhanced-mode", "fake-ip-range", "respect-rules", "default-nameserver", "proxy-server-nameserver", "nameserver", "fallback")
 
     /** IPv6 capture controls client packets/DNS, not the address family used to reach a proxy server. */
     internal data class RuntimeIpv6Flags(val proxyServerResolution: Boolean, val clientDns: Boolean)
@@ -530,8 +530,14 @@ object ConfigManager {
     internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
         val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:1053", "ipv6" to ipv6Enabled,
             "enhanced-mode" to if (fakeIp) "fake-ip" else "redir-host", "fake-ip-range" to "198.18.0.1/16",
-            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"), "nameserver" to listOf("https://223.5.5.5/dns-query", "https://doh.pub/dns-query", "223.5.5.5", "119.29.29.29", "180.76.76.76"),
-            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query", "1.1.1.1", "8.8.8.8"), "fake-ip-filter" to defaultFakeIpFilter)
+            // Use Mihomo's built-in rule routing for encrypted public DNS. Plain resolvers are
+            // retained only as bootstrap servers for resolver/proxy hostnames.
+            "respect-rules" to true,
+            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"),
+            "proxy-server-nameserver" to listOf("https://doh.pub/dns-query#DIRECT"),
+            "nameserver" to listOf("https://cloudflare-dns.com/dns-query#RULES", "https://dns.google/dns-query#RULES"),
+            "fallback" to listOf("https://cloudflare-dns.com/dns-query#RULES", "https://dns.google/dns-query#RULES"),
+            "fake-ip-filter" to defaultFakeIpFilter)
         userDns?.forEach { (key, value) ->
             if (key.lowercase() !in runtimeOwnedDns) {
                 dns[key] = if (key == "fake-ip-filter") (defaultFakeIpFilter + ((value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList())).distinct() else value

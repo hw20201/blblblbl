@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ConfigDnsMergeTest {
+    @Test fun `default DNS uses encrypted rule-routed resolvers and direct bootstrap only`() {
+        val dns = ConfigManager.buildDnsSection(false, null)
+        assertEquals(true, dns["respect-rules"])
+        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["default-nameserver"])
+        assertEquals(listOf("https://doh.pub/dns-query#DIRECT"), dns["proxy-server-nameserver"])
+        val resolvers = (dns["nameserver"] as List<*>) + (dns["fallback"] as List<*>)
+        assertTrue(resolvers.all { it.toString().startsWith("https://") && it.toString().endsWith("#RULES") })
+        assertFalse(resolvers.any { it.toString().matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+(:53)?")) })
+    }
+
     @Test fun `runtime owns DNS transport values`() {
         val dns = ConfigManager.buildDnsSection(false, mapOf("enable" to false, "listen" to "0.0.0.0:53", "enhanced-mode" to "normal", "fake-ip-range" to "10.0.0.0/8"))
         assertEquals(true, dns["enable"]); assertEquals("127.0.0.1:1053", dns["listen"])
@@ -39,9 +49,13 @@ class ConfigDnsMergeTest {
         assertFalse(sanitized.contains("tcp-concurrent"))
     }
 
-    @Test fun `profile DNS resolvers and policies survive with filter union`() {
-        val dns = ConfigManager.buildDnsSection(true, mapOf("nameserver" to listOf("1.1.1.1"), "nameserver-policy" to mapOf("+.corp" to "10.0.0.53"), "fake-ip-filter" to listOf("+.corp", "*.lan")))
-        assertEquals(listOf("1.1.1.1"), dns["nameserver"]); assertEquals(mapOf("+.corp" to "10.0.0.53"), dns["nameserver-policy"])
+    @Test fun `profile DNS transport cannot replace privacy safe resolver defaults`() {
+        val dns = ConfigManager.buildDnsSection(true, mapOf("nameserver" to listOf("1.1.1.1"), "fallback" to listOf("8.8.8.8"), "respect-rules" to false, "proxy-server-nameserver" to listOf("system"), "nameserver-policy" to mapOf("+.corp" to "10.0.0.53"), "fake-ip-filter" to listOf("+.corp", "*.lan")))
+        assertEquals(true, dns["respect-rules"])
+        assertTrue((dns["nameserver"] as List<*>).all { it.toString().endsWith("#RULES") })
+        assertTrue((dns["fallback"] as List<*>).all { it.toString().endsWith("#RULES") })
+        assertEquals(listOf("https://doh.pub/dns-query#DIRECT"), dns["proxy-server-nameserver"])
+        assertEquals(mapOf("+.corp" to "10.0.0.53"), dns["nameserver-policy"])
         val filter = dns["fake-ip-filter"] as List<*>; assertTrue(filter.contains("connectivitycheck.gstatic.com")); assertEquals(filter.size, filter.toSet().size)
     }
 }

@@ -25,7 +25,7 @@ export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/28.2.13676358"
 bash scripts/build-native.sh
 ```
 
-脚本取得固定 Mihomo 模块，在忽略的 `native/build/` 内依次应用 `patches/mihomo-borrowed-fd.patch` 与 `patches/mihomo-proxy-only-traffic.patch`，不修改共享 Go 模块缓存。构建标签为 `foss with_gvisor cmfa`，最低原生 API 为 26。两库均成功且所有 ELF LOAD 段达到 16 KiB 对齐后才复制到应用，并生成 `native/SHA256SUMS`。Gradle 打包前检查两库哈希，防止混搭。
+脚本取得固定 Mihomo 模块，在忽略的 `native/build/` 内依次应用 `patches/mihomo-borrowed-fd.patch`、`patches/mihomo-proxy-only-traffic.patch` 与 `patches/mihomo-no-ecs.patch`，不修改共享 Go 模块缓存。构建标签为 `foss with_gvisor cmfa`，最低原生 API 为 26。两库均成功且所有 ELF LOAD 段达到 16 KiB 对齐后才复制到应用，并生成 `native/SHA256SUMS`。Gradle 打包前检查两库哈希，防止混搭。
 
 Go adapter 模块路径为 `cfa/native`，保留上游包导入路径。生成的 C 头文件留在构建目录。
 
@@ -38,6 +38,7 @@ Go adapter 模块路径为 `cfa/native`，保留上游包导入路径。生成�
 5. 契约版本 2 增加 `nativeStartTunV2`：Kotlin 传入 `{"mtu":9000,"congestion-controller":"cubic"}`，Go 侧校验 MTU 1280–65535 与 `cubic/reno/bbr/bbr3`，写入 `LC.Tun.MTU` 与 `CongestionController`。拥塞控制只对 MIPS 栈生效；旧库仍走版本 1 的入口并忽略这两个选项。
 6. IPv6 由 Kotlin 决定：关闭时不添加 IPv6 地址、`::/0` 与 IPv6 DNS，并且不把 IPv6 网关/portal 传给 native；开启时三处一起生效；Builder 任一 IPv6 操作失败则整个启动失败，不继续报告 IPv4-only。关闭时 Android 显式 `allowFamily(AF_INET6)`，允许 IPv6 在 VPN 外通信（不提供 IPv6 防泄漏）。
 7. 设置变更仅重建活动隧道；服务控制在 Main 串行执行，耗时启动和流量查询仍使用 Default。STOP 后的迟到 RESTART 不会重新启动，只有显式 START 可清除停止意图。
+8. Mihomo DNS 客户端默认移除发往上游查询及返回结果中的 EDNS Client Subnet（ECS），不读取 resolver URL 的 `ecs`/`ecs-override` 参数；保留同一个 OPT 记录内其他 EDNS 选项。该策略减少 ECS 暴露，但不代表所有应用层 DoH/DoT 都经过 VPN，也不替代真机抓包验收。
 
 ## 测试
 
@@ -45,6 +46,7 @@ Go adapter 模块路径为 `cfa/native`，保留上游包导入路径。生成�
 bash scripts/build-native.sh --prepare-only
 cd native/golang
 go test -mod=readonly -modfile=../build/native.go.mod -tags 'foss with_gvisor cmfa' ./tun -v
+go test -mod=readonly -modfile=../build/native.go.mod -tags 'foss with_gvisor cmfa' ./dns -run TestArcaDNSUpstreamsStripECSEvenWhenResolverURLRequestsIt -v
 ```
 
 Linux socketpair 测试不能代替 Android JNI 加载、系统 VPN 权限、Wi-Fi/蜂窝切换和真实节点测试；以本次实际测试结果为准。

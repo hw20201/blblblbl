@@ -210,7 +210,7 @@ class MihomoVpnService : VpnService() {
                     val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
                     val activeNet = cm?.activeNetwork
                     val linkProps = cm?.getLinkProperties(activeNet)
-                    val dnsServers = linkProps?.dnsServers?.mapNotNull { it.hostAddress }?.filter { !it.contains(":") } ?: emptyList()
+                    val dnsServers = linkProps?.dnsServers?.mapNotNull { it.hostAddress?.substringBefore('%')?.takeIf(String::isNotBlank) } ?: emptyList()
                     val dnsStr = if (dnsServers.isNotEmpty()) dnsServers.joinToString(",") else "223.5.5.5,119.29.29.29"
                     com.github.kr328.clash.core.bridge.Bridge.nativeNotifyDnsChanged(dnsStr)
                     com.github.kr328.clash.core.bridge.Bridge.nativeNotifyTimeZoneChanged(
