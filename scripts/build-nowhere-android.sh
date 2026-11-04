@@ -65,7 +65,7 @@ if any(value < 16384 for value in alignments):
 '
 
 MANIFEST="$ROOT/native/NOWHERE-SHA256SUMS"
-ACTUAL="$(sha256sum "$OUT" | sed "s#  $ROOT/##")"
+ACTUAL="$(sha256sum "$OUT" | sed "s#  $ROOT/#  #")"
 if [[ -f "$MANIFEST" ]]; then
   EXPECTED="$(cat "$MANIFEST")"
   if [[ "$EXPECTED" != "$ACTUAL" ]]; then
