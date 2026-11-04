@@ -489,15 +489,16 @@ class MihomoVpnService : VpnService() {
             currentCoroutineContext().ensureActive()
             val network = connectivity.activeNetwork
             val capabilities = network?.let(connectivity::getNetworkCapabilities)
-            if (network != null && capabilities != null &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-            ) return network
+            if (network != null && capabilities?.isEligiblePhysicalInternet() == true) return network
             delay(200L)
         }
         error("无法安全识别当前物理网络（需要活动的非 VPN Internet 网络），Nowhere 启动已阻止")
     }
+
+    private fun NetworkCapabilities.isEligiblePhysicalInternet(): Boolean =
+        hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
+            hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            !hasTransport(NetworkCapabilities.TRANSPORT_VPN)
 
     private fun closeTunnelLocked() {
         try {

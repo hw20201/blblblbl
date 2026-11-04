@@ -66,8 +66,9 @@ class NowhereSidecarService : Service() {
                     currentCoroutineContext().ensureActive()
                     try {
                         if (socksHandshake(port)) return@withContext
+                    } catch (error: CancellationException) {
+                        throw error
                     } catch (error: Exception) {
-                        if (error is CancellationException) throw error
                         lastFailure = error
                     }
                     delay(120)
@@ -123,9 +124,9 @@ class NowhereSidecarService : Service() {
                     }
                     val validated = NowhereNodeParser.parse(node.vectorUrl, node.socksPort)
                     check(validated.vectorUrl == node.vectorUrl) { "Nowhere runtime URL is not canonical" }
-                    if (vectorJob?.isActive == true && boundNetwork == network &&
+                    val sameBinding = boundNetwork == network &&
                         boundProfileId == profileId && boundPort == node.socksPort
-                    ) {
+                    if (vectorJob?.isActive == true && sameBinding) {
                         return@withLock
                     }
 
