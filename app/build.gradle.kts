@@ -161,8 +161,8 @@ android {
     }
 
     // Explicitly opt-in, side-by-side R8 experiment. This is not the production release:
-    // it has its own package id and a disposable debug signature so it can be installed
-    // alongside both the owner's app and the performance candidate for device diagnosis.
+    // it has a test-only package id. Local builds use debug signing; the dedicated GitHub
+    // test workflow can use the existing Release key so it installs beside production.
     // Build only with :app:assembleR8Test; never promote without device validation.
     buildTypes.create("r8Test") {
         initWith(buildTypes.getByName("release"))
@@ -171,7 +171,11 @@ android {
         isShrinkResources = true
         applicationIdSuffix = ".r8test"
         versionNameSuffix = "-r8-experiment"
-        signingConfig = signingConfigs.getByName("debug")
+        signingConfig = if (hasReleaseSigning) {
+            signingConfigs.getByName("release")
+        } else {
+            signingConfigs.getByName("debug")
+        }
         matchingFallbacks += listOf("release")
     }
 

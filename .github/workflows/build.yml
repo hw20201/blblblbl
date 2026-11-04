@@ -11,8 +11,8 @@ on:
         description: "Exact expected source commit SHA (40 hexadecimal characters)"
         required: true
 
-# Releases are managed manually as drafts after verification.
-# CI must never create, publish, or update any Release or tag.
+# The production release workflow is artifact-only and never writes Releases or tags.
+# Test-only side-by-side R8 drafts use a separate, branch-scoped workflow.
 permissions:
   contents: read
 

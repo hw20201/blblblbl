@@ -1,0 +1,173 @@
+name: ArCa R8 Test Draft
+
+on:
+  push:
+    branches:
+      - "test/arca-r8test-draft-9b34e54"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arca-r8test-draft-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.actor == 'hw20201'
+    name: Build and verify R8 side-by-side APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out test branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify source base and test-only identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 9b34e54f6ccb0db1c47731a2d9f76bd2ca354683 HEAD
+          grep -Fq 'applicationId = "com.github.arca.android"' app/build.gradle.kts
+          R8TEST_BLOCK="$(sed -n '/buildTypes.create("r8Test")/,/^    }/p' app/build.gradle.kts)"
+          grep -Fq 'applicationIdSuffix = ".r8test"' <<<"$R8TEST_BLOCK"
+          grep -Fq 'isMinifyEnabled = true' <<<"$R8TEST_BLOCK"
+          grep -Fq 'isShrinkResources = true' <<<"$R8TEST_BLOCK"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-37 build-tools;37.0.0 ndk;28.2.13676358 cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run static analysis
+        run: |
+          ./gradlew detekt --no-daemon --no-configuration-cache --max-workers=2 \
+            "-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+
+      - name: Run unit tests
+        run: |
+          ./gradlew testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2 \
+            "-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+
+      - name: Build R8 test APK with existing Release key
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          export RELEASE_STORE_FILE="$RUNNER_TEMP/arca-release.jks"
+          trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
+          test -s "$RELEASE_STORE_FILE"
+          unset RELEASE_KEYSTORE_BASE64
+          ./gradlew :app:assembleR8Test --no-daemon --no-configuration-cache --max-workers=2 \
+            "-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+
+      - name: Remove signing material even after failure
+        if: always()
+        run: rm -f "$RUNNER_TEMP/arca-release.jks"
+
+      - name: Verify APK identity, R8 output, and Release signature
+        env:
+          EXPECTED_CERT_SHA256: "e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build_output
+          APK=app/build/outputs/apk/r8Test/app-r8Test.apk
+          test -f "$APK"
+          test -s app/build/outputs/mapping/r8Test/mapping.txt
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$APK" > build_output/signature.txt
+          ACTUAL_CERT_SHA256=$(grep -E '^(Signer #1|V2 Signer): certificate SHA-256 digest: ' build_output/signature.txt | sed 's/^.*digest: //')
+          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          "$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$APK" > build_output/apk-info.txt
+          grep -Fq "package: name='com.github.arca.android.r8test'" build_output/apk-info.txt
+          grep -Fq "versionCode='59' versionName='1.0.37-with-suspended-r8-experiment'" build_output/apk-info.txt
+          cp "$APK" build_output/ArCa-R8Test.apk
+          git rev-parse HEAD > build_output/source-commit.txt
+          (cd build_output && sha256sum ArCa-R8Test.apk > SHA256SUMS)
+          cat > build_output/release-notes.md <<EOF
+          ArCa R8 side-by-side test APK — unpublished Draft Release.
+
+          - Test application ID: com.github.arca.android.r8test
+          - Production application ID remains: com.github.arca.android
+          - R8 minification and resource shrinking: enabled
+          - Version: 1.0.37-with-suspended-r8-experiment (versionCode 59)
+          - Source commit: $(git rev-parse HEAD)
+          - Release certificate SHA-256: $ACTUAL_CERT_SHA256
+
+          This is a device-test build, not a production release.
+          EOF
+
+      - name: Upload verified APK and evidence for the Draft job
+        uses: actions/upload-artifact@v4
+        with:
+          name: arca-r8test-${{ github.sha }}
+          path: build_output/
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    if: github.actor == 'hw20201'
+    name: Create unpublished test Draft Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download verified APK and evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: arca-r8test-${{ github.sha }}
+          path: build_output
+
+      - name: Create the test-only Draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gh
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          TAG="arca-test-1.0.37-r8test-${GITHUB_SHA}"
+          TITLE="ArCa 1.0.37 — R8 side-by-side test (${SHORT_SHA})"
+          test -s build_output/ArCa-R8Test.apk
+          test -s build_output/SHA256SUMS
+          gh release create "$TAG" \
+            build_output/ArCa-R8Test.apk \
+            build_output/SHA256SUMS \
+            build_output/apk-info.txt \
+            build_output/signature.txt \
+            build_output/source-commit.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "$TITLE" \
+            --notes-file build_output/release-notes.md \
+            --target "$GITHUB_SHA"
