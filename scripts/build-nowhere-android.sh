@@ -25,7 +25,11 @@ if [[ -z "$NDK" || ! -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-
   exit 2
 fi
 
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+NDK_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+ANDROID_CLANG="$NDK_BIN/aarch64-linux-android26-clang"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_CLANG"
+export CC_aarch64_linux_android="$ANDROID_CLANG"
+export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 export CARGO_TARGET_DIR="$ROOT/target"
 
