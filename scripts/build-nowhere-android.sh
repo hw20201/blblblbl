@@ -43,10 +43,18 @@ OUT="$ROOT/app/src/main/jniLibs/arm64-v8a/libnowhere_android.so"
 mkdir -p "$(dirname "$OUT")"
 cp "$LIB" "$OUT"
 
-readelf -h "$OUT" | grep -q 'Class:.*ELF64'
-readelf -h "$OUT" | grep -q 'Machine:.*AArch64'
-readelf -h "$OUT" | grep -q 'Type:.*DYN'
-readelf --dyn-syms "$OUT" | grep -Fq 'Java_com_github_arca_android_service_NowhereNative_run'
+ELF_HEADER="$ROOT/target/nowhere-android-elf-header.txt"
+DYNAMIC_SYMBOLS="$ROOT/target/nowhere-android-dynamic-symbols.txt"
+readelf -h "$OUT" > "$ELF_HEADER"
+grep -q 'Class:.*ELF64' "$ELF_HEADER"
+grep -q 'Machine:.*AArch64' "$ELF_HEADER"
+grep -q 'Type:.*DYN' "$ELF_HEADER"
+readelf --dyn-syms --wide "$OUT" > "$DYNAMIC_SYMBOLS"
+if ! grep -Fq 'Java_com_github_arca_android_service_NowhereNative_run' "$DYNAMIC_SYMBOLS"; then
+  echo "Expected Nowhere JNI entry point is missing from the dynamic symbol table." >&2
+  grep -F 'Java_' "$DYNAMIC_SYMBOLS" >&2 || true
+  exit 1
+fi
 readelf -lW "$OUT" | python3 -c '
 import sys
 alignments = [int(line.split()[-1], 0) for line in sys.stdin if line.split()[:1] == ["LOAD"]]
