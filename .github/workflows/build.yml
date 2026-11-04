@@ -1,32 +1,45 @@
-name: Nexus Build
+name: ArCa Build
 
 on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "Existing source ref to build (for example refs/tags/v1.0.2)"
+        description: "Existing source ref to build (for example refs/heads/feature/nowhere-nw3)"
         required: true
         default: "main"
       source_sha:
         description: "Exact expected source commit SHA (40 hexadecimal characters)"
         required: true
+      artifact_variant:
+        description: "APK variant to build with the repository Release signing key"
+        required: true
+        type: choice
+        options:
+          - release
+          - r8Test
+        default: release
 
-# Releases are managed manually as drafts after verification.
-# CI must never create, publish, or update any Release or tag.
+# This workflow only builds and uploads a short-lived CI artifact. It never creates,
+# publishes, or updates a Release or tag; the owner reviews and creates an unpublished draft.
 permissions:
   contents: read
 
 jobs:
   build:
-    # Signing is dispatched from main; the immutable source ref is selected separately.
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    name: Build Android APK
+    # Preserve main's existing dispatch path, and allow a fresh feature branch to run
+    # its own reviewed workflow definition against exactly the same immutable source SHA.
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || (github.ref == 'refs/heads/feature/nowhere-nw3' && inputs.source_ref == github.ref))
+    name: Build signed Android APK
     runs-on: ubuntu-latest
     steps:
+      - name: Check runner architecture
+        run: test "$(uname -m)" = "x86_64"
       - name: Checkout exact requested source
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_ref || github.sha }}
+          submodules: recursive
+          fetch-depth: 0
           persist-credentials: false
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -36,7 +49,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-36 build-tools;36.0.0"
+          packages: "platforms;android-37 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1"
+      - name: Set up Rust for Android AArch64
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-linux-android
+      - name: Build and validate official Nowhere JNI runtime
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          scripts/build-nowhere-android.sh
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Grant execute permission for gradlew
@@ -45,6 +67,7 @@ jobs:
         env:
           EXPECTED_SHA: ${{ inputs.source_sha || github.sha }}
           SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+          ARTIFACT_VARIANT: ${{ inputs.artifact_variant || 'release' }}
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -54,7 +77,7 @@ jobs:
           if [[ "$SOURCE_REF" == refs/tags/v* || "$SOURCE_REF" == v* ]]; then
             test "${TAG_NAME#v}" = "$VERSION_NAME"
           fi
-          if [[ "$TAG_NAME" == v1.0.2 ]]; then
+          if [[ "$ARTIFACT_VARIANT" == "release" && "$TAG_NAME" == v1.0.2 ]]; then
             test "$EXPECTED_SHA" = "2459ca7cd6b91419b286c20ff71365054c71d1ac"
             test "$(git rev-parse HEAD)" = "2459ca7cd6b91419b286c20ff71365054c71d1ac"
           fi
@@ -62,12 +85,13 @@ jobs:
         run: ./gradlew detekt --no-configuration-cache
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-configuration-cache
-      - name: Build Release APK with fixed signing key
+      - name: Build APK with fixed Release signing key
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          ARTIFACT_VARIANT: ${{ inputs.artifact_variant || 'release' }}
         run: |
           set -euo pipefail
           set +x
@@ -76,52 +100,79 @@ jobs:
           test -n "$RELEASE_STORE_PASSWORD"
           test -n "$RELEASE_KEY_PASSWORD"
           test -n "$RELEASE_KEY_ALIAS"
-          export RELEASE_STORE_FILE="$RUNNER_TEMP/nexus-release.jks"
+          export RELEASE_STORE_FILE="$RUNNER_TEMP/arca-release.jks"
           trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
           test -s "$RELEASE_STORE_FILE"
           unset RELEASE_KEYSTORE_BASE64
-          ./gradlew assembleRelease --no-daemon --no-configuration-cache
+          case "$ARTIFACT_VARIANT" in
+            release) GRADLE_TASK=assembleRelease ;;
+            r8Test) GRADLE_TASK=assembleR8Test ;;
+            *) echo "Unsupported variant" >&2; exit 2 ;;
+          esac
+          ./gradlew "$GRADLE_TASK" --no-daemon --no-configuration-cache
       - name: Remove signing material even after failure
         if: always()
-        run: rm -f "$RUNNER_TEMP/nexus-release.jks"
+        run: rm -f "$RUNNER_TEMP/arca-release.jks"
       - name: Verify and record APK identity
         env:
           EXPECTED_CERT_SHA256: "e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2"
           SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+          ARTIFACT_VARIANT: ${{ inputs.artifact_variant || 'release' }}
         run: |
           set -euo pipefail
           mkdir -p build_output
-          APK=app/build/outputs/apk/release/app-release.apk
+          if [[ "$ARTIFACT_VARIANT" == "r8Test" ]]; then
+            APK=app/build/outputs/apk/r8Test/app-r8Test.apk
+            EXPECTED_PACKAGE="com.github.arca.android.r8test"
+            EXPECTED_VERSION_SUFFIX="-r8-experiment"
+            OUTPUT_NAME="ArCa-arm64-v8a-r8test.apk"
+            test -s app/build/outputs/mapping/r8Test/mapping.txt
+            cp app/build/outputs/mapping/r8Test/mapping.txt build_output/R8-mapping.txt
+          else
+            APK=app/build/outputs/apk/release/app-release.apk
+            EXPECTED_PACKAGE="com.github.arca.android"
+            EXPECTED_VERSION_SUFFIX=""
+            OUTPUT_NAME="ArCa-arm64-v8a-release.apk"
+          fi
           test -f "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > build_output/signature.txt
           ACTUAL_CERT_SHA256=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' build_output/signature.txt)
           test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > build_output/apk-info.txt
-          grep -q "package: name='com.github.arca.android'" build_output/apk-info.txt
-          if [[ "${SOURCE_REF#refs/tags/}" == v1.0.2 ]]; then
-            grep -q "versionCode='6' versionName='1.0.2'" build_output/apk-info.txt
+          grep -Fq "package: name='$EXPECTED_PACKAGE'" build_output/apk-info.txt
+          grep -Fq "native-code: 'arm64-v8a'" build_output/apk-info.txt
+          if grep -q 'application-debuggable' build_output/apk-info.txt; then
+            echo "Refusing to deliver a debuggable APK" >&2
+            exit 1
           fi
-          if [[ "${SOURCE_REF#refs/tags/}" == v1.0.3 ]]; then
-            grep -q "versionCode='7' versionName='1.0.3'" build_output/apk-info.txt
+          VERSION_CODE=$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts)
+          VERSION_NAME=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          grep -Fq "versionCode='$VERSION_CODE' versionName='${VERSION_NAME}${EXPECTED_VERSION_SUFFIX}'" build_output/apk-info.txt
+          if [[ "$ARTIFACT_VARIANT" == "release" && "${SOURCE_REF#refs/tags/}" == v1.0.2 ]]; then
+            grep -Fq "versionCode='6' versionName='1.0.2'" build_output/apk-info.txt
           fi
-          cp "$APK" build_output/Nexus-arm64-v8a-release.apk
+          cp "$APK" "build_output/$OUTPUT_NAME"
+          cp native/NOWHERE-SHA256SUMS build_output/NOWHERE-SHA256SUMS
+          stat -c '%n %s bytes' "build_output/$OUTPUT_NAME" > build_output/asset-size.txt
           git rev-parse HEAD > build_output/source-commit.txt
           printf '%s\n' "$GITHUB_WORKFLOW_SHA" > build_output/workflow-commit.txt
           (cd build_output && sha256sum *.apk > SHA256SUMS)
-      - name: Upload APK and verification evidence
+      - name: Upload APK and verification evidence (short-lived CI artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: Nexus-arm64-v8a-apk
+          name: ArCa-${{ inputs.artifact_variant || 'release' }}-arm64-apk
           path: build_output/
           if-no-files-found: error
+          retention-days: 1
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Nexus-test-reports
+          name: ArCa-test-reports
           path: |
             app/build/reports/tests/
             app/build/test-results/
             app/build/reports/detekt/
           if-no-files-found: ignore
+          retention-days: 7

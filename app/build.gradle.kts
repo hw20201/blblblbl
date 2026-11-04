@@ -40,11 +40,11 @@ abstract class VerifyNativeLibrariesTask : DefaultTask() {
                 parts[1] to parts[0]
             }
         val paths = libraryPaths.get()
-        check(expected.keys == paths.toSet()) { "Native library pair manifest is incomplete" }
+        check(expected.keys == paths.toSet()) { "Native library checksum manifest is incomplete" }
 
         val librariesByName = libraries.files.associateBy { it.name }
         check(paths.map { it.substringAfterLast('/') }.toSet() == librariesByName.keys) {
-            "Configured native library files do not match the expected pair"
+            "Configured native library files do not match the checksum manifest"
         }
         for (path in paths) {
             val library = librariesByName.getValue(path.substringAfterLast('/'))
@@ -76,7 +76,7 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
     !releaseKeyPassword.isNullOrBlank() &&
     !releaseStorePassword.isNullOrBlank()
 
-// R8 remains experimental and off for signed draft packages.
+// R8 remains enabled by default for signed packages; r8Test always forces shrinking/minification.
 val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: true
 
 val nativeLibraryPaths = listOf(
@@ -88,7 +88,13 @@ val verifyNativeLibraries = tasks.register<VerifyNativeLibrariesTask>("verifyNat
     libraryPaths.set(nativeLibraryPaths)
     libraries.from(nativeLibraryPaths.map { rootProject.file(it) })
 }
-tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
+val nowhereNativeLibraryPaths = listOf("app/src/main/jniLibs/arm64-v8a/libnowhere_android.so")
+val verifyNowhereNativeLibrary = tasks.register<VerifyNativeLibrariesTask>("verifyNowhereNativeLibrary") {
+    checksumFile.set(rootProject.layout.projectDirectory.file("native/NOWHERE-SHA256SUMS"))
+    libraryPaths.set(nowhereNativeLibraryPaths)
+    libraries.from(nowhereNativeLibraryPaths.map { rootProject.file(it) })
+}
+tasks.named("preBuild") { dependsOn(verifyNativeLibraries, verifyNowhereNativeLibrary) }
 
 android {
     namespace = "com.github.arca.android"
@@ -160,9 +166,8 @@ android {
         manifest.srcFile("src/debug/AndroidManifest.xml")
     }
 
-    // Explicitly opt-in, side-by-side R8 experiment. This is not the production release:
-    // it has its own package id and a disposable debug signature so it can be installed
-    // alongside both the owner's app and the performance candidate for device diagnosis.
+    // Explicitly opt-in, side-by-side R8 test package. It keeps the production Release
+    // certificate in CI so it can be delivered as an unpublished, installable draft APK.
     // Build only with :app:assembleR8Test; never promote without device validation.
     buildTypes.create("r8Test") {
         initWith(buildTypes.getByName("release"))
@@ -171,7 +176,11 @@ android {
         isShrinkResources = true
         applicationIdSuffix = ".r8test"
         versionNameSuffix = "-r8-experiment"
-        signingConfig = signingConfigs.getByName("debug")
+        signingConfig = if (hasReleaseSigning) {
+            signingConfigs.getByName("release")
+        } else {
+            signingConfigs.getByName("debug")
+        }
         matchingFallbacks += listOf("release")
     }
 
@@ -207,7 +216,7 @@ android {
         jniLibs {
             useLegacyPackaging = true
             // The guard's NDK build must not strip/rewrite pinned core binaries.
-            keepDebugSymbols += setOf("**/libclash.so", "**/libbridge.so")
+            keepDebugSymbols += setOf("**/libclash.so", "**/libbridge.so", "**/libnowhere_android.so")
         }
     }
 }

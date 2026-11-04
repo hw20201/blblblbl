@@ -1,0 +1,3 @@
+[submodule "native/nowhere"]
+	path = native/nowhere
+	url = https://github.com/NodePassProject/Nowhere.git

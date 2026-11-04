@@ -1,0 +1,23 @@
+[package]
+name = "nowhere-android-bridge"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[lib]
+name = "nowhere_android"
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = "1.0.104"
+jni = "0.21.1"
+nowhere = { path = "../nowhere" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "signal", "time"] }
+url = "2.5.8"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

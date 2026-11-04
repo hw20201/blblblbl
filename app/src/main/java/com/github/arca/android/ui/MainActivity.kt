@@ -129,10 +129,23 @@ class MainActivity : ComponentActivity() {
 
     /** Link handed over by clash://install-config; confirmed by the user before downloading. */
     private val pendingSubscriptionLink = kotlinx.coroutines.flow.MutableStateFlow<SubscriptionLink?>(null)
+    /** NW3 credentials stay out of the import dialog; the user explicitly confirms the endpoint. */
+    private val pendingNowhereProfile = kotlinx.coroutines.flow.MutableStateFlow<NowhereNodeProfile?>(null)
 
     private fun handleIncomingIntent(intent: android.content.Intent?) {
         val data = intent?.data ?: return
         val scheme = data.scheme?.lowercase() ?: return
+        if (scheme == "nowhere" || scheme == "vector") {
+            val localPort = 20000 + java.security.SecureRandom().nextInt(20000)
+            val parsed = runCatching { NowhereNodeParser.parse(data.toString(), localPort) }
+            if (parsed.isSuccess) {
+                pendingNowhereProfile.value = parsed.getOrThrow()
+            } else {
+                AppNotice.error("无法识别 Nowhere 链接：${parsed.exceptionOrNull()?.message ?: "格式无效"}")
+            }
+            intent.data = null
+            return
+        }
         if (scheme !in SubscriptionLinkParser.SCHEMES) return
         val link = SubscriptionLinkParser.parse(data)
         if (link == null) {
@@ -1177,7 +1190,14 @@ class MainActivity : ComponentActivity() {
                                     onBack = handleSubScreenBack,
                                     onSelectProfile = { profile ->
                                         lifecycleScope.launch {
-                                            val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
+                                            val vpnRunning = vpnState.status == VpnState.Status.RUNNING
+                                            val hotSwitchEnabled = settingsManager.profileHotSwitchEnabled
+                                            val currentProfile = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                            val switchesNowhere = vpnRunning && hotSwitchEnabled && (
+                                                currentProfile?.let { NowhereNodeStore.hasNode(this@MainActivity, it.id) } == true ||
+                                                    NowhereNodeStore.hasNode(this@MainActivity, profile.id)
+                                                )
+                                            val shouldHotSwitch = vpnRunning && hotSwitchEnabled && !switchesNowhere
                                             val loaded = if (shouldHotSwitch) withContext(Dispatchers.IO) {
                                                 runCatching {
                                                     val config = ConfigManager.prepareConfig(this@MainActivity, profile.file)
@@ -1194,7 +1214,12 @@ class MainActivity : ComponentActivity() {
                                                 parseActiveProfile()
                                                 liveGroupMap = emptyMap()
                                                 if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
-                                                AppNotice.show(if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}")
+                                                if (switchesNowhere) {
+                                                    MihomoVpnService.restart(this@MainActivity)
+                                                    AppNotice.show("Nowhere 配置需要重建 VPN，正在重新连接：${profile.name}")
+                                                } else {
+                                                    AppNotice.show(if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}")
+                                                }
                                             } else {
                                                 AppNotice.show("配置切换失败，仍保留当前配置：${loaded.exceptionOrNull()?.message}", long = true)
                                             }
@@ -1246,7 +1271,13 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onDeleteProfile = { profile ->
+                                        val deletingActiveNowhere = profile.id == selectedProfileId &&
+                                            NowhereNodeStore.hasNode(this@MainActivity, profile.id)
+                                        if (deletingActiveNowhere && vpnState.status != VpnState.Status.STOPPED) {
+                                            MihomoVpnService.stop(this@MainActivity)
+                                        }
                                         ConfigManager.deleteProfile(this@MainActivity, profile.id)
+                                        NowhereNodeStore.delete(this@MainActivity, profile.id)
                                         reloadProfiles()
                                     },
                                     onImportLocalFile = {
@@ -1480,6 +1511,39 @@ class MainActivity : ComponentActivity() {
                                 AppNotice.success("订阅已导入：${res.getOrNull()?.name}")
                             } else {
                                 AppNotice.error("导入失败：${res.exceptionOrNull()?.message}")
+                            }
+                        }
+                    }
+                )
+            }
+            val incomingNowhere by pendingNowhereProfile.collectAsState()
+            incomingNowhere?.let { node ->
+                NowhereImportDialog(
+                    node = node,
+                    onDismiss = { pendingNowhereProfile.value = null },
+                    onConfirm = { requestedName ->
+                        pendingNowhereProfile.value = null
+                        lifecycleScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val name = requestedName.ifBlank { node.displayName }
+                                    val renamed = NowhereNodeParser.parse(node.vectorUrl, node.localSocksPort, name)
+                                    val yaml = renamed.profileYaml()
+                                    val profile = ConfigManager.saveLocalProfile(this@MainActivity, renamed.displayName, yaml)
+                                    try {
+                                        NowhereNodeStore.save(this@MainActivity, profile.id, renamed.vectorUrl, renamed.localSocksPort, yaml)
+                                    } catch (error: Throwable) {
+                                        ConfigManager.deleteProfile(this@MainActivity, profile.id)
+                                        throw error
+                                    }
+                                    profile
+                                }
+                            }
+                            if (result.isSuccess) {
+                                reloadProfiles()
+                                AppNotice.success("Nowhere 节点已导入：${result.getOrThrow().name}。请在配置列表中选择后启动 VPN。")
+                            } else {
+                                AppNotice.error("Nowhere 导入失败：${result.exceptionOrNull()?.message}")
                             }
                         }
                     }

@@ -54,3 +54,6 @@ old_canvas.txt
 # Android CMake intermediates
 .cxx/
 .externalNativeBuild/
+
+# Rust build artifacts
+**/target/

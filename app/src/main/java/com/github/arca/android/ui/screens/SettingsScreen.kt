@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.AltRoute
@@ -108,6 +109,8 @@ fun SettingsScreen(
     var showTunDialog by remember { mutableStateOf(false) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showNowhereLicenseDialog by remember { mutableStateOf(false) }
+    var nowhereLicenseText by remember { mutableStateOf<String?>(null) }
     var currentLogLevel by remember { mutableStateOf(settingsManager.logLevel) }
 
     var coreVersion by remember { mutableStateOf("") }
@@ -345,6 +348,20 @@ fun SettingsScreen(
                     icon = Icons.Default.Memory,
                     iconBg = AppPalette.iconGray,
                     showChevron = false
+                )
+                CupertinoDivider()
+                CupertinoCell(
+                    title = "Nowhere / Vector 开源许可",
+                    value = "GPL-3.0-only · v3.3.0",
+                    icon = Icons.Default.Description,
+                    iconBg = AppPalette.iconIndigo,
+                    showChevron = true,
+                    onClick = {
+                        nowhereLicenseText = runCatching {
+                            context.assets.open("licenses/NOWHERE-GPL-3.0.txt").bufferedReader().use { it.readText() }
+                        }.getOrElse { "未能读取随应用提供的 GPL-3.0-only 许可证文本。" }
+                        showNowhereLicenseDialog = true
+                    }
                 )
                 CupertinoDivider()
                 CupertinoCell(
@@ -614,6 +631,27 @@ fun SettingsScreen(
                     Text(option)
                 }
             } } }, confirmButton = { TextButton(onClick = { showCongestionDialog = false }) { Text("关闭") } })
+    }
+    if (showNowhereLicenseDialog) {
+        GlassAlertDialog(
+            onDismissRequest = { showNowhereLicenseDialog = false },
+            title = { Text("Nowhere / Vector 开源许可", fontWeight = FontWeight.Bold, color = LoonTextPrimary) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    Text(
+                        "Nowhere v3.3.0 · Copyright © 2026 NodePassProject. Licensed under GNU GPL v3.0 only. " +
+                            "This software is provided without warranty. You may redistribute or modify it under the license terms. " +
+                            "Nowhere source: https://github.com/NodePassProject/Nowhere/tree/000007b2482b8acf3a609888921fd847cad56c33. " +
+                            "ArCa Android bridge: hw20201/blblblbl, branch feature/nowhere-nw3.",
+                        color = LoonTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(nowhereLicenseText.orEmpty(), color = LoonTextSecondary, fontSize = 10.sp, lineHeight = 13.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showNowhereLicenseDialog = false }) { Text("关闭") } }
+        )
     }
 
 }

@@ -1,8 +1,6 @@
 # ---------------------------------------------------------------------------
-# Native bridge (libclash.so / libbridge.so) -- entry points are looked up by
-# JNI name, so they must survive shrinking and obfuscation.
-# NOTE: shrinking is currently disabled (isMinifyEnabled = false) because the
-# minified build previously crashed on startup. R8 is experimental and opt-in.
+# Native bridges (libclash.so / libbridge.so / libnowhere_android.so) -- entry
+# points are looked up by JNI name, so they must survive shrinking/obfuscation.
 # ---------------------------------------------------------------------------
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
@@ -53,6 +51,8 @@
 -keep class com.github.arca.android.MihomoApplication { *; }
 -keep class com.github.arca.android.ui.MainActivity { *; }
 -keep class com.github.arca.android.service.MihomoVpnService { *; }
+-keep class com.github.arca.android.service.NowhereSidecarService { *; }
+-keep class com.github.arca.android.service.NowhereNative { *; }
 -keep class com.github.arca.android.service.MihomoTileService { *; }
 -keep class com.github.arca.android.receiver.BootReceiver { *; }
 -keep class com.github.arca.android.data.** { *; }

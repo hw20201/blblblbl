@@ -8,9 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -19,6 +22,7 @@ import com.github.kr328.clash.core.util.*
 import com.github.arca.android.R
 import com.github.arca.android.core.ClashCore
 import com.github.arca.android.data.ConfigManager
+import com.github.arca.android.data.NowhereNodeStore
 import com.github.arca.android.data.PerAppProxyMode
 import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.data.TunStack
@@ -185,10 +189,30 @@ class MihomoVpnService : VpnService() {
                 }
                 val profiles = ConfigManager.getProfiles(this@MihomoVpnService)
                 val activeProfile = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
+                val nowhereNode = activeProfile?.let { profile ->
+                    if (!NowhereNodeStore.hasNode(this@MihomoVpnService, profile.id)) null else {
+                        check(!profile.scriptEnabled && profile.scriptIds.isEmpty()) {
+                            "Nowhere profile 不能启用配置改写脚本；请关闭脚本后再启动"
+                        }
+                        NowhereNodeStore.load(this@MihomoVpnService, profile.id, profile.file)
+                    }
+                }
+                val physicalNetwork = if (nowhereNode != null) awaitPhysicalNetwork() else null
 
                 val configFile = ConfigManager.prepareConfig(
                     this@MihomoVpnService, activeProfile?.file, ipv6Enabled = ipv6
                 )
+
+                // Vector is hosted in an isolated Android process and must bind to the physical
+                // network before Mihomo establishes the TUN; otherwise SOCKS could loop into VPN.
+                if (nowhereNode != null) {
+                    val profileId = activeProfile?.id ?: error("Nowhere 配置缺少 profile ID")
+                    val upstream = physicalNetwork ?: error("Nowhere 物理网络不可用")
+                    NowhereSidecarService.start(this@MihomoVpnService, profileId, upstream)
+                    NowhereSidecarService.awaitSocksReady(nowhereNode.socksPort)
+                } else {
+                    NowhereSidecarService.stop(this@MihomoVpnService)
+                }
 
                 // 3. Load config into core
                 val loadRes = ClashCore.load(configFile)
@@ -208,7 +232,7 @@ class MihomoVpnService : VpnService() {
                 // Notify physical network DNS and Timezone to core
                 runCatching {
                     val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                    val activeNet = cm?.activeNetwork
+                    val activeNet = physicalNetwork ?: cm?.activeNetwork
                     val linkProps = cm?.getLinkProperties(activeNet)
                     val dnsServers = linkProps?.dnsServers?.mapNotNull { it.hostAddress }?.filter { !it.contains(":") } ?: emptyList()
                     val dnsStr = if (dnsServers.isNotEmpty()) dnsServers.joinToString(",") else "223.5.5.5,119.29.29.29"
@@ -236,6 +260,7 @@ class MihomoVpnService : VpnService() {
                 val builder = Builder().apply {
                     setSession("Nexus")
                     setMtu(mtu)
+                    if (physicalNetwork != null) setUnderlyingNetworks(arrayOf(physicalNetwork))
                     addAddress("172.19.0.1", 30)
                     addRoute("0.0.0.0", 0)
                     addRoute("198.18.0.0", 16) // Explicit route for Fake-IP range!
@@ -312,6 +337,7 @@ class MihomoVpnService : VpnService() {
                 ClashCore.stopTun()
                 runCatching { vpnInterface?.close() }
                 vpnInterface = null
+                NowhereSidecarService.stop(this@MihomoVpnService)
                 throw e
             } catch (e: Throwable) {
                 Log.e(TAG, "Failed to start Nexus VPN", e)
@@ -319,6 +345,7 @@ class MihomoVpnService : VpnService() {
                 ClashCore.stopTun()
                 runCatching { vpnInterface?.close() }
                 vpnInterface = null
+                NowhereSidecarService.stop(this@MihomoVpnService)
                 _vpnState.value = _vpnState.value.copy(
                     status = VpnState.Status.STOPPED,
                     error = e.message ?: "未知启动错误"
@@ -449,6 +476,29 @@ class MihomoVpnService : VpnService() {
         }
     }
 
+    /**
+     * Resolves the default physical upstream before the ArCa TUN exists. Never guesses from an
+     * arbitrary NetworkCallback candidate: if the active route is VPN or ambiguous/unavailable,
+     * fail closed rather than risk routing Vector back through Mihomo.
+     */
+    private suspend fun awaitPhysicalNetwork(timeoutMs: Long = 5_000L): Network {
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: error("无法读取网络状态，Nowhere VPN 启动已阻止")
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
+            currentCoroutineContext().ensureActive()
+            val network = connectivity.activeNetwork
+            val capabilities = network?.let(connectivity::getNetworkCapabilities)
+            if (network != null && capabilities != null &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            ) return network
+            delay(200L)
+        }
+        error("无法安全识别当前物理网络（需要活动的非 VPN Internet 网络），Nowhere 启动已阻止")
+    }
+
     private fun closeTunnelLocked() {
         try {
             ClashCore.stopTun()
@@ -456,6 +506,7 @@ class MihomoVpnService : VpnService() {
         } catch (e: Throwable) {
             Log.w(TAG, "Error closing VPN", e)
         } finally {
+            NowhereSidecarService.stop(this)
             vpnInterface = null
             _vpnState.value = VpnState(status = VpnState.Status.STOPPED)
             _trafficMetrics.value = TrafficMetrics()
@@ -538,6 +589,7 @@ class MihomoVpnService : VpnService() {
         trafficMonitorJob?.cancel()
         startJob?.cancel()
         serviceScope.cancel()
+        NowhereSidecarService.stop(this)
         runCatching { ClashCore.stopTun() }
         runCatching { vpnInterface?.close() }
         vpnInterface = null
