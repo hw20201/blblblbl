@@ -47,7 +47,17 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-37 build-tools;37.0.0 ndk;28.2.13676358 cmake;3.22.1"
+          packages: "platforms;android-37.0 build-tools;37.0.0 ndk;28.2.13676358 cmake;3.22.1"
+
+      - name: Add API 37 compatibility alias for Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
+          if [[ ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
