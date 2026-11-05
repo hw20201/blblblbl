@@ -491,7 +491,16 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        fun shouldSkipNowhereSpeedTest(): Boolean {
+            if (vpnState.status == VpnState.Status.RUNNING) return false
+            val profileId = selectedProfileId ?: return false
+            if (!NowhereNodeStore.hasNode(this@MainActivity, profileId)) return false
+            AppNotice.info("请先连接 VPN，再测试 Nowhere 节点延迟。未连接时本地 SOCKS 服务不会启动。")
+            return true
+        }
+
         fun runSpeedTestForGroup(groupName: String, isAutoTest: Boolean = false): Job {
+            if (shouldSkipNowhereSpeedTest()) return Job().apply { complete() }
             if (groupName.isNotBlank() && testingNodes.contains(groupName)) {
                 return Job().apply { complete() }
             }
@@ -636,6 +645,7 @@ class MainActivity : ComponentActivity() {
         }
 
         fun runSpeedTestForSingleNode(groupName: String?, nodeName: String) {
+            if (shouldSkipNowhereSpeedTest()) return
             if (testingNodes.contains(nodeName)) return
 
             if (parsedProfile.groups.containsKey(nodeName)) {
@@ -745,6 +755,9 @@ class MainActivity : ComponentActivity() {
                 }
             } else if (vpnState.status == VpnState.Status.STOPPED) {
                 liveGroupMap = emptyMap()
+                if (selectedProfileId?.let { NowhereNodeStore.hasNode(this@MainActivity, it) } == true) {
+                    delayCache.clear()
+                }
                 parseActiveProfile()
             }
         }
