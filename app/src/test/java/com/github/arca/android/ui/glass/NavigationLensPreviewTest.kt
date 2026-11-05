@@ -50,9 +50,12 @@ class NavigationLensPreviewTest {
         GlassDefaults.palette = GlassPalettes.CREAM
     }
 
-    @Test fun liquidShapeUsesActualSpeedAndBrakingAndStaysVerticallyCentered() {
+    @Test fun liquidShapeLengthensOnlyOnBrakingAndStaysVerticallyCentered() {
         assertEquals(0f, lensJellyTarget(0f, 0f), 0.0001f)
-        assertTrue(lensJellyTarget(6f, 0f) > 0.075f)
+        // Owner's rule (2026-11-05): no horizontal sway while travelling, so
+        // speed alone must not stretch the lens at all; only braking
+        // lengthens it (negative stretch). FlClash's speed term is gone.
+        assertEquals(0f, lensJellyTarget(6f, 0f), 0.0001f)
         assertEquals(lensJellyTarget(6f, 0f), lensJellyTarget(-6f, 0f), 0.0001f)
         assertTrue("braking must produce a negative squash, not just stop stretching",
             lensJellyTarget(0.1f, -100f) < -0.025f)
@@ -128,7 +131,11 @@ class NavigationLensPreviewTest {
             }
         }
         assertTrue("jelly must visibly stretch, not freeze on retarget", peak > 0.005f)
-        assertTrue("restrained follow-through stays bounded without forcing a return wobble", trough >= -0.031f && peak <= 0.081f)
+        // Braking-only target lives in [-0.15, 0]; the jelly spring (damping
+        // 0.4) can overshoot its target by ~25%, so the trough floor is
+        // -0.15 * 1.25 ~= -0.19 (measured -0.132 on this scenario). The old
+        // -0.031 bound belonged to the retired speed-term formula.
+        assertTrue("braking-only jelly stays bounded", trough >= -0.19f && peak <= 0.081f)
         assertEquals(0f, travel.value, 0.001f)
         assertEquals(0f, jelly.value, 0.001f)
     }

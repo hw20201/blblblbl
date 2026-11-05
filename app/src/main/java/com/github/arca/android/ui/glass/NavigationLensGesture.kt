@@ -8,23 +8,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
 
-/** FlClash _rubberBand: asymptotic pull, limit _overdrag 0.35 slots. A small
- * overshoot follows almost fully; a big one saturates at the limit. */
-internal fun lensRubberBand(overshoot: Float, limit: Float): Float {
-    val pull = 1f - 1f / (kotlin.math.abs(overshoot) * 0.55f / limit + 1f)
-    return limit * pull * kotlin.math.sign(overshoot)
-}
-
-/** Fractional slot centre, with FlClash _positionAt rubber-banding past the ends. */
+/** Fractional slot centre, hard-clamped to the track. FlClash _positionAt
+ * rubber-bands past the ends, but Arca's own contract
+ * (NavigationLensGestureTest.fractionalPositionClampsAtBothEnds, green on
+ * main) requires a hard clamp, and the owner never asked for edge overshoot. */
 internal fun lensDragPosition(x: Float, width: Float, slotCount: Int): Float {
     if (width <= 0f || slotCount <= 1) return 0f
     val max = (slotCount - 1).toFloat()
-    val raw = x / (width / slotCount) - 0.5f
-    return when {
-        raw < 0f -> lensRubberBand(raw, 0.35f)
-        raw > max -> max + lensRubberBand(raw - max, 0.35f)
-        else -> raw
-    }
+    return (x / (width / slotCount) - 0.5f).coerceIn(0f, max)
 }
 
 /** FlClash _fling: project the release velocity 100ms ahead, carry the lens at

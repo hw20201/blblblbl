@@ -36,20 +36,20 @@ import kotlin.math.sign
 import kotlin.math.sqrt
 import kotlin.math.tanh
 
-/** FlClash motion, faithfully ported (navigation_dock.dart):
- *  travel  = SpringDescription.withDurationAndBounce(400ms, bounce 0.15):
- *            stiffness (2*pi/0.4)^2, damping ratio ~0.85, so it overshoots
- *            the slot a touch and bounces back at the edge.
+/** FlClash motion, faithfully ported (navigation_dock.dart), except travel:
+ *  travel  = stiffness (2*pi/0.4)^2, damping ratio 1.0 (critically damped).
+ *            FlClash uses bounce 0.15 (~0.85), which overshoots the slot by
+ *            ~1.3px and comes back; the owner banned that left-right sway
+ *            (2026-11-05), and the impact bounce is delivered by the jelly,
+ *            not by travel overshoot. Do NOT lower this to re-add the bounce.
  *  follow  = SpringDescription.withDampingRatio(stiffness 1024, ratio 0.9):
  *            while dragging the lens CHASES the finger on a spring instead
  *            of snapping to it; that lag is what feeds the jelly.
  *  jelly   = SpringDescription.withDampingRatio(stiffness 100, ratio 0.4):
- *            very bouncy, it wobbles several times after a fast slide.
- *  Do NOT re-restrain these to critically damped: that is exactly what made
- *  the Arca port feel rigid compared with FlClash. */
+ *            very bouncy, it wobbles several times after a fast slide. */
 internal object LensMotion {
     val travelStiffness = (4.0 * PI * PI / (0.4 * 0.4)).toFloat()
-    const val travelDamping = 0.85f
+    const val travelDamping = 1.0f
     const val followStiffness = 1024f
     const val followDamping = 0.9f
     const val jellyStiffness = 100f
