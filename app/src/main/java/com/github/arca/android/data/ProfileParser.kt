@@ -36,16 +36,29 @@ object ProfileParser {
         Yaml(SafeConstructor(loaderOptions))
     }
 
+    private data class ProviderFileFingerprint(
+        val path: String,
+        val lastModified: Long,
+        val length: Long,
+        val contentHash: Int
+    )
+
     private data class CacheEntry(
         val lastModified: Long,
         val length: Long,
         val savedNodesHash: Int,
         val scriptKey: String,
-        val providerSignature: Int,
+        val providerFiles: List<ProviderFileFingerprint>,
         val parsed: ParsedProfile
     ) {
-        fun isValid(lm: Long, len: Long, hash: Int, sKey: String, providers: Int): Boolean =
-            lastModified == lm && length == len && savedNodesHash == hash && scriptKey == sKey && providerSignature == providers
+        fun isValid(lm: Long, len: Long, hash: Int, sKey: String): Boolean =
+            lastModified == lm && length == len && savedNodesHash == hash && scriptKey == sKey
+
+        fun providerFilesUnchanged(): Boolean = providerFiles.all { fp ->
+            val f = File(fp.path)
+            f.isFile && f.lastModified() == fp.lastModified && f.length() == fp.length &&
+                runCatching { f.readBytes().contentHashCode() }.getOrDefault(0) == fp.contentHash
+        }
     }
     private val parsedCache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry>()
 
@@ -72,19 +85,23 @@ object ProfileParser {
             activeProfile.scriptIds.sorted().joinToString(",")
         } else ""
 
-        var content = file.readText()
-        val providerSignature = providerCacheSignature(content, file, context)
+        // Cheap cache check first: no file read, no YAML parse on a hit.
         val cached = parsedCache[path]
-        if (cached?.isValid(lm, len, savedHash, scriptKey, providerSignature) == true) {
+        if (cached?.isValid(lm, len, savedHash, scriptKey) == true && cached.providerFilesUnchanged()) {
             return cached.parsed
         }
+
+        var content = file.readText()
+        // Parse once and reuse it for the provider fingerprints below.
+        var data: Map<String, Any?>? = runCatching { yaml.load<Map<String, Any?>>(content) }.getOrNull()
+        val providerFiles = if (data != null) providerFilesFromData(data, file, context) else emptyList()
 
         if (context != null) {
             val targetIds = if (activeProfile != null && activeProfile.scriptEnabled && activeProfile.scriptIds.isNotEmpty()) {
                 activeProfile.scriptIds
             } else null
             if (!targetIds.isNullOrEmpty()) {
-                content = runCatching {
+                val scriptedContent = runCatching {
                     ConfigScriptEngine.executeScripts(
                         context = context,
                         rawYaml = content,
@@ -95,23 +112,24 @@ object ProfileParser {
                     Log.w(TAG, "ConfigScriptEngine execution in ProfileParser failed: ${it.message}")
                     content
                 }
+                if (scriptedContent != content) {
+                    content = scriptedContent
+                    data = runCatching { yaml.load<Map<String, Any?>>(content) }.getOrNull()
+                }
             }
         }
 
         try {
-            val data = runCatching { yaml.load<Map<String, Any?>>(content) }.getOrNull()
-            if (data == null) {
-                return parseFallback(content, savedNodes)
-            }
+            val parsedData = data ?: return parseFallback(content, savedNodes)
 
             // 1. Extract inline and locally cached provider proxies. Mihomo rewrites
             // provider paths under filesDir/clash/providers at runtime; user paths
             // are also checked relative to the profile and Clash home.
-            val proxyMap = extractProxyMap(data).toMutableMap()
-            proxyMap.putAll(extractCachedProviderProxies(data, file, context))
+            val proxyMap = extractProxyMap(parsedData).toMutableMap()
+            proxyMap.putAll(extractCachedProviderProxies(parsedData, file, context))
 
             // 2. Extract rules (support 'rules' and 'Rule')
-            val rawRules = (data["rules"] ?: data["Rule"]) as? List<*>
+            val rawRules = (parsedData["rules"] ?: parsedData["Rule"]) as? List<*>
             val parsedRules = extractParsedRules(rawRules)
             // Match the rules page: count parsed top-level entries only (never
             // synthesize counts by expanding rule-providers or rule sets).
@@ -121,7 +139,7 @@ object ProfileParser {
             val groupNames = mutableListOf<String>()
             val groupMap = mutableMapOf<String, ProxyGroup>()
             val groupIcons = mutableMapOf<String, String>()
-            val rawGroups = (data["proxy-groups"] ?: data["Proxy Group"]) as? List<*>
+            val rawGroups = (parsedData["proxy-groups"] ?: parsedData["Proxy Group"]) as? List<*>
             val rawGroupNames = rawGroups?.mapNotNull { (it as? Map<*, *>)?.get("name")?.toString() }?.toSet() ?: emptySet()
             if (rawGroups != null) {
                 for (item in rawGroups) {
@@ -134,7 +152,7 @@ object ProfileParser {
                             groupIcons[gName] = gIcon.trim()
                         }
                         val explicitProxies = ((item["proxies"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()) +
-                            resolveUsedProviderNames(item["use"], data, proxyMap.keys, file, context)
+                            resolveUsedProviderNames(item["use"], parsedData, proxyMap.keys, file, context)
                         val filterPattern = item["filter"]?.toString()?.trim()
                         val excludePattern = item["exclude-filter"]?.toString()?.trim()
                         val includeAll = item["include-all"] == true ||
@@ -200,12 +218,12 @@ object ProfileParser {
                 activeNode = activeNode,
                 rules = parsedRules
             )
-            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerSignature, result)
+            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerFiles, result)
             return result
         } catch (e: Throwable) {
             Log.w(TAG, "SnakeYAML failed, using robust line fallback: ${e.message}")
             val fallback = parseFallback(content, savedNodes)
-            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerSignature, fallback)
+            parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerFiles, fallback)
             return fallback
         }
     }
@@ -432,15 +450,19 @@ object ProfileParser {
         }.distinctBy { it.absolutePath }
     }
 
-    private fun providerCacheSignature(content: String, profile: File, context: Context?): Int {
-        val data = runCatching { yaml.load<Map<String, Any?>>(content) }.getOrNull() ?: return 0
-        val providers = data["proxy-providers"] as? Map<*, *> ?: return 0
+    private fun providerFilesFromData(data: Map<String, Any?>, profile: File, context: Context?): List<ProviderFileFingerprint> {
+        val providers = data["proxy-providers"] as? Map<*, *> ?: return emptyList()
         return providers.values.mapNotNull { raw ->
             val provider = raw as? Map<*, *> ?: return@mapNotNull null
             providerCacheFiles(provider, profile, context).firstOrNull { it.isFile }?.let { f ->
-                listOf(f.absolutePath, f.lastModified(), f.length(), runCatching { f.readBytes().contentHashCode() }.getOrDefault(0))
+                ProviderFileFingerprint(
+                    path = f.absolutePath,
+                    lastModified = f.lastModified(),
+                    length = f.length(),
+                    contentHash = runCatching { f.readBytes().contentHashCode() }.getOrDefault(0)
+                )
             }
-        }.hashCode()
+        }
     }
 
     private fun loadProviderProxyNames(file: File): Map<String, String> = runCatching {

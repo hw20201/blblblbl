@@ -10,15 +10,19 @@ class LensMotionSmoothnessTest {
     private val frameNanos = 16_000_000L
 
     @Test
-    fun ordinaryTravelIsMonotonicAndDoesNotOvershoot() {
+    fun ordinaryTravelOvershootsOnlyWithinFlClashBounce() {
+        // FlClash travel is withDurationAndBounce(400ms, bounce 0.15): it
+        // overshoots the slot a touch and bounces back at the edge. That is
+        // the intended feel, so the bound is the FlClash overshoot (~1% of
+        // the 2-slot travel), not zero.
         val spring = LensSpring(0f, LensMotion.travelStiffness, LensMotion.travelDamping)
         spring.springTo(2f, 0L)
         var previous = spring.value
         var samples = 0
         while (spring.running && samples < 2_000) {
             spring.tick((samples + 1L) * frameNanos)
-            assertTrue("travel moved backwards at sample $samples: ${spring.value} < $previous", spring.value >= previous)
-            assertTrue("travel overshot destination", spring.value <= 2f)
+            assertTrue("travel moved backwards too far at sample $samples: ${spring.value} < $previous", spring.value >= previous - 0.05f)
+            assertTrue("travel overshot beyond FlClash bounce", spring.value <= 2.05f)
             previous = spring.value
             samples++
         }
@@ -45,7 +49,7 @@ class LensMotionSmoothnessTest {
                 jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
                 val visible = lensVisibleStretch(jelly.value, travel.velocity)
                 maxVisible = maxOf(maxVisible, abs(visible))
-                assertTrue("visible stretch escaped reasonable bounds: $visible", abs(visible) <= .12f)
+                assertTrue("visible stretch escaped FlClash bounds: $visible", abs(visible) <= .32f)
                 tick++
             }
         }
@@ -58,7 +62,7 @@ class LensMotionSmoothnessTest {
             jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
             maxVisible = maxOf(maxVisible, abs(lensVisibleStretch(jelly.value, travel.velocity)))
         }
-        // Finish the final travel before allowing the velocity-gated visible stretch to vanish.
+        // Finish the final travel before the jelly settles to zero on its own.
         repeat(2_000) {
             if (!travel.running && !jelly.running) return@repeat
             now += frameNanos
@@ -96,7 +100,7 @@ class LensMotionSmoothnessTest {
             expansion.tick(now)
             jelly.tick(now)
             jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
-            if (!dropStarted && lensReadyToContract(expansion, travel)) {
+            if (!dropStarted && lensReadyToContract(expansion, travel, jelly)) {
                 expansion.springTo(0f, now)
                 dropStarted = true
             }

@@ -36,26 +36,44 @@ import kotlin.math.sign
 import kotlin.math.sqrt
 import kotlin.math.tanh
 
-/** FlClash-derived motion, tuned to critically damped travel and restrained shape follow-through. */
+/** FlClash motion, faithfully ported (navigation_dock.dart):
+ *  travel  = SpringDescription.withDurationAndBounce(400ms, bounce 0.15):
+ *            stiffness (2*pi/0.4)^2, damping ratio ~0.85, so it overshoots
+ *            the slot a touch and bounces back at the edge.
+ *  follow  = SpringDescription.withDampingRatio(stiffness 1024, ratio 0.9):
+ *            while dragging the lens CHASES the finger on a spring instead
+ *            of snapping to it; that lag is what feeds the jelly.
+ *  jelly   = SpringDescription.withDampingRatio(stiffness 100, ratio 0.4):
+ *            very bouncy, it wobbles several times after a fast slide.
+ *  Do NOT re-restrain these to critically damped: that is exactly what made
+ *  the Arca port feel rigid compared with FlClash. */
 internal object LensMotion {
     val travelStiffness = (4.0 * PI * PI / (0.4 * 0.4)).toFloat()
-    const val travelDamping = 1f
-    const val jellyStiffness = 180f
-    const val jellyDamping = 1f
+    const val travelDamping = 0.85f
+    const val followStiffness = 1024f
+    const val followDamping = 0.9f
+    const val jellyStiffness = 100f
+    const val jellyDamping = 0.4f
     val expansionStiffness = (4.0 * PI * PI / (0.25 * 0.25)).toFloat()
     const val jellyAspect = 1.4f
     const val expansionScale = 1.28f
 }
 
-/** FlClash _wobble: speed stretches; braking squashes; both feed a second spring. */
+/** Wobble, owner's rule (2026-11-05): no horizontal sway while travelling.
+ *  FlClash _wobble has two terms (speed stretch 0.2, braking squash 0.15); the
+ *  speed term is dropped here, only the braking term survives. On impact the
+ *  lens lengthens vertically: negative stretch makes height grow by 1.4x and
+ *  width narrow (see liquidLensRect). _jellySquash 0.15, _jellyBrake 25. */
 internal fun lensJellyTarget(velocity: Float, acceleration: Float): Float {
     val braking = max(0f, -acceleration * sign(velocity))
-    return 0.08f * tanh(abs(velocity) / 3f) - 0.03f * tanh(braking / 40f)
+    return -0.15f * tanh(braking / 25f)
 }
 
-/** Fade residual shape energy as travel settles, so shrinking cannot reveal a second wobble. */
-internal fun lensVisibleStretch(stretch: Float, velocity: Float): Float =
-    stretch * tanh(abs(velocity) / 1.5f)
+/** FlClash applies _jelly.value straight into _lensRect with no velocity gate.
+ *  The old gate faded stretch out exactly as travel arrived, hiding the impact
+ *  lengthening. Jelly settles to 0 on its own when travel stops. */
+@Suppress("UNUSED_PARAMETER")
+internal fun lensVisibleStretch(stretch: Float, velocity: Float): Float = stretch
 
 /**
  * Direct port of _lensRect, without FlClash's slot redistribution. Width follows the
@@ -81,9 +99,9 @@ internal fun insetLensRect(
     val restHeight = (barHeight - 2f * inset).coerceAtLeast(1f)
     val expanded = expansion.coerceIn(0f, 1f)
     val scale = 1f + (LensMotion.expansionScale - 1f) * expanded
-    // Keep the travel wobble at departure/settling, but a fully expanded shell must
-    // cover the whole option rather than squash its height while moving sideways.
-    val morph = stretch * (1f - expanded) * (1f - expanded)
+    // FlClash _lensRect applies stretch at all times, with no suppression for
+    // lift/expansion. `expanded` only scales the shell; the squash stays full.
+    val morph = stretch
     val liquid = liquidLensRect(position, morph, pitch, restWidth * scale, restHeight * scale)
     // Symmetric bounds contain extreme rapid reversals without moving the optical centre.
     // Deliberate overhang is allowed: a 1.28x shell covers the full selected tab at its peak.
@@ -104,9 +122,31 @@ internal fun insetLensRect(
  */
 internal class LensSpring(
     initial: Float,
-    private val stiffness: Float,
-    private val dampingRatio: Float
+    private val defaultStiffness: Float,
+    private val defaultDampingRatio: Float
 ) {
+    // FlClash _Spring has no fixed spec: every springTo carries its own
+    // SpringDescription (travel vs follow vs hover). The construction spec is
+    // only the default for the plain springTo call; a follow call must never
+    // leak its spec into the next travel call (that was the release bug:
+    // after a drag, release silently ran on the 1024/0.9 follow spring).
+    private var currentStiffness = defaultStiffness
+    private var currentDampingRatio = defaultDampingRatio
+    fun springTo(next: Float, now: Long, stiffness: Float, dampingRatio: Float) {
+        if (next == target && stiffness == currentStiffness && dampingRatio == currentDampingRatio) return
+        tick(now)
+        currentStiffness = stiffness
+        currentDampingRatio = dampingRatio
+        target = next
+        animation = TargetBasedAnimation(
+            animationSpec = spring<Float>(dampingRatio, stiffness, visibilityThreshold = 0.0001f),
+            typeConverter = Float.VectorConverter,
+            initialValue = value,
+            targetValue = next,
+            initialVelocityVector = AnimationVector1D(velocity)
+        )
+        startNanos = now
+    }
     var value: Float = initial
         private set
     var velocity: Float = 0f
@@ -117,15 +157,17 @@ internal class LensSpring(
     private var startNanos = 0L
     val running: Boolean get() = animation != null
     val acceleration: Float get() = if (running) {
-        stiffness * (target - value) - 2f * dampingRatio * sqrt(stiffness) * velocity
+        currentStiffness * (target - value) - 2f * currentDampingRatio * sqrt(currentStiffness) * velocity
     } else 0f
 
     fun springTo(next: Float, now: Long) {
-        if (next == target) return
+        if (next == target && currentStiffness == defaultStiffness && currentDampingRatio == defaultDampingRatio) return
         tick(now)
+        currentStiffness = defaultStiffness
+        currentDampingRatio = defaultDampingRatio
         target = next
         animation = TargetBasedAnimation(
-            animationSpec = spring<Float>(dampingRatio, stiffness, visibilityThreshold = 0.0001f),
+            animationSpec = spring<Float>(defaultDampingRatio, defaultStiffness, visibilityThreshold = 0.0001f),
             typeConverter = Float.VectorConverter,
             initialValue = value,
             targetValue = next,
@@ -154,11 +196,15 @@ internal class LensSpring(
     }
 }
 
-/** Contract only after both motions have slowed, without cutting a rising spring short. */
-internal fun lensReadyToContract(expansion: LensSpring, travel: LensSpring): Boolean {
+/** Contract only after all three motions have settled, without cutting a rising
+ *  spring short. The jelly must finish first: its impact lengthening (negative
+ *  stretch) relaxes back to zero, and if the shell started shrinking while that
+ *  was still happening, the width would grow again during the return. */
+internal fun lensReadyToContract(expansion: LensSpring, travel: LensSpring, jelly: LensSpring): Boolean {
     val expansionSettled = expansion.value >= 0.995f && abs(expansion.velocity) <= 0.2f
     val travelArrived = abs(travel.target - travel.value) <= 0.02f && abs(travel.velocity) <= 0.35f
-    return expansion.target == 1f && expansionSettled && travelArrived
+    val jellySettled = !jelly.running
+    return expansion.target == 1f && expansionSettled && travelArrived && jellySettled
 }
 
 internal data class LensFrame(val position: Float, val stretch: Float, val expansion: Float = 0f)
@@ -201,16 +247,30 @@ fun NavigationLens(
         withFrameNanos { now ->
             expansion.tick(now)
             if (dragPosition != null) {
-                travel.snapTo(dragPosition.coerceIn(0f, (slotCount - 1).toFloat()))
-                jelly.snapTo(0f)
+                // FlClash _slide: the lens follows the finger on _followSpring
+                // (1024 / 0.9), it does NOT snap to it. The chase lag gives the
+                // lens real velocity, and _wobble feeds the jelly from it, so
+                // the squash is live while dragging. Overshoot range comes from
+                // lensDragPosition: [-0.35, slots-1+0.35].
+                travel.springTo(
+                    dragPosition.coerceIn(-0.35f, (slotCount - 1).toFloat() + 0.35f),
+                    now, LensMotion.followStiffness, LensMotion.followDamping
+                )
                 expansion.springTo(1f, now)
             } else if (destination != travel.target || selectionPulse != 0) {
                 travel.springTo(destination, now)
                 expansion.springTo(1f, now)
             }
-            if (dragPosition == null && lensReadyToContract(expansion, travel)) {
+            if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
                 expansion.springTo(0f, now)
             }
+            // The ticker restarts on every drag event, so the while loop never
+            // runs while the finger moves. Jelly must advance here too, or it
+            // freezes mid-drag (e.g. stuck tall after a quick re-press) and
+            // only wakes up on release. Travel was just retargeted above, so
+            // its velocity is fresh for the jelly target.
+            jelly.tick(now)
+            jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
             frame = LensFrame(travel.value, lensVisibleStretch(jelly.value, travel.velocity), expansion.value)
         }
         while (travel.running || jelly.running || expansion.running) {
@@ -218,7 +278,7 @@ fun NavigationLens(
                 travel.tick(now)
                 expansion.tick(now)
                 // Hold whole-shell expansion until its peak and horizontal arrival, then settle.
-                if (dragPosition == null && lensReadyToContract(expansion, travel)) {
+                if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
                     expansion.springTo(0f, now)
                 }
                 // Advance the OLD jelly leg before retargeting at this same timestamp.
@@ -248,7 +308,12 @@ fun NavigationLens(
         val barHeight = constraints.maxHeight
         val pitch = barWidth.toFloat() / slotCount
         // Read frame-rate state only in measurement, not in the whole dock's composition.
-        val position = dragPosition?.coerceIn(0f, (slotCount - 1).toFloat()) ?: frame.position
+        // FlClash: the lens is always _lens.value. The finger only sets the
+        // target the follow spring chases; showing the raw finger position
+        // during a drag made the capsule teleport back to the lagging spring
+        // on every release (half a slot at fast swipe speed, both directions).
+        // The tab icons already magnify from frame.position; the shell must agree.
+        val position = frame.position
         val rect = insetLensRect(position, frame.stretch, frame.expansion, pitch,
             barWidth.toFloat(), barHeight.toFloat(), density.density)
         val child = measurables.single().measure(Constraints.fixed(
