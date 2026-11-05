@@ -32,10 +32,16 @@ data class NowhereNodeProfile(
 
 /** Parser for official nowhere share links and vector runtime URLs. */
 object NowhereNodeParser {
+    private val supportedSchemes = setOf("nowhere", "vector")
+    private val schemePrefix = Regex("^([A-Za-z][A-Za-z0-9+.-]*):")
     private val allowedQuery = setOf("net", "pin", "sni", "morph", "rate", "etar", "in")
     private val forbiddenSecurityOptions = setOf("allowinsecure", "insecure", "skip-cert-verify", "skip_cert_verify", "tlsinsecure")
     private val keyPattern = Regex("[0-9a-f]{32}")
     private val dnsLabel = Regex("[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+    /** Detects a node-link scheme before attempting the HTTPS-only subscription downloader. */
+    fun usesNowhereScheme(link: String): Boolean =
+        schemePrefix.find(link.trim())?.groupValues?.get(1)?.lowercase() in supportedSchemes
 
     @JvmStatic
     @JvmOverloads
@@ -46,7 +52,7 @@ object NowhereNodeParser {
         validatePercentEscapes(link)
         val uri = try { URI(link) } catch (e: Exception) { throw IllegalArgumentException("Malformed URI", e) }
         val scheme = uri.scheme?.lowercase()
-        require(scheme == "nowhere" || scheme == "vector") { "Unsupported scheme" }
+        require(scheme in supportedSchemes) { "Unsupported scheme" }
         require(uri.rawUserInfo != null && !uri.rawUserInfo.contains(':')) { "A 32-character key is required; passwords are forbidden" }
         val key = decode(uri.rawUserInfo)
         require(keyPattern.matches(key)) { "Key must be 32 lowercase hexadecimal characters" }

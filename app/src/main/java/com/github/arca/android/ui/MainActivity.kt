@@ -132,20 +132,26 @@ class MainActivity : ComponentActivity() {
     /** NW3 credentials stay out of the import dialog; the user explicitly confirms the endpoint. */
     private val pendingNowhereProfile = kotlinx.coroutines.flow.MutableStateFlow<NowhereNodeProfile?>(null)
 
+    /** Routes a pasted Nowhere/Vector node link into the same confirmation flow as an external intent. */
+    private fun queueNowhereImport(rawLink: String, displayName: String? = null): Boolean {
+        if (!NowhereNodeParser.usesNowhereScheme(rawLink)) return false
+        val localPort = 20000 + java.security.SecureRandom().nextInt(20000)
+        val parsed = runCatching { NowhereNodeParser.parse(rawLink.trim(), localPort, displayName) }
+        if (parsed.isSuccess) {
+            pendingNowhereProfile.value = parsed.getOrThrow()
+        } else {
+            AppNotice.error("无法识别 Nowhere 链接：${parsed.exceptionOrNull()?.message ?: "格式无效"}")
+        }
+        return true
+    }
+
     private fun handleIncomingIntent(intent: android.content.Intent?) {
         val data = intent?.data ?: return
-        val scheme = data.scheme?.lowercase() ?: return
-        if (scheme == "nowhere" || scheme == "vector") {
-            val localPort = 20000 + java.security.SecureRandom().nextInt(20000)
-            val parsed = runCatching { NowhereNodeParser.parse(data.toString(), localPort) }
-            if (parsed.isSuccess) {
-                pendingNowhereProfile.value = parsed.getOrThrow()
-            } else {
-                AppNotice.error("无法识别 Nowhere 链接：${parsed.exceptionOrNull()?.message ?: "格式无效"}")
-            }
+        if (queueNowhereImport(data.toString())) {
             intent.data = null
             return
         }
+        val scheme = data.scheme?.lowercase() ?: return
         if (scheme !in SubscriptionLinkParser.SCHEMES) return
         val link = SubscriptionLinkParser.parse(data)
         if (link == null) {
@@ -1226,13 +1232,15 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onAddSubscription = { name, url ->
-                                        lifecycleScope.launch {
-                                            val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
-                                            if (res.isSuccess) {
-                                                reloadProfiles()
-                                                AppNotice.show("订阅添加成功")
-                                            } else {
-                                                AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}", long = true)
+                                        if (!queueNowhereImport(url, name)) {
+                                            lifecycleScope.launch {
+                                                val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
+                                                if (res.isSuccess) {
+                                                    reloadProfiles()
+                                                    AppNotice.show("订阅添加成功")
+                                                } else {
+                                                    AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}", long = true)
+                                                }
                                             }
                                         }
                                     },

@@ -213,7 +213,7 @@ fun ProfilesScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "点击右上角 + 按钮添加远程订阅链接或导入本地 YAML 配置文件",
+                        text = "点击右上角 + 添加远程订阅或导入本地 YAML；Nowhere/Vector 分享链接也可直接粘贴导入",
                         color = LoonTextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
@@ -633,7 +633,7 @@ fun ProfilesScreen(
                         TextField(
                             value = subName,
                             onValueChange = { subName = it },
-                            placeholder = { Text("订阅备注名称（选填）", fontSize = 13.5.sp, color = LoonTextMuted) },
+                            placeholder = { Text("配置名称/备注（选填）", fontSize = 13.5.sp, color = LoonTextMuted) },
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = LoonBg,
                                 unfocusedContainerColor = LoonBg,
@@ -650,7 +650,7 @@ fun ProfilesScreen(
                         TextField(
                             value = subUrl,
                             onValueChange = { subUrl = it },
-                            placeholder = { Text("订阅链接 URL (https://...)", fontSize = 13.5.sp, color = LoonTextMuted) },
+                            placeholder = { Text("订阅或 Nowhere/Vector 分享链接", fontSize = 13.5.sp, color = LoonTextMuted) },
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = LoonBg,
                                 unfocusedContainerColor = LoonBg,
@@ -662,6 +662,11 @@ fun ProfilesScreen(
                             shape = RoundedCornerShape(10.dp),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "支持 HTTPS 订阅及 nowhere://、vector:// 单节点链接",
+                            color = LoonTextSecondary,
+                            fontSize = 11.5.sp
                         )
                     }
                 }
@@ -684,7 +689,7 @@ fun ProfilesScreen(
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "下载并保存配置",
+                            text = "添加配置",
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold

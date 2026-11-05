@@ -7,6 +7,13 @@ import org.yaml.snakeyaml.Yaml
 class NowhereNodeParserTest {
     private val key = "0123456789abcdef0123456789abcdef"
 
+    @Test fun detectsNodeSchemesForManualImportRouting() {
+        assertTrue(NowhereNodeParser.usesNowhereScheme("  nowhere://malformed link "))
+        assertTrue(NowhereNodeParser.usesNowhereScheme("VECTOR://$key@host.example:443"))
+        assertFalse(NowhereNodeParser.usesNowhereScheme("https://subscription.example/config"))
+        assertFalse(NowhereNodeParser.usesNowhereScheme("ordinary text"))
+    }
+
     @Test fun parsesIpv4DomainAndIpv6() {
         assertEquals("1.2.3.4", NowhereNodeParser.parse("nowhere://$key@1.2.3.4:443", 1080).endpointHost)
         assertEquals("node.example.com", NowhereNodeParser.parse("vector://$key@node.example.com:443", 1081).endpointHost)
