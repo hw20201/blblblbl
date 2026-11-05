@@ -261,9 +261,6 @@ fun NavigationLens(
                 travel.springTo(destination, now)
                 expansion.springTo(1f, now)
             }
-            if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
-                expansion.springTo(0f, now)
-            }
             // The ticker restarts on every drag event, so the while loop never
             // runs while the finger moves. Jelly must advance here too, or it
             // freezes mid-drag (e.g. stuck tall after a quick re-press) and
@@ -271,19 +268,29 @@ fun NavigationLens(
             // its velocity is fresh for the jelly target.
             jelly.tick(now)
             jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
+            // Check contraction AFTER every spring has ticked this frame. The
+            // jelly is the last spring to settle; checking before its tick lets
+            // the loop exit on the frame it finishes, leaving the shell stuck
+            // expanded (settled width 114 instead of 89).
+            if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
+                expansion.springTo(0f, now)
+            }
             frame = LensFrame(travel.value, lensVisibleStretch(jelly.value, travel.velocity), expansion.value)
         }
         while (travel.running || jelly.running || expansion.running) {
             withFrameNanos { now ->
                 travel.tick(now)
                 expansion.tick(now)
-                // Hold whole-shell expansion until its peak and horizontal arrival, then settle.
-                if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
-                    expansion.springTo(0f, now)
-                }
                 // Advance the OLD jelly leg before retargeting at this same timestamp.
                 jelly.tick(now)
                 jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
+                // Hold whole-shell expansion until its peak and horizontal arrival, then settle.
+                // This check must run AFTER all three ticks: the jelly settles
+                // last, and checking before its tick lets the loop exit on the
+                // frame it finishes, leaving the shell stuck expanded.
+                if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
+                    expansion.springTo(0f, now)
+                }
                 frame = LensFrame(travel.value, lensVisibleStretch(jelly.value, travel.velocity), expansion.value)
             }
         }
