@@ -36,7 +36,7 @@ fun resolveGlassPalette(selected: GlassPaletteSpec, isDark: Boolean): GlassPalet
     val darkBase = when (selected.key) {
         "white" -> Color(0xFF171A21)
         "blue" -> Color(0xFF101A2B)
-        "cream" -> Color(0xFF211A17)
+        "cream" -> Color(0xFF0A0A0A)
         "mint" -> Color(0xFF10211F)
         "lavender" -> Color(0xFF1B1728)
         else -> Color(0xFF171A21)

@@ -52,9 +52,9 @@ data class GlassWallpaperSettings(
         const val DEFAULT_RIB_ANGLE_DEGREES = 7f
         const val MIN_RIB_ANGLE_DEGREES = -7f
         const val MAX_RIB_ANGLE_DEGREES = 7f
-        const val COLOR_A: Int = -4664849 // #FFB8D1EF
-        const val COLOR_B: Int = -3222813 // #FFCED2E3
-        const val COLOR_C: Int = -4661010 // #FFB8E0EE
+        const val COLOR_A: Int = -16777216 // #FF000000
+        const val COLOR_B: Int = -16777216 // #FF000000
+        const val COLOR_C: Int = -16777216 // #FF000000
     }
 }
 

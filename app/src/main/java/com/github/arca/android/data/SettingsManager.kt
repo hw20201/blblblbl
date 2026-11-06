@@ -224,7 +224,7 @@ class SettingsManager(context: Context) {
 
     var themeMode: ThemeMode
         get() {
-            val raw = prefs.getString("theme_mode", ThemeMode.SYSTEM.name)
+            val raw = prefs.getString("theme_mode", ThemeMode.DARK.name)
             return runCatching { ThemeMode.valueOf(raw!!) }.getOrDefault(ThemeMode.SYSTEM)
         }
         set(value) = prefs.edit().putString("theme_mode", value.name).apply()
