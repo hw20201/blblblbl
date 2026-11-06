@@ -63,7 +63,7 @@ class LensFastSwipeTest {
                 travel.springTo(destination, now)
                 expansion.springTo(1f, now)
             }
-            if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
+            if (dragPosition == null && lensReadyToContract(expansion, travel)) {
                 expansion.springTo(0f, now)
             }
             jelly.tick(now)
@@ -74,7 +74,7 @@ class LensFastSwipeTest {
         fun loopBody(now: Long) {
             travel.tick(now)
             expansion.tick(now)
-            if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
+            if (dragPosition == null && lensReadyToContract(expansion, travel)) {
                 expansion.springTo(0f, now)
             }
             jelly.tick(now)

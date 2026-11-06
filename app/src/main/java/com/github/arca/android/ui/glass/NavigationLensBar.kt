@@ -196,15 +196,18 @@ internal class LensSpring(
     }
 }
 
-/** Contract only after all three motions have settled, without cutting a rising
- *  spring short. The jelly must finish first: its impact lengthening (negative
- *  stretch) relaxes back to zero, and if the shell started shrinking while that
- *  was still happening, the width would grow again during the return. */
-internal fun lensReadyToContract(expansion: LensSpring, travel: LensSpring, jelly: LensSpring): Boolean {
+/** Contract once the shell has peaked and the lens has arrived, as FlClash
+ *  _dropLift does (lift >= 0.975 and |lens.target - lens.value| <= 0.04).
+ *  The jelly is NOT part of this gate: it is a shape morph that settles to
+ *  zero on its own, and waiting for it (~2s at stiffness 100 / damping 0.4)
+ *  left the shell floating long after the lens had arrived. The width
+ *  relaxing back to rest while the jelly decays is the jelly settling, not
+ *  a second growth: the expansion returns in ~250ms, far faster than the
+ *  jelly relaxes, so the shell is down before that relaxation shows. */
+internal fun lensReadyToContract(expansion: LensSpring, travel: LensSpring): Boolean {
     val expansionSettled = expansion.value >= 0.995f && abs(expansion.velocity) <= 0.2f
     val travelArrived = abs(travel.target - travel.value) <= 0.02f && abs(travel.velocity) <= 0.35f
-    val jellySettled = !jelly.running
-    return expansion.target == 1f && expansionSettled && travelArrived && jellySettled
+    return expansion.target == 1f && expansionSettled && travelArrived
 }
 
 internal data class LensFrame(val position: Float, val stretch: Float, val expansion: Float = 0f)
@@ -272,7 +275,7 @@ fun NavigationLens(
             // jelly is the last spring to settle; checking before its tick lets
             // the loop exit on the frame it finishes, leaving the shell stuck
             // expanded (settled width 114 instead of 89).
-            if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
+            if (dragPosition == null && lensReadyToContract(expansion, travel)) {
                 expansion.springTo(0f, now)
             }
             frame = LensFrame(travel.value, lensVisibleStretch(jelly.value, travel.velocity), expansion.value)
@@ -288,7 +291,7 @@ fun NavigationLens(
                 // This check must run AFTER all three ticks: the jelly settles
                 // last, and checking before its tick lets the loop exit on the
                 // frame it finishes, leaving the shell stuck expanded.
-                if (dragPosition == null && lensReadyToContract(expansion, travel, jelly)) {
+                if (dragPosition == null && lensReadyToContract(expansion, travel)) {
                     expansion.springTo(0f, now)
                 }
                 frame = LensFrame(travel.value, lensVisibleStretch(jelly.value, travel.velocity), expansion.value)

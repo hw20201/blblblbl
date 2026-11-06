@@ -77,7 +77,13 @@ class LensMotionSmoothnessTest {
     }
 
     @Test
-    fun expansionWaitsForSettledRiseAndReturnsWithoutSecondGrowth() {
+    fun expansionDropsWhenTravelArrivesWithoutWaitingForJelly() {
+        // FlClash _dropLift drops the lift once the lens has arrived
+        // (lift >= 0.975 and |lens.target - lens.value| <= 0.04); the jelly
+        // is a shape morph that settles on its own and is NOT part of the
+        // gate. Waiting for the jelly (~2s at stiffness 100 / damping 0.4)
+        // left the shell floating long after arrival, which the owner
+        // reported as the lens taking too long to fall back down.
         val pitch = 304f / 3f
         val barWidth = 304f
         val barHeight = 64f
@@ -89,41 +95,62 @@ class LensMotionSmoothnessTest {
         expansion.springTo(1f, 0L)
         var now = 0L
         var dropStarted = false
+        var dropFrame = -1
+        var travelArrivedFrame = -1
         var peakHeight = 0f
         var peakWidth = 0f
-        var previousHeightAfterDrop = Float.POSITIVE_INFINITY
-        var previousWidthAfterDrop = Float.POSITIVE_INFINITY
-        var framesAfterDrop = 0
+        var peakHeightBeforeDrop = 0f
+        var peakWidthBeforeDrop = 0f
+        var restWidth = 0f
+        var restHeight = 0f
         for (step in 1..2_000) {
             now = step * frameNanos
             travel.tick(now)
             expansion.tick(now)
             jelly.tick(now)
             jelly.springTo(lensJellyTarget(travel.velocity, travel.acceleration), now)
-            if (!dropStarted && lensReadyToContract(expansion, travel, jelly)) {
+            if (travelArrivedFrame < 0 && abs(travel.target - travel.value) <= 0.02f && abs(travel.velocity) <= 0.35f) {
+                travelArrivedFrame = step
+            }
+            if (!dropStarted && lensReadyToContract(expansion, travel)) {
                 expansion.springTo(0f, now)
                 dropStarted = true
+                dropFrame = step
             }
             val rect = insetLensRect(travel.value, lensVisibleStretch(jelly.value, travel.velocity),
                 expansion.value, pitch, barWidth, barHeight, density)
             peakHeight = maxOf(peakHeight, rect.height)
             peakWidth = maxOf(peakWidth, rect.width)
             assertEquals("lens center must stay fixed vertically", barHeight / 2f, rect.center.y, .001f)
-            if (dropStarted) {
-                assertTrue("height grew again during return", rect.height <= previousHeightAfterDrop + .03f)
-                assertTrue("width grew again during return", rect.width <= previousWidthAfterDrop + .03f)
-                previousHeightAfterDrop = rect.height
-                previousWidthAfterDrop = rect.width
-                framesAfterDrop++
+            if (!dropStarted) {
+                peakHeightBeforeDrop = maxOf(peakHeightBeforeDrop, rect.height)
+                peakWidthBeforeDrop = maxOf(peakWidthBeforeDrop, rect.width)
+            } else {
+                // The lens never re-expands above the peak it reached while
+                // floating; the width relaxing back to rest as the jelly
+                // decays is the jelly settling, not a second growth.
+                assertTrue("width re-expanded above its float peak: ${rect.width} > $peakWidthBeforeDrop",
+                    rect.width <= peakWidthBeforeDrop + .03f)
+                assertTrue("height re-expanded above its float peak: ${rect.height} > $peakHeightBeforeDrop",
+                    rect.height <= peakHeightBeforeDrop + .03f)
             }
             val settled = !expansion.running && !travel.running && !jelly.running
-            if (dropStarted && settled) break
+            if (dropStarted && settled) {
+                restWidth = rect.width
+                restHeight = rect.height
+                break
+            }
         }
         assertTrue("settled expansion never reached its production drop gate", dropStarted)
+        assertTrue("drop must follow travel arrival promptly, not wait for the jelly: dropFrame=$dropFrame travelArrivedFrame=$travelArrivedFrame",
+            dropFrame >= 0 && travelArrivedFrame >= 0 && dropFrame - travelArrivedFrame <= 5)
+        assertTrue("drop must not wait ~2s for the jelly to decay: dropFrame=$dropFrame", dropFrame <= 90)
         assertTrue("expanded lens must cover bar height: peak=$peakHeight", peakHeight >= barHeight)
         assertTrue("expanded lens must cover its slot: peak=$peakWidth", peakWidth >= pitch)
         assertTrue("return did not finish", !expansion.running)
-        println("expansion peakHeight=$peakHeight peakWidth=$peakWidth dropFrames=$framesAfterDrop")
+        assertTrue("lens must settle to rest width: $restWidth", abs(restWidth - (pitch - 2f * 6f)) < 1f)
+        assertTrue("lens must settle to rest height: $restHeight", abs(restHeight - (barHeight - 2f * 6f)) < 1f)
+        println("expansion peakHeight=$peakHeight peakWidth=$peakWidth dropFrame=$dropFrame travelArrivedFrame=$travelArrivedFrame restWidth=$restWidth restHeight=$restHeight")
     }
 
     @Test
