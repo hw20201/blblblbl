@@ -156,12 +156,8 @@ fun DashboardScreen(
     var isTestingQuickSheet by remember { mutableStateOf(false) }
     val quickNodeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Automatically fully expand sheet when opened
-    LaunchedEffect(showQuickNodeSelector) {
-        if (showQuickNodeSelector) {
-            runCatching { quickNodeSheetState.expand() }
-        }
-    }
+    // ModalBottomSheet drives its own hidden-to-expanded transition on entry.
+    // Do not call expand() from a second effect; that competes with the same animation.
 
     // Visual In-Place Shortcuts Edit State
     var isEditingShortcuts by remember { mutableStateOf(false) }
