@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -149,7 +150,11 @@ fun GlassSurface(
     // instead of the custom AGSL path below. Title capsules and bottom nav keep the
     // custom path by design: the custom glass covers them.
     val kyantBackdrop = LocalKyantBackdrop.current
-    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset == GlassPreset.LIQUID && kyantBackdrop != null) {
+    // Kyant's lens SDF only accepts rounded-rectangle/corner-based shapes. Sheets use
+    // RectangleShape, so they must stay on the established fallback instead of throwing.
+    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset == GlassPreset.LIQUID &&
+        kyantBackdrop != null && effectiveShape is CornerBasedShape
+    ) {
         val density = LocalDensity.current
         val blurPx = with(density) { 2.dp.toPx() }
         val lensHeightPx = with(density) { 12.dp.toPx() }
