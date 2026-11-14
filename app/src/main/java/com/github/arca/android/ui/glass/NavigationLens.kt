@@ -283,9 +283,10 @@ fun NavigationGlassSurface(
     val isOpticalLensCategory = surfaceCategory == GlassSurfaceCategory.TITLE_CAPSULES ||
         surfaceCategory == GlassSurfaceCategory.BOTTOM_NAVIGATION
     val keepArcaOpticalLens = lens != null && isOpticalLensCategory
-    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
-        glasmioBackdrop != null && !keepArcaOpticalLens
-    ) {
+    val glasmioAvailable = GlassDefaults.enabled &&
+        LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
+        glasmioBackdrop != null
+    if (glasmioAvailable && !keepArcaOpticalLens) {
         val material = glasmioMaterialFor(surfaceCategory)
         ArcaGlasmioGlassSurface(
             modifier = modifier, backdrop = glasmioBackdrop, shape = shape,
