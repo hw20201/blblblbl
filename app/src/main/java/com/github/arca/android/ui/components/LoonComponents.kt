@@ -1423,13 +1423,18 @@ private fun BottomNavItem(
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
-    val tintTarget = lensCoverage?.let { lerp(Color(0xFF8E8E93), IosBlue, it.coerceIn(0f, 1f)) }
-        ?: if (isSelected) IosBlue else Color(0xFF8E8E93)
-    val tint by animateColorAsState(
-        targetValue = tintTarget,
+    // The tint follows the lens coverage directly: the colour is a pure function
+    // of how much of this tab the glass currently covers, so the blue travels
+    // with the capsule instead of fading in on its own 200ms clock after the
+    // capsule arrives. The coverage itself is already animated by the lens spring.
+    val coverageTint = lensCoverage?.let { lerp(Color(0xFF8E8E93), IosBlue, it.coerceIn(0f, 1f)) }
+    val fallbackTarget = if (isSelected) IosBlue else Color(0xFF8E8E93)
+    val fallbackTint by animateColorAsState(
+        targetValue = fallbackTarget,
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
+    val tint = coverageTint ?: fallbackTint
     val scale = if (opticalScale == null) {
         val legacyScale by animateFloatAsState(
             targetValue = if (isSelected) 1.08f else 1.0f,
