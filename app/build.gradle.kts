@@ -170,6 +170,10 @@ android {
         isShrinkResources = true
         applicationIdSuffix = ".glasstest.fusion"
         versionNameSuffix = "-glass-fusion-private-test-v80-r8"
+        // The release type only signs when the release keystore is present, so
+        // r8Test inherits no signing config and AGP emits an -unsigned APK that
+        // cannot be installed. Test builds sign with the debug keystore (as v73 did).
+        signingConfig = signingConfigs.getByName("debug")
         matchingFallbacks += listOf("release")
     }
 
