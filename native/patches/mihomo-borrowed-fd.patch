@@ -1,0 +1,25 @@
+--- a/listener/sing_tun/server_notwindows.go
++++ b/listener/sing_tun/server_notwindows.go
+@@ -3,9 +3,22 @@
+ package sing_tun
+ 
+ import (
++	"syscall"
++
+ 	tun "github.com/metacubex/sing-tun"
+ )
+ 
+ func tunNew(options tun.Options) (tun.Tun, error) {
++	// Android VpnService retains its ParcelFileDescriptor. Duplicate only here,
++	// immediately before tun.New takes ownership; earlier validation owns no FD.
++	// The pinned sing-tun Linux/Android FD branch cannot fail after adoption.
++	if options.FileDescriptor > 0 {
++		fd, err := syscall.Dup(options.FileDescriptor)
++		if err != nil {
++			return nil, err
++		}
++		syscall.CloseOnExec(fd)
++		options.FileDescriptor = fd
++	}
+ 	return tun.New(options)
+ }

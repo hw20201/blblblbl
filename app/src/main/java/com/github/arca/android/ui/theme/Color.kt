@@ -1,0 +1,133 @@
+package com.github.arca.android.ui.theme
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import com.github.arca.android.ui.glass.GlassDefaults
+
+// Legacy presets retain their approved colors; grid choices also reach existing custom controls.
+private fun themeControlAccent(fallback: Color): Color {
+    val palette = GlassDefaults.palette
+    return if (GlassDefaults.enabled && palette.key.startsWith("custom:")) palette.uiAccent else fallback
+}
+val LoonOrange: Color get() = themeControlAccent(Color(0xFFFF6B00))
+val LoonOrangeLight: Color get() = themeControlAccent(Color(0xFFFF8533))
+val LoonOrangeBg: Color get() = if (GlassDefaults.enabled && GlassDefaults.palette.key.startsWith("custom:"))
+    lerp(Color.White, GlassDefaults.palette.uiAccent, .09f) else Color(0xFFFFF4EB)
+
+val LoonGreen = Color(0xFF00C853)
+val LoonGreenDark = Color(0xFF00A844)
+val LoonBlue = Color(0xFF4A69FF)
+val LoonBlueDark = Color(0xFF3852D4)
+
+val LoonEditBlue: Color get() = themeControlAccent(Color(0xFF2F80ED))
+val LoonEditBlueBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (LocalLoonColors.current.isDark) Color(0xFF252A37) else Color(0xFFE8EBF2)
+
+// Dynamic theme-aware colors
+val LoonBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.bg
+
+val LoonCard: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.card
+
+val LoonCardBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.cardBorder
+
+val LoonTextPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.textPrimary
+
+val LoonTextSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.textSecondary
+
+val LoonTextMuted: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.textMuted
+
+// Apple Official System Palette
+val IosBlue: Color get() = themeControlAccent(Color(0xFF007AFF))
+val IosGreen = Color(0xFF34C759)
+val IosIndigo = Color(0xFF5856D6)
+val IosOrange = Color(0xFFFF9500)
+val IosPink = Color(0xFFFF2D55)
+val IosPurple = Color(0xFFAF52DE)
+val IosRed = Color(0xFFFF3B30)
+val IosTeal = Color(0xFF30B0C7)
+val IosYellow = Color(0xFFFFCC00)
+val IosGray = Color(0xFF8E8E93)
+val IosGray2 = Color(0xFFAEAEC2)
+val IosGray3 = Color(0xFFC7C7CC)
+val IosGray4 = Color(0xFFD1D1D6)
+val IosGray5 = Color(0xFFE5E5EA)
+val IosGray6 = Color(0xFFF2F2F7)
+
+val LoonSeparator: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.separator
+
+val LoonSecondaryBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.secondaryBg
+
+val LoonTertiaryBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.tertiaryBg
+
+val LoonChevronTint: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.chevronTint
+
+val LoonSwitchUncheckedTrack: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.switchUncheckedTrack
+
+// Legacy compatibility
+val CyanPrimary: Color get() = LoonOrange
+val CyanVariant: Color get() = LoonOrangeLight
+val CyanGlow = Color(0x33FF6B00)
+val OledBlack = Color(0xFF000000)
+val DarkSurface = Color(0xFF1C1C1E)
+val DarkSurfaceVariant = Color(0xFF1C1C1E)
+
+val DarkCard: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.card
+
+val TextPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.textPrimary
+
+val TextSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.textSecondary
+
+val TextMuted: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalLoonColors.current.textMuted
+
+val GreenSuccess = IosGreen
+val YellowWarning = IosOrange
+val RedDanger = IosRed

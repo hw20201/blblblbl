@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/ubuntu/arca-glass-v80-followup-20261114/work/app/.cxx/RelWithDebInfo/2m1gc1k4/arm64-v8a",
+  "command": "/home/ubuntu/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android26 --sysroot=/home/ubuntu/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dqjsguard_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -O2 -g -DNDEBUG -fPIC -Wall -Wextra -Werror -O2 -std=gnu11 -o CMakeFiles/qjsguard.dir/qjs_guard.c.o -c /home/ubuntu/arca-glass-v80-followup-20261114/work/app/src/main/cpp/qjs_guard.c",
+  "file": "/home/ubuntu/arca-glass-v80-followup-20261114/work/app/src/main/cpp/qjs_guard.c"
+}
+]

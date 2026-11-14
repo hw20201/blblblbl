@@ -1,0 +1,1564 @@
+package com.github.arca.android.ui.components
+import androidx.compose.ui.platform.LocalDensity
+import com.github.arca.android.ui.glass.roundedRectOverlapFraction
+import com.github.arca.android.ui.glass.insetLensRect
+import com.github.arca.android.ui.glass.navigationLensGlobalBounds
+import com.github.arca.android.ui.glass.overlapTintProgress
+import com.github.arca.android.ui.glass.interpolateLensTint
+import com.github.arca.android.ui.glass.usesGlasmioFrosted
+import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.LocalGlassSettings
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.CompositionLocalProvider
+import android.os.Build
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.launch
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale as scaleDrawing
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.github.arca.android.ui.glass.GlassAccent
+import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassRadius
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
+import com.github.arca.android.ui.glass.LensStrength
+import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.LocalShortcutBlurEnabled
+import com.github.arca.android.ui.glass.glassTextPrimary
+import com.github.arca.android.ui.glass.NavigationLensState
+import com.github.arca.android.ui.glass.glassPalette
+import com.github.arca.android.ui.glass.NavigationLens
+import com.github.arca.android.ui.glass.NavigationLensOpticsState
+import com.github.arca.android.ui.glass.NavigationLensGlobalBounds
+import com.github.arca.android.ui.glass.lensTabMagnification
+import com.github.arca.android.ui.glass.NavigationGlassSurface
+import com.github.arca.android.ui.glass.glassTextSecondary
+import com.github.arca.android.ui.glass.navigationLensDrag
+import com.github.arca.android.ui.theme.*
+@Composable
+fun LoonTrafficCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    speed: String,
+    isUpload: Boolean,
+    glass: Boolean = GlassDefaults.enabled
+) {
+    if (glass) {
+        LoonTrafficCardGlass(
+            modifier = modifier,
+            title = title,
+            speed = speed,
+            isUpload = isUpload
+        )
+        return
+    }
+
+    val gradient = if (isUpload) {
+        Brush.horizontalGradient(listOf(Color(0xFF00C853), Color(0xFF00E676)))
+    } else {
+        Brush.horizontalGradient(listOf(Color(0xFF4A69FF), Color(0xFF6C5CE7)))
+    }
+
+    Surface(
+        modifier = modifier
+            .height(82.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(18.dp),
+                spotColor = if (isUpload) Color(0x3300C853) else Color(0x334A69FF)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.Transparent
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(18.dp))
+                .background(gradient)
+        ) {
+            // Primary Information (Title & Real-time speed)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 14.dp, end = 56.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = if (speed.isBlank()) "--" else speed,
+                    color = Color.White,
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
+
+            // iOS-Style Rounded Traffic Arrow (SF Symbols Morphology, Rounded Curves, Frosted Translucency)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                IosTrafficArrow(
+                    isUpload = isUpload,
+                    modifier = Modifier.size(width = 32.dp, height = 38.dp)
+                )
+            }
+        }
+    }
+}
+
+/** One calm dashboard panel for the two live traffic directions. */
+@Composable
+fun LoonTrafficSummaryCard(
+    modifier: Modifier = Modifier,
+    uploadTitle: String,
+    uploadSpeed: String,
+    downloadTitle: String,
+    downloadSpeed: String,
+    glass: Boolean = GlassDefaults.enabled
+) {
+    val shape = RoundedCornerShape(GlassRadius.card)
+    if (glass) {
+        GlassSurface(
+            modifier = modifier.fillMaxWidth().height(104.dp).testTag("dashboard-traffic-card"),
+            shape = shape,
+            accent = GlassAccent.download
+        ) {
+            TrafficSummaryContents(uploadTitle, uploadSpeed, downloadTitle, downloadSpeed, true)
+        }
+    } else {
+        Surface(
+            modifier = modifier.fillMaxWidth().height(104.dp).testTag("dashboard-traffic-card"),
+            shape = shape,
+            color = if (LocalLoonColors.current.isDark) Color(0xFF202833) else Color(0xFFF3F5F8)
+        ) {
+            TrafficSummaryContents(uploadTitle, uploadSpeed, downloadTitle, downloadSpeed, false)
+        }
+    }
+}
+
+@Composable
+private fun TrafficSummaryContents(
+    uploadTitle: String,
+    uploadSpeed: String,
+    downloadTitle: String,
+    downloadSpeed: String,
+    glass: Boolean
+) {
+    val primary = if (glass) glassTextPrimary else LoonTextPrimary
+    val secondary = if (glass) glassTextSecondary else LoonTextSecondary
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TrafficMetric(
+            modifier = Modifier.weight(1f), title = uploadTitle, speed = uploadSpeed,
+            icon = Icons.Default.ArrowUpward, accent = GlassAccent.upload,
+            primary = primary, secondary = secondary, tag = "traffic-upload"
+        )
+        Box(Modifier.width(1.dp).height(48.dp).background(secondary.copy(alpha = .20f)))
+        TrafficMetric(
+            modifier = Modifier.weight(1f).padding(start = 18.dp), title = downloadTitle, speed = downloadSpeed,
+            icon = Icons.Default.ArrowDownward, accent = GlassAccent.download,
+            primary = primary, secondary = secondary, tag = "traffic-download"
+        )
+    }
+}
+
+@Composable
+private fun TrafficMetric(
+    modifier: Modifier,
+    title: String,
+    speed: String,
+    icon: ImageVector,
+    accent: Color,
+    primary: Color,
+    secondary: Color,
+    tag: String
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = title, tint = accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(title, color = secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = speed.ifBlank { "--" }, color = primary, fontSize = 17.sp,
+            fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.testTag("$tag-rate")
+        )
+    }
+}
+
+/**
+ * Glass variant of [LoonTrafficCard]. Same geometry (82dp tall, 18dp radius, arrow on the right) so
+ * the dashboard layout is untouched; only the material changes. The accent now tints the panel
+ * instead of filling it, which is what makes the metric legible over a busy colour field.
+ */
+@Composable
+private fun LoonTrafficCardGlass(
+    modifier: Modifier = Modifier,
+    title: String,
+    speed: String,
+    isUpload: Boolean
+) {
+    val accent = if (isUpload) GlassAccent.upload else GlassAccent.download
+    GlassSurface(
+        modifier = modifier.height(82.dp),
+        shape = RoundedCornerShape(GlassRadius.card),
+        accent = accent
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 14.dp, end = 56.dp)
+        ) {
+            Text(
+                text = title,
+                color = glassTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = if (speed.isBlank()) "--" else speed,
+                color = glassTextPrimary,
+                fontSize = 15.5.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            IosTrafficArrow(
+                isUpload = isUpload,
+                modifier = Modifier.size(width = 32.dp, height = 38.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Modern iOS SF Symbols rounded traffic arrow.
+ * Features organic rounded apex, rounded wingtips, smooth concave fillets, and rounded base.
+ * Employs frosted translucent gradients and subtle high-clarity contour for authentic iOS vibrancy.
+ */
+@Composable
+private fun IosTrafficArrow(
+    isUpload: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+
+        // iOS rounded proportions
+        val rApex = 2.4.dp.toPx()
+        val rWing = 2.4.dp.toPx()
+        val rInner = 2.8.dp.toPx()
+        val rBase = 2.6.dp.toPx()
+
+        val wingW = w * 0.92f
+        val wingLeft = cx - wingW * 0.5f
+        val wingRight = cx + wingW * 0.5f
+
+        val stemW = w * 0.36f
+        val stemLeft = cx - stemW * 0.5f
+        val stemRight = cx + stemW * 0.5f
+
+        val path = Path()
+
+        if (isUpload) {
+            // ==================== UPLOAD (Points UP) ====================
+            val topY = 1.5.dp.toPx()
+            val wingY = h * 0.52f
+            val bottomY = h - 1.5.dp.toPx()
+
+            path.apply {
+                // 1. Rounded Apex
+                moveTo(cx - rApex * 0.8f, topY + rApex * 0.8f)
+                quadraticTo(cx, topY, cx + rApex * 0.8f, topY + rApex * 0.8f)
+
+                // 2. Right downward wing slope
+                lineTo(wingRight - rWing * 0.7f, wingY - rWing * 0.7f)
+
+                // 3. Right wingtip curve
+                quadraticTo(wingRight, wingY, wingRight - rWing, wingY)
+
+                // 4. Horizontal notch in towards stem
+                lineTo(stemRight + rInner, wingY)
+
+                // 5. Right inner fillet curve (smooth concave corner)
+                quadraticTo(stemRight, wingY, stemRight, wingY + rInner)
+
+                // 6. Right stem vertical edge
+                lineTo(stemRight, bottomY - rBase)
+
+                // 7. Bottom-right base curve
+                quadraticTo(stemRight, bottomY, stemRight - rBase, bottomY)
+
+                // 8. Base horizontal edge
+                lineTo(stemLeft + rBase, bottomY)
+
+                // 9. Bottom-left base curve
+                quadraticTo(stemLeft, bottomY, stemLeft, bottomY - rBase)
+
+                // 10. Left stem vertical edge
+                lineTo(stemLeft, wingY + rInner)
+
+                // 11. Left inner fillet curve (smooth concave corner)
+                quadraticTo(stemLeft, wingY, stemLeft - rInner, wingY)
+
+                // 12. Horizontal notch out towards wing
+                lineTo(wingLeft + rWing, wingY)
+
+                // 13. Left wingtip curve
+                quadraticTo(wingLeft, wingY, wingLeft + rWing * 0.7f, wingY - rWing * 0.7f)
+
+                // 14. Left upward wing slope back to apex
+                lineTo(cx - rApex * 0.8f, topY + rApex * 0.8f)
+                close()
+            }
+        } else {
+            // ==================== DOWNLOAD (Points DOWN) ====================
+            val topY = 1.5.dp.toPx()
+            val wingY = h * 0.48f
+            val bottomY = h - 1.5.dp.toPx()
+
+            path.apply {
+                // 1. Top-left stem base curve
+                moveTo(stemLeft, topY + rBase)
+                quadraticTo(stemLeft, topY, stemLeft + rBase, topY)
+
+                // 2. Top base horizontal edge
+                lineTo(stemRight - rBase, topY)
+
+                // 3. Top-right stem base curve
+                quadraticTo(stemRight, topY, stemRight, topY + rBase)
+
+                // 4. Right stem vertical edge down to fillet
+                lineTo(stemRight, wingY - rInner)
+
+                // 5. Right inner fillet curve (smooth concave corner)
+                quadraticTo(stemRight, wingY, stemRight + rInner, wingY)
+
+                // 6. Horizontal notch out towards wing
+                lineTo(wingRight - rWing, wingY)
+
+                // 7. Right wingtip curve
+                quadraticTo(wingRight, wingY, wingRight - rWing * 0.7f, wingY + rWing * 0.7f)
+
+                // 8. Right downward slope to apex
+                lineTo(cx + rApex * 0.8f, bottomY - rApex * 0.8f)
+
+                // 9. Bottom apex curve
+                quadraticTo(cx, bottomY, cx - rApex * 0.8f, bottomY - rApex * 0.8f)
+
+                // 10. Left upward slope to wing
+                lineTo(wingLeft + rWing * 0.7f, wingY + rWing * 0.7f)
+
+                // 11. Left wingtip curve
+                quadraticTo(wingLeft, wingY, wingLeft + rWing, wingY)
+
+                // 12. Horizontal notch in towards stem
+                lineTo(stemLeft - rInner, wingY)
+
+                // 13. Left inner fillet curve (smooth concave corner)
+                quadraticTo(stemLeft, wingY, stemLeft, wingY - rInner)
+
+                // 14. Left stem vertical edge back to top
+                lineTo(stemLeft, topY + rBase)
+                close()
+            }
+        }
+
+        // Frosted translucent body fill (reveals vibrant card gradient underneath)
+        val fillBrush = Brush.verticalGradient(
+            colors = if (isUpload) {
+                listOf(
+                    Color.White.copy(alpha = 0.78f),
+                    Color.White.copy(alpha = 0.45f)
+                )
+            } else {
+                listOf(
+                    Color.White.copy(alpha = 0.45f),
+                    Color.White.copy(alpha = 0.78f)
+                )
+            },
+            startY = 0f,
+            endY = h
+        )
+        drawPath(path = path, brush = fillBrush)
+
+        // Crisp semi-translucent contour (clean iOS Vibrancy outline)
+        val strokeBrush = Brush.verticalGradient(
+            colors = if (isUpload) {
+                listOf(
+                    Color.White.copy(alpha = 0.95f),
+                    Color.White.copy(alpha = 0.65f)
+                )
+            } else {
+                listOf(
+                    Color.White.copy(alpha = 0.65f),
+                    Color.White.copy(alpha = 0.95f)
+                )
+            },
+            startY = 0f,
+            endY = h
+        )
+        drawPath(
+            path = path,
+            brush = strokeBrush,
+            style = Stroke(
+                width = 1.4.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+    }
+}
+
+private val LocalDnsShortcutTintProgress = staticCompositionLocalOf { 0f }
+
+@Composable
+fun LoonShortcutCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    icon: @Composable () -> Unit,
+    isEditing: Boolean = false,
+    onDelete: (() -> Unit)? = null,
+    /** Background-only scene; never includes this card or navigation content. */
+    lens: NavigationLensState? = null,
+    /** Disable only the Gaussian filter for same-material visual comparisons. */
+    blurEnabled: Boolean = LocalShortcutBlurEnabled.current,
+    onPickupChanged: (Boolean) -> Unit = {},
+    onClick: () -> Unit,
+    lensBounds: NavigationLensGlobalBounds? = null,
+    lensTintTarget: Color? = null
+) {
+    val haptic = rememberIosHaptic()
+    val touchVariant = LocalShortcutTouchVariant.current
+    val previewPose = LocalShortcutTouchPreview.current?.takeIf { it.title == title }?.pose
+    val experimentalInteractions = remember { MutableInteractionSource() }
+    val touchMotion = rememberShortcutTouchMotion(
+        touchVariant ?: ShortcutTouchVariant.GentleFloat,
+        enabled = touchVariant != null && !isEditing,
+        frozenPose = previewPose,
+        onPickupChanged = onPickupChanged
+    )
+    var iconBoundsInWindow by remember(title) { mutableStateOf<Rect?>(null) }
+    var labelBoundsInWindow by remember(title) { mutableStateOf<Rect?>(null) }
+    val iconTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(iconBoundsInWindow, lensBounds)
+    val labelTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(labelBoundsInWindow, lensBounds)
+    val experimental = touchVariant != null && !isEditing
+    val fixedSlot = modifier.height(118.dp)
+    val slotModifier = if (experimental) fixedSlot.then(touchMotion.gestureModifier)
+        .clickable(interactionSource = experimentalInteractions, indication = null) {
+            haptic.lightTick()
+            onClick()
+        } else fixedSlot
+    val planeSize = Modifier.fillMaxWidth().height(118.dp)
+    val pressModifier = if (experimental) planeSize.then(touchMotion.visualModifier)
+        else planeSize.iosPressable(enabled = !isEditing, pressedScale = 0.982f) {
+            haptic.lightTick()
+            onClick()
+        }
+    // No fixed ground duplicate: only this plane moves; the slot owns hit testing.
+    // B enters direct manipulation only after a held contact; short vertical motion remains scrollable.
+    // Keep the card's stable tag on a separate semantics node from the caller's
+    // shortcut-id tag. Chaining both testTag modifiers on the same node masks one.
+    Box(Modifier.testTag("shortcut-card-$title")) {
+        Box(slotModifier) {
+        if (GlassDefaults.enabled) {
+            GlassSurface(
+                modifier = pressModifier,
+                shape = RoundedCornerShape(GlassRadius.card),
+                lens = lens,
+                blurEnabled = blurEnabled,
+                shortcutContactFrost = true,
+                shortcutDockLens = true,
+                shortcutRefraction = touchMotion.refraction
+            ) {
+                ShortcutCardContent(
+                    title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier,
+                    tintTarget = lensTintTarget,
+                    iconTintProgress = iconTintProgress,
+                    labelTintProgress = labelTintProgress,
+                    onIconBoundsChanged = if (lensTintTarget == null) null else { bounds -> iconBoundsInWindow = bounds },
+                    onLabelBoundsChanged = if (lensTintTarget == null) null else { bounds -> labelBoundsInWindow = bounds }
+                )
+            }
+        } else {
+            Surface(
+                modifier = pressModifier
+                    .shadow(1.5.dp, RoundedCornerShape(18.dp), spotColor = Color(0x0A000000))
+                    .clip(RoundedCornerShape(18.dp))
+                    .border(0.5.dp, LoonCardBorder, RoundedCornerShape(18.dp)),
+                color = LoonCard
+            ) {
+                ShortcutCardContent(
+                    title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier,
+                    tintTarget = lensTintTarget,
+                    iconTintProgress = iconTintProgress,
+                    labelTintProgress = labelTintProgress,
+                    onIconBoundsChanged = if (lensTintTarget == null) null else { bounds -> iconBoundsInWindow = bounds },
+                    onLabelBoundsChanged = if (lensTintTarget == null) null else { bounds -> labelBoundsInWindow = bounds }
+                )
+            }
+        }
+        }
+    }
+}
+
+private fun LayoutCoordinates.toWindowRect(): Rect {
+    val origin = localToWindow(Offset.Zero)
+    return Rect(origin.x, origin.y, origin.x + size.width, origin.y + size.height)
+}
+
+/** Shared body of [LoonShortcutCard]; identical in both material variants. */
+@Composable
+internal fun ShortcutCardContent(
+    title: String,
+    subtitle: String,
+    icon: @Composable () -> Unit,
+    isEditing: Boolean,
+    onDelete: (() -> Unit)?,
+    contentPerspectiveModifier: Modifier = Modifier,
+    tintTarget: Color? = null,
+    iconTintProgress: Float = 0f,
+    labelTintProgress: Float = 0f,
+    onIconBoundsChanged: ((Rect) -> Unit)? = null,
+    onLabelBoundsChanged: ((Rect) -> Unit)? = null
+) {
+    val titleTint = tintTarget?.let { interpolateLensTint(LoonTextPrimary, it, labelTintProgress) } ?: LoonTextPrimary
+    val subtitleTint = tintTarget?.let { interpolateLensTint(LoonTextSecondary, it, labelTintProgress) } ?: LoonTextSecondary
+    // This single inner layer is shared by every glyph, chevron and icon. Its residual
+    // perspective is contact-dependent; the outer glass surface and its follow animation stay put.
+    Box(modifier = Modifier.fillMaxSize().then(contentPerspectiveModifier)) {
+        // Text info on top-left
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 14.dp, top = 14.dp, end = 56.dp)
+                .then(if (onLabelBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { onLabelBoundsChanged(it.toWindowRect()) })
+        ) {
+            Text(
+                text = title,
+                color = titleTint,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            if (subtitle.isNotBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = subtitle,
+                    color = subtitleTint,
+                    fontSize = 12.sp,
+                    maxLines = 1
+                )
+            }
+        }
+
+        // Bottom-left: clean chevron '>' button or drag handle (no background color block)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 14.dp, bottom = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isEditing) {
+                Canvas(modifier = Modifier.size(18.dp)) {
+                    val stroke = 2.dp.toPx()
+                    val w = size.width
+                    val h = size.height
+                    val color = Color(0xFF9AA0AE)
+                    drawLine(color, Offset(0f, h * 0.35f), Offset(w, h * 0.35f), stroke, StrokeCap.Round)
+                    drawLine(color, Offset(0f, h * 0.65f), Offset(w, h * 0.65f), stroke, StrokeCap.Round)
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFF9AA0AE),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // Bottom-right large floating illustration
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 10.dp, bottom = 10.dp)
+                .size(54.dp)
+            .then(if (onIconBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { onIconBoundsChanged(it.toWindowRect()) }),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            CompositionLocalProvider(LocalDnsShortcutTintProgress provides iconTintProgress) { icon() }
+        }
+
+        // Red minus/remove button badge at top-right in edit mode
+        if (isEditing && onDelete != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF3B30))
+                    .clickable { onDelete() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u2212",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// iOS/Loon Style High-Fidelity Canvas Illustrations
+// -------------------------------------------------------------
+
+@Composable
+fun BlurOverlay(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(
+        modifier = modifier
+            .size(22.dp)
+            .shadow(3.dp, CircleShape, spotColor = Color(0x33000000))
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.92f)),
+        contentAlignment = Alignment.Center,
+        content = content
+    )
+}
+
+@Composable
+fun RequestLogsIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            // Main document paper card (vibrant violet-purple with subtle lighting)
+            val docGrad = Brush.verticalGradient(
+                colors = listOf(Color(0xFFA855F7), Color(0xFF9333EA)),
+                startY = h * 0.16f,
+                endY = h * 0.84f
+            )
+            drawRoundRect(
+                brush = docGrad,
+                topLeft = Offset(w * 0.18f, h * 0.16f),
+                size = Size(w * 0.64f, h * 0.68f),
+                cornerRadius = CornerRadius(8.dp.toPx())
+            )
+
+            // Three white data lines on document body (1:1 identical to original Loon image)
+            // Top line: shorter and bolder
+            drawRoundRect(
+                color = Color.White,
+                topLeft = Offset(w * 0.28f, h * 0.32f),
+                size = Size(w * 0.24f, h * 0.055f),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
+            // Middle line: longer
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.95f),
+                topLeft = Offset(w * 0.28f, h * 0.45f),
+                size = Size(w * 0.44f, h * 0.055f),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
+            // Bottom line: medium length
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.95f),
+                topLeft = Offset(w * 0.28f, h * 0.58f),
+                size = Size(w * 0.32f, h * 0.055f),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
+        }
+    }
+}
+
+@Composable
+fun ProfilesIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            // Three stacked card layers (from back to front)
+            // Back card (lightest)
+            drawRoundRect(
+                color = Color(0xFF93C5FD),
+                topLeft = Offset(w * 0.22f, h * 0.16f),
+                size = Size(w * 0.62f, h * 0.52f),
+                cornerRadius = CornerRadius(5.dp.toPx())
+            )
+            // Middle card
+            drawRoundRect(
+                color = Color(0xFF3B82F6),
+                topLeft = Offset(w * 0.14f, h * 0.26f),
+                size = Size(w * 0.62f, h * 0.52f),
+                cornerRadius = CornerRadius(5.dp.toPx())
+            )
+            // Front card (darkest, blue gradient)
+            val frontGradient = Brush.linearGradient(
+                colors = listOf(Color(0xFF60A5FA), Color(0xFF1D4ED8)),
+                start = Offset(0f, h * 0.34f),
+                end = Offset(w, h)
+            )
+            drawRoundRect(
+                brush = frontGradient,
+                topLeft = Offset(w * 0.06f, h * 0.36f),
+                size = Size(w * 0.62f, h * 0.52f),
+                cornerRadius = CornerRadius(5.dp.toPx())
+            )
+            // White lines on front card
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.9f),
+                topLeft = Offset(w * 0.14f, h * 0.50f),
+                size = Size(w * 0.38f, h * 0.07f),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.6f),
+                topLeft = Offset(w * 0.14f, h * 0.64f),
+                size = Size(w * 0.28f, h * 0.07f),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
+        }
+    }
+}
+
+@Composable
+fun RulesIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val gradient = Brush.linearGradient(
+                colors = listOf(Color(0xFF38BDF8), Color(0xFF0284C7)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+            val drawDiamond = { cy: Float, alpha: Float ->
+                val path = Path().apply {
+                    moveTo(w * 0.48f, cy - h * 0.14f)
+                    lineTo(w * 0.86f, cy)
+                    lineTo(w * 0.48f, cy + h * 0.14f)
+                    lineTo(w * 0.10f, cy)
+                    close()
+                }
+                drawPath(path, brush = gradient, alpha = alpha)
+            }
+            drawDiamond(h * 0.64f, 0.5f)
+            drawDiamond(h * 0.48f, 0.75f)
+            drawDiamond(h * 0.32f, 1.0f)
+
+            // White connected nodes on top diamond
+            val n1 = Offset(w * 0.36f, h * 0.32f)
+            val n2 = Offset(w * 0.60f, h * 0.26f)
+            val n3 = Offset(w * 0.58f, h * 0.38f)
+            drawLine(Color.White, n1, n2, strokeWidth = 2.dp.toPx())
+            drawLine(Color.White, n1, n3, strokeWidth = 2.dp.toPx())
+            drawCircle(Color.White, radius = 3.dp.toPx(), center = n1)
+            drawCircle(Color.White, radius = 2.5.dp.toPx(), center = n2)
+            drawCircle(Color.White, radius = 2.5.dp.toPx(), center = n3)
+        }
+    }
+}
+
+@Composable
+fun PluginsIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val gradient = Brush.linearGradient(
+                colors = listOf(Color(0xFF818CF8), Color(0xFF6366F1)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+            // Puzzle main body
+            drawRoundRect(
+                brush = gradient,
+                topLeft = Offset(w * 0.18f, h * 0.18f),
+                size = Size(w * 0.56f, h * 0.56f),
+                cornerRadius = CornerRadius(6.dp.toPx())
+            )
+            // Top tab knob
+            drawCircle(
+                brush = gradient,
+                radius = w * 0.14f,
+                center = Offset(w * 0.46f, h * 0.18f)
+            )
+            // Right tab knob
+            drawCircle(
+                brush = gradient,
+                radius = w * 0.14f,
+                center = Offset(w * 0.74f, h * 0.46f)
+            )
+        }
+    }
+}
+
+@Composable
+fun NodesIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            val bladeGradient = Brush.linearGradient(
+                colors = listOf(Color(0xFF60A5FA), Color(0xFF2563EB)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+
+            val cornerRadius = CornerRadius(6.dp.toPx())
+            val bladeWidth = w * 0.66f
+            val bladeHeight = h * 0.29f
+            val bladeLeft = w * 0.17f
+
+            // Top Server Blade
+            val topBladeY = h * 0.16f
+            drawRoundRect(
+                brush = bladeGradient,
+                topLeft = Offset(bladeLeft, topBladeY),
+                size = Size(bladeWidth, bladeHeight),
+                cornerRadius = cornerRadius
+            )
+            // Top Blade LED indicator (clean white dot on the left)
+            drawCircle(
+                color = Color.White,
+                radius = 3.6.dp.toPx(),
+                center = Offset(bladeLeft + bladeHeight * 0.58f, topBladeY + bladeHeight * 0.50f)
+            )
+
+            // Bottom Server Blade
+            val bottomBladeY = h * 0.53f
+            drawRoundRect(
+                brush = bladeGradient,
+                topLeft = Offset(bladeLeft, bottomBladeY),
+                size = Size(bladeWidth, bladeHeight),
+                cornerRadius = cornerRadius
+            )
+            // Bottom Blade LED indicator (clean white dot on the left)
+            drawCircle(
+                color = Color.White,
+                radius = 3.6.dp.toPx(),
+                center = Offset(bladeLeft + bladeHeight * 0.58f, bottomBladeY + bladeHeight * 0.50f)
+            )
+        }
+    }
+}
+
+@Composable
+fun PacketCaptureIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val gradient = Brush.linearGradient(
+                colors = listOf(Color(0xFFA78BFA), Color(0xFF7C3AED)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+            // Phone body
+            drawRoundRect(
+                brush = gradient,
+                topLeft = Offset(w * 0.20f, h * 0.10f),
+                size = Size(w * 0.35f, h * 0.60f),
+                cornerRadius = CornerRadius(5.dp.toPx())
+            )
+            // Phone screen
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.25f),
+                topLeft = Offset(w * 0.24f, h * 0.16f),
+                size = Size(w * 0.27f, h * 0.42f),
+                cornerRadius = CornerRadius(3.dp.toPx())
+            )
+            // Branching arrows from phone right side
+            val midY = h * 0.40f
+            // Horizontal stem
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(w * 0.56f, midY),
+                end = Offset(w * 0.68f, midY),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            // Upper branch
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(w * 0.68f, midY),
+                end = Offset(w * 0.68f, h * 0.26f),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(w * 0.68f, h * 0.26f),
+                end = Offset(w * 0.84f, h * 0.26f),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            // Lower branch
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(w * 0.68f, midY),
+                end = Offset(w * 0.68f, h * 0.54f),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(w * 0.68f, h * 0.54f),
+                end = Offset(w * 0.84f, h * 0.54f),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            // Arrow heads
+            val arrSize = 4.dp.toPx()
+            // Upper arrowhead
+            drawPath(Path().apply {
+                moveTo(w * 0.84f, h * 0.26f - arrSize)
+                lineTo(w * 0.84f + arrSize, h * 0.26f)
+                lineTo(w * 0.84f, h * 0.26f + arrSize)
+                close()
+            }, color = Color.White.copy(alpha = 0.9f))
+            // Lower arrowhead
+            drawPath(Path().apply {
+                moveTo(w * 0.84f, h * 0.54f - arrSize)
+                lineTo(w * 0.84f + arrSize, h * 0.54f)
+                lineTo(w * 0.84f, h * 0.54f + arrSize)
+                close()
+            }, color = Color.White.copy(alpha = 0.9f))
+        }
+    }
+}
+
+@Composable
+fun NetworkShareIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val gradient = Brush.linearGradient(
+                colors = listOf(Color(0xFFF87171), Color(0xFFDC2626)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+            val center = Offset(w * 0.46f, h * 0.48f)
+            // Central transmitter circle
+            drawCircle(brush = gradient, radius = 5.5.dp.toPx(), center = center)
+            // Inner radiating arc wave
+            drawArc(
+                brush = gradient,
+                startAngle = 135f,
+                sweepAngle = 270f,
+                useCenter = false,
+                topLeft = Offset(center.x - 12.dp.toPx(), center.y - 12.dp.toPx()),
+                size = Size(24.dp.toPx(), 24.dp.toPx()),
+                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+            )
+            // Outer radiating arc wave
+            drawArc(
+                brush = gradient,
+                startAngle = 135f,
+                sweepAngle = 270f,
+                useCenter = false,
+                topLeft = Offset(center.x - 19.dp.toPx(), center.y - 19.dp.toPx()),
+                size = Size(38.dp.toPx(), 38.dp.toPx()),
+                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+            )
+        }
+    }
+}
+
+@Composable
+fun DnsIllustration() {
+    val tintProgress = LocalDnsShortcutTintProgress.current
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val greenTarget = Color(0xFF22C55E)
+            val gradient = Brush.linearGradient(
+                colors = listOf(
+                    interpolateLensTint(Color(0xFF34D399), greenTarget, tintProgress),
+                    interpolateLensTint(Color(0xFF059669), greenTarget, tintProgress)
+                ),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+            // Main server chip body
+            drawRoundRect(
+                brush = gradient,
+                topLeft = Offset(w * 0.18f, h * 0.20f),
+                size = Size(w * 0.64f, h * 0.60f),
+                cornerRadius = CornerRadius(6.dp.toPx())
+            )
+            // Three server slots
+            val slotColor = Color.White.copy(alpha = 0.85f)
+            drawRoundRect(color = slotColor, topLeft = Offset(w * 0.26f, h * 0.31f), size = Size(w * 0.14f, h * 0.08f), cornerRadius = CornerRadius(2.dp.toPx()))
+            drawRoundRect(color = slotColor, topLeft = Offset(w * 0.26f, h * 0.46f), size = Size(w * 0.14f, h * 0.08f), cornerRadius = CornerRadius(2.dp.toPx()))
+            drawRoundRect(color = slotColor, topLeft = Offset(w * 0.26f, h * 0.61f), size = Size(w * 0.14f, h * 0.08f), cornerRadius = CornerRadius(2.dp.toPx()))
+            // Right-side label lines
+            drawRoundRect(color = Color.White.copy(alpha = 0.7f), topLeft = Offset(w * 0.46f, h * 0.33f), size = Size(w * 0.28f, h * 0.06f), cornerRadius = CornerRadius(2.dp.toPx()))
+            drawRoundRect(color = Color.White.copy(alpha = 0.7f), topLeft = Offset(w * 0.46f, h * 0.48f), size = Size(w * 0.20f, h * 0.06f), cornerRadius = CornerRadius(2.dp.toPx()))
+            drawRoundRect(color = Color.White.copy(alpha = 0.7f), topLeft = Offset(w * 0.46f, h * 0.63f), size = Size(w * 0.24f, h * 0.06f), cornerRadius = CornerRadius(2.dp.toPx()))
+        }
+    }
+}
+
+@Composable
+fun AppRoutingIllustration() {
+    Box(modifier = Modifier.size(54.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            // Single rounded square background (scaled down to 0.72f to match other icons)
+            val bgGrad = Brush.linearGradient(
+                colors = listOf(Color(0xFF6366F1), Color(0xFF2563EB)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+            drawRoundRect(
+                brush = bgGrad,
+                topLeft = Offset(w * 0.14f, h * 0.14f),
+                size = Size(w * 0.72f, h * 0.72f),
+                cornerRadius = CornerRadius(8.dp.toPx())
+            )
+
+            // 1. Larger Plus (+) in Top-Left
+            val cx1 = w * 0.38f
+            val cy1 = h * 0.38f
+            val armPlus = 4.8.dp.toPx()
+            val strokePlus = 2.5.dp.toPx()
+            // Horizontal bar of plus
+            drawLine(
+                color = Color.White,
+                start = Offset(cx1 - armPlus, cy1),
+                end = Offset(cx1 + armPlus, cy1),
+                strokeWidth = strokePlus,
+                cap = StrokeCap.Round
+            )
+            // Vertical bar of plus
+            drawLine(
+                color = Color.White,
+                start = Offset(cx1, cy1 - armPlus),
+                end = Offset(cx1, cy1 + armPlus),
+                strokeWidth = strokePlus,
+                cap = StrokeCap.Round
+            )
+
+            // 2. Smaller Minus (-) in Bottom-Right
+            val cx2 = w * 0.62f
+            val cy2 = h * 0.62f
+            val armMinus = 3.4.dp.toPx()
+            val strokeMinus = 2.0.dp.toPx()
+            // Horizontal bar of minus
+            drawLine(
+                color = Color.White.copy(alpha = 0.95f),
+                start = Offset(cx2 - armMinus, cy2),
+                end = Offset(cx2 + armMinus, cy2),
+                strokeWidth = strokeMinus,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// Floating Bottom Navigation Bar
+// -------------------------------------------------------------
+
+@Composable
+fun LoonFloatingBottomBar(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    lens: NavigationLensState? = null,
+    onLensBoundsChanged: (NavigationLensGlobalBounds?) -> Unit = {}
+) {
+    if (GlassDefaults.enabled) {
+        var selectionPulse by remember { mutableIntStateOf(0) }
+        var dragPosition by remember { mutableStateOf<Float?>(null) }
+        val optics = remember { NavigationLensOpticsState(selectedTab.toFloat()) }
+        val density = LocalDensity.current
+        var barWindowOrigin by remember { mutableStateOf<Offset?>(null) }
+        var barLayoutSize by remember { mutableStateOf(IntSize.Zero) }
+        val localLensShell = if (lens != null && barLayoutSize.width > 0 && barLayoutSize.height > 0) {
+            val frame = optics.frame
+            val width = barLayoutSize.width.toFloat()
+            val height = barLayoutSize.height.toFloat()
+            insetLensRect(frame.position, frame.stretch, frame.expansion, width / BOTTOM_BAR_SLOTS, width, height, density.density)
+        } else null
+        val shellRadius = localLensShell?.let { minOf(with(density) { GlassRadius.bar.toPx() }, it.height / 2f) } ?: 0f
+        val origin = barWindowOrigin
+        val globalLensBounds = if (localLensShell != null && origin != null) {
+            navigationLensGlobalBounds(localLensShell, origin, shellRadius)
+        } else null
+        SideEffect { onLensBoundsChanged(globalLensBounds) }
+        val selectTabWithHaptic = rememberHapticValueAction<Int> { tab ->
+            selectionPulse++
+            onTabSelected(tab)
+        }
+        // One refracting backdrop layer only. Sharp foreground drawing shares its position;
+        // the tab layout, semantic nodes and touch targets never grow or move.
+        Box(
+            modifier = modifier
+                // The original items determine the width; both material layers match the dock.
+                .wrapContentSize(Alignment.BottomCenter)
+                .height(BOTTOM_BAR_HEIGHT)
+                .testTag("navigation-dock")
+                .navigationLensDrag(BOTTOM_BAR_SLOTS, { dragPosition = it }, { tab ->
+                    selectTabWithHaptic(tab)
+                })
+                // Resting glass is inset; clicked glass grows symmetrically over the selected option.
+                .graphicsLayer { clip = false }
+                .onGloballyPositioned { coordinates ->
+                    val nextOrigin = coordinates.localToWindow(Offset.Zero)
+                    if (barWindowOrigin != nextOrigin) barWindowOrigin = nextOrigin
+                    if (barLayoutSize != coordinates.size) barLayoutSize = coordinates.size
+                }
+        ) {
+            // Base tray reuses Glasmio with fixed 8dp frost and restrained refraction; the selected pill stays on its separate Arca lens.
+            val currentGlassSettings = LocalGlassSettings.current
+            val dockGlassSettings = remember(currentGlassSettings) {
+                currentGlassSettings.copy(glasmioFrosted = currentGlassSettings.glasmioFrosted.copy(
+                    blurRadiusDp = 8f,
+                    refractionAmountDp = currentGlassSettings.glasmioFrosted.refractionAmountDp * BOTTOM_DOCK_REFRACTION_AMOUNT
+                ))
+            }
+            val useGlasmioDock = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                currentGlassSettings.glassPreset.usesGlasmioFrosted() && LocalArcaGlasmioBackdrop.current != null
+            if (useGlasmioDock) {
+                CompositionLocalProvider(LocalGlassSettings provides dockGlassSettings) {
+                    NavigationGlassSurface(
+                        modifier = Modifier.matchParentSize(),
+                        lens = null,
+                        shape = RoundedCornerShape(GlassRadius.bar),
+                        cornerRadius = GlassRadius.bar,
+                        strength = LensStrength.STANDARD,
+                        refractionAmount = { BOTTOM_DOCK_REFRACTION_AMOUNT },
+                        surfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
+                        showRim = true
+                    ) {}
+                }
+            } else {
+                NavigationGlassSurface(
+                    modifier = Modifier.matchParentSize(),
+                    lens = lens,
+                    shape = RoundedCornerShape(GlassRadius.bar),
+                    cornerRadius = GlassRadius.bar,
+                    strength = LensStrength.STANDARD,
+                    refractionAmount = { BOTTOM_DOCK_REFRACTION_AMOUNT },
+                    frosted = true,
+                    frostedBlurRadiusDp = 8.dp,
+                    surfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
+                    showRim = true
+                ) {}
+            }
+            NavigationLens(
+                selectedSlot = selectedTab.coerceIn(0, BOTTOM_BAR_SLOTS - 1),
+                slotCount = BOTTOM_BAR_SLOTS,
+                lens = lens,
+                modifier = Modifier.matchParentSize(),
+                selectionPulse = selectionPulse,
+                dragPosition = dragPosition,
+                optics = optics
+            )
+            BottomBarItems(selectedTab, selectTabWithHaptic,
+                glassMode = true, optics = if (lens != null) optics else null)
+        }
+        return
+    }
+
+    SideEffect { onLensBoundsChanged(null) }
+    Surface(
+        modifier = modifier
+            .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
+            .border(0.5.dp, LocalLoonColors.current.bottomBarBorder, RoundedCornerShape(32.dp)),
+        shape = RoundedCornerShape(32.dp),
+        color = LocalLoonColors.current.bottomBarBg
+    ) {
+        BottomBarItems(selectedTab, onTabSelected)
+    }
+}
+
+/** Number of slots in the bottom bar; the lens travels between their centres. */
+private const val BOTTOM_BAR_SLOTS = 3
+/** Keep base-dock bending moderate relative to the stronger selected lens. */
+private const val BOTTOM_DOCK_REFRACTION_AMOUNT = 0.55f
+
+/** Fixed capsule height: liquid motion never changes the navigation layout. */
+internal val BOTTOM_BAR_HEIGHT = 64.dp
+private val BOTTOM_BAR_WIDTH = 304.dp
+
+internal val BOTTOM_BAR_BOTTOM_MARGIN = 16.dp
+internal fun mainDockContentInset(navigationBarsBottom: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
+    BOTTOM_BAR_HEIGHT + BOTTOM_BAR_BOTTOM_MARGIN + navigationBarsBottom
+
+/** Dock-aware scroll tail keeps the final Dashboard card above the dock with a small visible gap. */
+internal val DASHBOARD_DOCK_CLEAR_GAP = 16.dp
+internal fun dashboardScrollContentInset(navigationBarsBottom: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
+    mainDockContentInset(navigationBarsBottom) + DASHBOARD_DOCK_CLEAR_GAP
+
+/**
+ * Full-height page scene behind the floating dock.
+ *
+ * The dock is intentionally translucent: the page must continue beneath it so cards,
+ * icons and text remain visible through the glass. Clipping the page at the dock's top
+ * edge creates the conspicuous horizontal "cut-off" line seen in the previous layout.
+ * Scrollable pages should keep their own bottom content inset so their final items can
+ * still be brought fully above the dock.
+ */
+@Composable
+internal fun MainDockContentViewport(
+    navigationBarsBottom: androidx.compose.ui.unit.Dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("main-page-content-viewport"),
+        content = content
+    )
+}
+
+@Composable
+private fun BottomBarItems(
+    selectedTab: Int, onTabSelected: (Int) -> Unit,
+    glassMode: Boolean = false, hideSelectedIcon: Boolean = false,
+    optics: NavigationLensOpticsState? = null
+) {
+        val density = LocalDensity.current
+        val barWidthDp = minOf(BOTTOM_BAR_WIDTH, LocalConfiguration.current.screenWidthDp.dp)
+        val barWidthPx = with(density) { barWidthDp.toPx() }
+        val barHeightPx = with(density) { BOTTOM_BAR_HEIGHT.toPx() }
+        val slotPitchPx = barWidthPx / BOTTOM_BAR_SLOTS
+        val shell = optics?.frame?.let { frame ->
+            insetLensRect(frame.position, frame.stretch, frame.expansion, slotPitchPx, barWidthPx, barHeightPx, density.density)
+        }
+        val shellRadius = shell?.let { minOf(with(density) { GlassRadius.bar.toPx() }, it.height / 2f) } ?: 0f
+        val contentWidthPx = with(density) { minOf(72.dp, (barWidthDp / BOTTOM_BAR_SLOTS.toFloat() - 12.dp).coerceAtLeast(1.dp)).toPx() }
+        val contentHeightPx = with(density) { 38.dp.toPx() }
+        fun overlapFor(slot: Int): Float? {
+            val currentShell = shell ?: return null
+            val left = slot * slotPitchPx + (slotPitchPx - contentWidthPx) / 2f
+            val item = androidx.compose.ui.geometry.Rect(left, (barHeightPx - contentHeightPx) / 2f,
+                left + contentWidthPx, (barHeightPx + contentHeightPx) / 2f)
+            return roundedRectOverlapFraction(item, currentShell, shellRadius)
+        }
+        Row(
+            modifier = Modifier
+                .then(if (glassMode) Modifier.widthIn(max = BOTTOM_BAR_WIDTH).fillMaxWidth() else Modifier)
+                .padding(horizontal = if (glassMode) 0.dp else 28.dp, vertical = 7.dp),
+            horizontalArrangement = if (glassMode) Arrangement.SpaceEvenly else Arrangement.spacedBy(40.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val lang = LocalAppLanguage.current
+            BottomNavItem(
+                icon = Icons.Default.Speed,
+                label = AppStrings.get("nav_dashboard", lang),
+                isSelected = selectedTab == 0,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 0,
+                opticalScale = optics?.let { { lensTabMagnification(0, it.frame.position, it.frame.expansion) } },
+                lensCoverage = if (glassMode && optics != null) overlapFor(0) else null,
+                onClick = { onTabSelected(0) }
+            )
+            BottomNavItem(
+                customIcon = { tint ->
+                    StandardCubeIcon(tint = tint)
+                },
+                label = AppStrings.get("nav_proxies", lang),
+                isSelected = selectedTab == 1,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 1,
+                opticalScale = optics?.let { { lensTabMagnification(1, it.frame.position, it.frame.expansion) } },
+                lensCoverage = if (glassMode && optics != null) overlapFor(1) else null,
+                onClick = { onTabSelected(1) }
+            )
+            BottomNavItem(
+                icon = Icons.Outlined.Settings,
+                label = AppStrings.get("nav_settings", lang),
+                isSelected = selectedTab == 2,
+                modifier = if (glassMode) Modifier.weight(1f) else Modifier,
+                hideIcon = hideSelectedIcon && selectedTab == 2,
+                opticalScale = optics?.let { { lensTabMagnification(2, it.frame.position, it.frame.expansion) } },
+                lensCoverage = if (glassMode && optics != null) overlapFor(2) else null,
+                onClick = { onTabSelected(2) }
+            )
+        }
+}
+
+@Composable
+fun StandardCubeIcon(
+    tint: Color,
+    modifier: Modifier = Modifier.size(22.dp)
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(
+            width = 1.8.dp.toPx(),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+
+        // Center point where the 3 visible isometric edges join
+        val cx = w * 0.5f
+        val cy = h * 0.52f
+
+        // Top diamond (top face)
+        val topP = Path().apply {
+            moveTo(cx, h * 0.12f)
+            lineTo(w * 0.88f, h * 0.32f)
+            lineTo(cx, cy)
+            lineTo(w * 0.12f, h * 0.32f)
+            close()
+        }
+        drawPath(topP, color = tint.copy(alpha = 0.08f))
+        drawPath(topP, color = tint, style = stroke)
+
+        // Left face
+        val leftP = Path().apply {
+            moveTo(w * 0.12f, h * 0.32f)
+            lineTo(cx, cy)
+            lineTo(cx, h * 0.92f)
+            lineTo(w * 0.12f, h * 0.72f)
+            close()
+        }
+        drawPath(leftP, color = tint, style = stroke)
+
+        // Right face
+        val rightP = Path().apply {
+            moveTo(cx, cy)
+            lineTo(w * 0.88f, h * 0.32f)
+            lineTo(w * 0.88f, h * 0.72f)
+            lineTo(cx, h * 0.92f)
+            close()
+        }
+        drawPath(rightP, color = tint, style = stroke)
+    }
+}
+
+@Composable
+private fun BottomNavItem(
+    icon: ImageVector? = null,
+    customIcon: (@Composable (Color) -> Unit)? = null,
+    label: String,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    hideIcon: Boolean = false,
+    opticalScale: (() -> Float)? = null,
+    lensCoverage: Float? = null,
+    onClick: () -> Unit
+) {
+    val haptic = rememberIosHaptic()
+    val tintTarget = lensCoverage?.let { lerp(Color(0xFF8E8E93), IosBlue, it.coerceIn(0f, 1f)) }
+        ?: if (isSelected) IosBlue else Color(0xFF8E8E93)
+    val tint by animateColorAsState(
+        targetValue = tintTarget,
+        animationSpec = tween(durationMillis = 200),
+        label = "nav_tint"
+    )
+    val scale = if (opticalScale == null) {
+        val legacyScale by animateFloatAsState(
+            targetValue = if (isSelected) 1.08f else 1.0f,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+            label = "nav_scale"
+        )
+        legacyScale
+    } else 1f
+
+    Column(
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                haptic.selection()
+                onClick()
+            }
+            // Draw-time vector/text magnification only: no bitmap readback, shader per icon,
+            // blur or extra animation clock. The existing AGSL shell supplies the glass sheen.
+            .drawWithContent {
+                val magnification = opticalScale?.invoke() ?: scale
+                scaleDrawing(magnification, magnification) {
+                    this@drawWithContent.drawContent()
+                }
+            }
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(modifier = Modifier.graphicsLayer { alpha = if (hideIcon) 0f else 1f }) {
+            if (customIcon != null) customIcon(tint) else if (icon != null) {
+                Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(
+            text = label,
+            color = tint,
+            fontSize = 10.5.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
+// -------------------------------------------------------------
+// iOS-style Rubber-Band Bounce Overscroll (Translates content rigidly without stretching)
+// allowTop=true  → produces space when pulling past the top edge
+// allowBottom=true → produces space when pushing past the bottom edge
+// -------------------------------------------------------------
+/** Bounded content-only translation. Drag deltas update synchronously: never queue one
+ * snap coroutine per pointer event. Only the release owns an animation job. */
+internal class RubberBandState(private val limit: Float) {
+    var offset by mutableFloatStateOf(0f)
+    fun pull(delta: Float): Float {
+        if (delta == 0f) return 0f
+        val resistance = .42f * (1f - kotlin.math.abs(offset) / limit).coerceIn(.08f, 1f)
+        offset = (offset + delta * resistance).coerceIn(-limit, limit)
+        return delta
+    }
+    fun unwind(delta: Float): Float {
+        if (offset * delta >= 0f) return 0f
+        val consumed = if (offset > 0f) delta.coerceAtLeast(-offset) else delta.coerceAtMost(-offset)
+        offset += consumed
+        return consumed
+    }
+}
+
+@Composable
+fun rememberBounceOverscrollConnection(
+    allowTop: Boolean = true,
+    allowBottom: Boolean = true
+): Pair<NestedScrollConnection, State<Float>> {
+    val scope = rememberCoroutineScope()
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val band = remember(density) { RubberBandState(88f * density) }
+    val connection = remember(allowTop, allowBottom, band) {
+        object : NestedScrollConnection {
+            var rebound: kotlinx.coroutines.Job? = null
+            fun interrupt() { rebound?.cancel(); rebound = null }
+            suspend fun release() {
+                if (band.offset == 0f) return
+                interrupt()
+                rebound = scope.launch {
+                    val animation = Animatable(band.offset)
+                    animation.animateTo(0f, spring(dampingRatio = .78f, stiffness = 380f)) {
+                        band.offset = value
+                    }
+                    band.offset = 0f
+                }
+                rebound?.join()
+            }
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                interrupt()
+                return Offset(0f, band.unwind(available.y))
+            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                return when {
+                    available.y > 0f && allowTop -> Offset(0f, band.pull(available.y))
+                    available.y < 0f && allowBottom -> Offset(0f, band.pull(available.y))
+                    else -> Offset.Zero
+                }
+            }
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (band.offset == 0f) return Velocity.Zero
+                release()
+                // Consume vertical only. Never steal a horizontal pager fling.
+                return Velocity(0f, available.y)
+            }
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                release()
+                return Velocity.Zero
+            }
+        }
+    }
+    val offset = remember(band) { derivedStateOf { band.offset } }
+    return connection to offset
+}
+
+// iOS-style Rubber-Band Bounce Overscroll
+fun Modifier.bounceOverscroll(
+    allowTop: Boolean = true,
+    allowBottom: Boolean = true
+): Modifier = composed {
+    val (connection, offsetState) = rememberBounceOverscrollConnection(allowTop, allowBottom)
+    this
+        .nestedScroll(connection)
+        .graphicsLayer {
+            translationY = offsetState.value
+        }
+}
