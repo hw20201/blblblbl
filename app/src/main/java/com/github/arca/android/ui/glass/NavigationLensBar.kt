@@ -119,7 +119,9 @@ internal fun insetLensRect(
 
 /** Fraction of an item content box covered by the rounded shell, sampled from the shell's actual animated bounds. */
 internal fun roundedRectOverlapFraction(item: Rect, shell: Rect, cornerRadius: Float, samples: Int = 48): Float {
-    if (item.width <= 0f || item.height <= 0f || shell.width <= 0f || shell.height <= 0f || samples <= 0) return 0f
+    val itemHasNoArea = item.width <= 0f || item.height <= 0f
+    val shellHasNoArea = shell.width <= 0f || shell.height <= 0f
+    if (itemHasNoArea || shellHasNoArea || samples <= 0) return 0f
     val radius = cornerRadius.coerceIn(0f, minOf(shell.width, shell.height) / 2f)
     val step = item.width / samples
     var area = 0f

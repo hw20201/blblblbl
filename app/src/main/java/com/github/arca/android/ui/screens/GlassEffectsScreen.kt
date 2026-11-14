@@ -351,41 +351,6 @@ fun GlassEffectsScreen(
 }
 
 @Composable
-private fun GlassEditorCard(title: String, subtitle: String, lens: NavigationLensState? = null, content: @Composable () -> Unit) {
-    // Root fix for the wallpaper ribs showing through as hard white lines: sample the
-    // recorded overlay wallpaper through a real frosted lens (blur + refraction) instead
-    // of a translucent fill. The scene holds only the wallpaper (content is a sibling
-    // of the recorded background box), so there is no feedback. Glass off or no scene
-    // falls back to the opaque-ish Surface below.
-    if (GlassDefaults.enabled && lens != null) {
-        NavigationGlassSurface(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            lens = lens,
-            shape = RoundedCornerShape(22.dp),
-            cornerRadius = 22.dp,
-            strength = LensStrength.STANDARD,
-            frosted = true
-        ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
-                content()
-            }
-        }
-    } else {
-        Surface(Modifier.fillMaxWidth().padding(top = 10.dp), shape = RoundedCornerShape(22.dp),
-            color = if (glassPalette.isDark) Color(0xFF202938).copy(alpha = .94f) else Color.White.copy(alpha = .92f),
-            tonalElevation = 0.dp, shadowElevation = 3.dp) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
-                content()
-            }
-        }
-    }
-}
-
-@Composable
 private fun GlassSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>,
     valueText: String, tag: String, onValueChangeFinished: (() -> Unit)? = null, onChange: (Float) -> Unit) {
     val hapticStep = ((range.endInclusive - range.start) / 12f).coerceAtLeast(0.05f)

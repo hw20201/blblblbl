@@ -165,9 +165,14 @@ class OutboundIpRepository(
 
 private const val SCAMALYTICS_PREMIUM_PLACEHOLDER = "PREMIUM FIELD - upgrade to view"
 
-internal fun parseScamalyticsResponse(json: JSONObject, requestedIp: String): ScamalyticsInfo {
+private fun requireScamalyticsObject(json: JSONObject): JSONObject {
     val scamalytics = json.optJSONObject("scamalytics") ?: throw IOException("Invalid Scamalytics response")
     if (scamalytics.optString("status") != "ok") throw IOException("Scamalytics response not successful")
+    return scamalytics
+}
+
+internal fun parseScamalyticsResponse(json: JSONObject, requestedIp: String): ScamalyticsInfo {
+    val scamalytics = requireScamalyticsObject(json)
     val returnedIp = scamalytics.safeText("ip") ?: throw IOException("Scamalytics response has no IP")
     if (returnedIp != requestedIp) throw IOException("Scamalytics response IP mismatch")
 

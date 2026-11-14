@@ -29,7 +29,7 @@ class MainDockContentInsetTest {
         val navigationInset = 24.dp
         compose.setContent {
             Box(Modifier.fillMaxSize()) {
-                MainDockContentViewport(navigationBarsBottom = navigationInset) {
+                MainDockContentViewport {
                     Box(Modifier.fillMaxSize().testTag("main-page-content"))
                 }
                 Box(

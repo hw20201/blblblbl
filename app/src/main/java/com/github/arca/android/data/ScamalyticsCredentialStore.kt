@@ -61,7 +61,7 @@ class ScamalyticsCredentialStore(context: Context) {
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getKey(createIfMissing = true))
-        val iv = cipher.iv ?: throw IllegalStateException("Credential encryption failed")
+        val iv = cipher.iv ?: error("Credential encryption failed")
         val ciphertext = cipher.doFinal(json)
         val envelope = ByteArray(iv.size + ciphertext.size)
         System.arraycopy(iv, 0, envelope, 0, iv.size)

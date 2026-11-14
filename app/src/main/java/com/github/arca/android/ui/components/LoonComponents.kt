@@ -1281,7 +1281,6 @@ internal fun dashboardScrollContentInset(navigationBarsBottom: androidx.compose.
  */
 @Composable
 internal fun MainDockContentViewport(
-    navigationBarsBottom: androidx.compose.ui.unit.Dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     Box(
