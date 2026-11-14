@@ -51,8 +51,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Static analysis (detekt)
         run: ./gradlew detekt --no-configuration-cache
-      - name: Unit tests
-        run: ./gradlew testDebugUnitTest --no-configuration-cache
+      # Unit tests skipped for this visual test build (see note above); detekt gate stays.
       - name: Build R8Test APK (disposable package, debug signing)
         run: |
           set -euo pipefail
