@@ -846,10 +846,9 @@ class MainActivity : ComponentActivity() {
                 .fillMaxSize()
                 .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
-            // Main tabs end at the dock top; reserve that area as a sibling slot, not pager padding.
-            MainDockContentViewport(
-                navigationBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            ) {
+            // The page scene fills the screen behind the floating dock; each page keeps
+            // its own bottom content inset so its last row can scroll above the dock.
+            MainDockContentViewport {
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = false,

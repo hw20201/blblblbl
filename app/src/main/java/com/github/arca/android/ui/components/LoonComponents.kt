@@ -1164,7 +1164,6 @@ internal fun mainDockContentInset(navigationBarsBottom: androidx.compose.ui.unit
  */
 @Composable
 internal fun MainDockContentViewport(
-    navigationBarsBottom: androidx.compose.ui.unit.Dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     Box(
