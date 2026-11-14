@@ -60,9 +60,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build_output
-          echo "--- APK outputs layout (diagnostic):"
-          find app/build/outputs -name "*.apk" -o -name "output-metadata.json" | sort
-          ls -la app/build/outputs/apk/r8Test/ || true
           APK=app/build/outputs/apk/r8Test/app-r8Test.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > build_output/signature.txt
