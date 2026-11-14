@@ -1,0 +1,88 @@
+name: Glass v73 R8Test (temp)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Existing source ref to build (for example refs/tags/v1.0.2)"
+        required: true
+        default: "main"
+      source_sha:
+        description: "Exact expected source commit SHA (40 hexadecimal characters)"
+        required: true
+
+# TEMPORARY workflow for the v73 bottom-dock soft-edge test build.
+# Builds the disposable .glasstest.fusion r8Test variant (debug-signed),
+# never the production package. Delete after the build is delivered.
+# CI must never create, publish, or update any Release or tag.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    name: Build v73 R8Test APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact requested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Check source identity
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Static analysis (detekt)
+        run: ./gradlew detekt --no-configuration-cache
+      # Unit tests skipped for this visual test build (see note above); detekt gate stays.
+      - name: Build R8Test APK (disposable package, debug signing)
+        run: |
+          set -euo pipefail
+          ./gradlew assembleR8Test --no-daemon --no-configuration-cache
+      - name: Verify and record APK identity
+        run: |
+          set -euo pipefail
+          mkdir -p build_output
+          APK=app/build/outputs/apk/r8Test/app-r8Test.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > build_output/signature.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > build_output/apk-info.txt
+          grep -q "package: name='com.github.arca.android.glasstest.fusion'" build_output/apk-info.txt
+          grep -q "versionCode='73' versionName='1.1.0-glass-fusion-private-test-v73-r8'" build_output/apk-info.txt
+          cp "$APK" build_output/Nexus-glass-v73-r8test.apk
+          git rev-parse HEAD > build_output/source-commit.txt
+          printf '%s\n' "$GITHUB_WORKFLOW_SHA" > build_output/workflow-commit.txt
+          (cd build_output && sha256sum *.apk > SHA256SUMS)
+      - name: Upload APK and verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nexus-glass-v73-r8test-apk
+          path: build_output/
+          if-no-files-found: error
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nexus-glass-v73-r8test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/detekt/
+          if-no-files-found: ignore
