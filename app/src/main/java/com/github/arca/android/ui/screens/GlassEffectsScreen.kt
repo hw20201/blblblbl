@@ -1,0 +1,424 @@
+package com.github.arca.android.ui.screens
+import android.os.Build
+import com.github.arca.android.ui.glass.ArcaGlasmioGlassSurface
+import com.github.arca.android.ui.glass.GlasmioFrostedTuning
+import io.github.neoruaa.glasmio.glass.NavigationGlassMaterial
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.core.defaultGlassColors
+import io.github.neoruaa.glasmio.ui.GlasmioSlider
+import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
+import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassTuningGroup
+import com.github.arca.android.ui.glass.GlassMotionTuning
+import com.github.arca.android.ui.glass.GlassOptics
+import com.github.arca.android.ui.glass.GlassSettings
+import com.github.arca.android.ui.glass.GlassWallpaperSettings
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
+import com.github.arca.android.ui.glass.LensStrength
+import com.github.arca.android.ui.glass.NavigationGlassSurface
+import com.github.arca.android.ui.glass.NavigationLensState
+import com.github.arca.android.ui.glass.PageTitleGlass
+import com.github.arca.android.ui.glass.LocalGlassSettings
+import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
+import com.github.arca.android.ui.components.rememberHapticStepChange
+import com.github.arca.android.ui.glass.glassPalette
+import com.github.arca.android.ui.glass.recordNavigationScene
+import com.github.arca.android.ui.glass.rememberNavigationLens
+import com.github.arca.android.ui.theme.LoonTextMuted
+import com.github.arca.android.ui.theme.LoonTextPrimary
+import com.github.arca.android.ui.theme.LoonTextSecondary
+import com.github.arca.android.ui.theme.IosBlue
+import androidx.compose.ui.geometry.Offset
+
+/** Dedicated, live glass editor. Surface-family overrides inherit until explicitly enabled. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GlassEffectsScreen(
+    settings: GlassSettings,
+    onSettingsChanged: (GlassSettings) -> Unit,
+    wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
+    onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = {},
+    wallpaperScene: NavigationLensState? = null,
+    onBack: () -> Unit,
+    scrollState: ScrollState = rememberScrollState()
+) {
+    val safe = settings.clamped()
+    var glasmioTuning by remember(safe.glasmioFrosted) { mutableStateOf(safe.glasmioFrosted) }
+    val previewSettings = safe.copy(glasmioFrosted = glasmioTuning).clamped()
+    val commitGlasmioTuning: () -> Unit = {
+        onSettingsChanged(safe.copy(glasmioFrosted = glasmioTuning).clamped())
+    }
+    var selected by remember {
+        mutableStateOf(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            GlassSurfaceCategory.BOTTOM_NAVIGATION else GlassSurfaceCategory.SHORTCUT_CARDS)
+    }
+    val hasOverride = selected in safe.surfaceOverrides
+    val optics = safe.opticsFor(selected)
+    val palette = glassPalette
+    val lens = rememberNavigationLens()
+    val titleScene = rememberNavigationLens()
+    val rootGlasmioBackdrop = LocalArcaGlasmioBackdrop.current
+    val useGlasmioPreview = GlassDefaults.enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        rootGlasmioBackdrop != null
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
+    val categories = listOf(
+        GlassSurfaceCategory.SHORTCUT_CARDS to "快捷卡片",
+        GlassSurfaceCategory.TITLE_CAPSULES to "标题胶囊",
+        GlassSurfaceCategory.BOTTOM_NAVIGATION to "底部导航",
+        GlassSurfaceCategory.LARGE_PANELS to "大面板"
+    )
+    // Keep the live sample driven by this editor's exact state, independent of its caller.
+    CompositionLocalProvider(LocalGlassSettings provides previewSettings) {
+    Box(Modifier.fillMaxSize().background(Color.Transparent).testTag("glass-effects-root")) {
+        Column(
+            Modifier.fillMaxSize()
+                .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene) else Modifier)
+                .testTag("glass-effects-scroll")
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp)
+                .padding(
+                    top = headerInset + 20.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                )
+        ) {
+            Text("统一毛玻璃", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp))
+            Text(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    "主材质、设置面板和底栏采用 Glasmio；标题胶囊与底栏选中项保留 Arca 的液态折射和弹性动效。"
+                else "Android 12 及以下自动使用兼容玻璃；Glasmio 原生毛玻璃需要 Android 13 或更高版本。",
+                color = LoonTextMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            Text("实时预览", color = LoonTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp))
+            Box(Modifier.fillMaxWidth().height(142.dp).clip(RoundedCornerShape(26.dp)).testTag("glass-effects-preview")) {
+                if (!useGlasmioPreview) Canvas(Modifier.fillMaxSize()
+                    .recordNavigationScene(lens)) {
+                    drawRect(if (palette.isDark) Color(0xFF101A2A) else Color(0xFFE5EAF2))
+                    val spacing = 20.dp.toPx()
+                    val colors = listOf(Color(0xFF3878E8), Color(0xFFF28155), Color(0xFF61A879), Color(0xFF9B6AC7))
+                    var x = -size.height
+                    var index = 0
+                    while (x < size.width + size.height) {
+                        drawLine(colors[index % colors.size].copy(alpha = .9f), Offset(x, 0f), Offset(x + size.height, size.height), 3.dp.toPx())
+                        x += spacing
+                        index++
+                    }
+                    drawCircle(Color.White.copy(alpha = .65f), radius = 19.dp.toPx(), center = Offset(size.width * .78f, size.height * .35f))
+                    drawCircle(Color(0xFF5656C8).copy(alpha = .75f), radius = 25.dp.toPx(), center = Offset(size.width * .2f, size.height * .72f))
+                }
+                val previewContent: @Composable BoxScope.() -> Unit = {
+                    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.SpaceBetween) {
+                        Text(categories.first { it.first == selected }.second, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("雾化与折射会即时显示", color = LoonTextSecondary, fontSize = 12.sp)
+                    }
+                }
+                if (useGlasmioPreview) {
+                    ArcaGlasmioGlassSurface(
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp)
+                        .semantics { contentDescription = "玻璃预览：Glasmio 毛玻璃；折射 ${optics.refractionDp} dp，色散 ${optics.dispersionDp} dp" }
+                            .testTag("glass-effects-live-lens"),
+                        backdrop = requireNotNull(rootGlasmioBackdrop),
+                        shape = RoundedCornerShape(24.dp),
+                        tint = IosBlue,
+                        material = NavigationGlassMaterial.RegularMedium,
+                        surfaceCategory = selected,
+                        opticsOverride = optics,
+                        content = previewContent
+                    )
+                } else {
+                    NavigationGlassSurface(
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(.86f).height(90.dp).semantics { contentDescription = "玻璃预览：折射 ${optics.refractionDp} dp，色散 ${optics.dispersionDp} dp" }
+                            .testTag("glass-effects-live-lens"),
+                        lens = lens,
+                        shape = RoundedCornerShape(24.dp),
+                        cornerRadius = 24.dp,
+                        strength = LensStrength.STRONG,
+                        surfaceCategory = selected,
+                        opticsOverride = optics,
+                        frosted = false,
+                        content = previewContent
+                    )
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val tuning = glasmioTuning
+                GlassTuningGroup(
+                    title = "Glasmio 毛玻璃",
+                    subtitle = "主材质的雾化、折射和染色；影响页面、设置与底栏。",
+                    tag = "glass-glasmio-settings-group",
+                    lens = wallpaperScene,
+                    initiallyExpanded = true
+                ) {
+                    val blurValue = "${"%.1f".format(java.util.Locale.ROOT, tuning.blurRadiusDp)} dp"
+                    GlassSlider("雾化半径", tuning.blurRadiusDp,
+                        GlasmioFrostedTuning.MIN_BLUR_RADIUS_DP..GlasmioFrostedTuning.MAX_BLUR_RADIUS_DP,
+                        blurValue, "glass-glasmio-blur", onValueChangeFinished = commitGlasmioTuning) {
+                        glasmioTuning = glasmioTuning.copy(blurRadiusDp = it).clamped()
+                    }
+                    GlassSlider("折射高度", tuning.refractionHeightDp,
+                        GlasmioFrostedTuning.MIN_REFRACTION_HEIGHT_DP..GlasmioFrostedTuning.MAX_REFRACTION_HEIGHT_DP,
+                        "${"%.1f".format(java.util.Locale.ROOT, tuning.refractionHeightDp)} dp", "glass-glasmio-refraction-height",
+                        onValueChangeFinished = commitGlasmioTuning) {
+                        glasmioTuning = glasmioTuning.copy(refractionHeightDp = it).clamped()
+                    }
+                    GlassSlider("折射强度", tuning.refractionAmountDp,
+                        GlasmioFrostedTuning.MIN_REFRACTION_AMOUNT_DP..GlasmioFrostedTuning.MAX_REFRACTION_AMOUNT_DP,
+                        "${"%.1f".format(java.util.Locale.ROOT, tuning.refractionAmountDp)} dp", "glass-glasmio-refraction-amount",
+                        onValueChangeFinished = commitGlasmioTuning) {
+                        glasmioTuning = glasmioTuning.copy(refractionAmountDp = it).clamped()
+                    }
+                    GlassSlider("染色强度", tuning.tintStrength,
+                        GlasmioFrostedTuning.MIN_TINT_STRENGTH..GlasmioFrostedTuning.MAX_TINT_STRENGTH,
+                        "${(tuning.tintStrength * 100).toInt()}%", "glass-glasmio-tint",
+                        onValueChangeFinished = commitGlasmioTuning) {
+                        glasmioTuning = glasmioTuning.copy(tintStrength = it).clamped()
+                    }
+                    GlassSlider("材质浓度", tuning.surfaceAlphaMultiplier,
+                        GlasmioFrostedTuning.MIN_SURFACE_ALPHA_MULTIPLIER..GlasmioFrostedTuning.MAX_SURFACE_ALPHA_MULTIPLIER,
+                        "${"%.2f".format(java.util.Locale.ROOT, tuning.surfaceAlphaMultiplier)}×", "glass-glasmio-alpha",
+                        onValueChangeFinished = commitGlasmioTuning) {
+                        glasmioTuning = glasmioTuning.copy(surfaceAlphaMultiplier = it).clamped()
+                    }
+                }
+            } else {
+                Text("Glasmio 原生雾化需要 Android 13 及以上；当前设备继续使用兼容玻璃。",
+                    color = LoonTextMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp))
+            }
+            val global = safe.globalOptics
+            val updateGlobal: (GlassOptics) -> Unit = { updated ->
+                onSettingsChanged(safe.copy(globalOptics = updated).clamped())
+            }
+            GlassTuningGroup(
+                title = "Arca 光学微调",
+                subtitle = "折射、色散与边缘高光；支持通用值和分部位覆盖。",
+                tag = "glass-arca-tuning-group",
+                lens = wallpaperScene
+            ) {
+                Text("影响当前主材质的轻量 Arca 光学 finish。", color = LoonTextSecondary, fontSize = 12.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    categories.chunked(2).forEach { rowCategories ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rowCategories.forEach { (category, label) ->
+                                FilterChip(
+                                    selected = selected == category,
+                                    onClick = { selected = category },
+                                    label = { Text(label) },
+                                    modifier = Modifier.weight(1f).testTag("glass-surface-${category.name.lowercase()}")
+                                )
+                            }
+                        }
+                    }
+                }
+                Text("通用参数", color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 8.dp))
+                GlassSlider("折射强度", global.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
+                    "${"%.1f".format(java.util.Locale.ROOT, global.refractionDp)} dp", "glass-global-refraction") {
+                    updateGlobal(global.copy(refractionDp = it))
+                }
+                GlassSlider("色散", global.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
+                    "${"%.1f".format(java.util.Locale.ROOT, global.dispersionDp)} dp", "glass-global-dispersion") {
+                    updateGlobal(global.copy(dispersionDp = it))
+                }
+                GlassSlider("边缘带宽", global.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
+                    "${global.edgeWidthDp.toInt()} dp", "glass-global-edge-width") {
+                    updateGlobal(global.copy(edgeWidthDp = it))
+                }
+                GlassSlider("边缘高光", global.edgeLightMultiplier, GlassOptics.MIN_EDGE_LIGHT_MULTIPLIER..GlassOptics.MAX_EDGE_LIGHT_MULTIPLIER,
+                    "${"%.2f".format(java.util.Locale.ROOT, global.edgeLightMultiplier)}×", "glass-global-edge-light") {
+                    updateGlobal(global.copy(edgeLightMultiplier = it))
+                }
+                Divider(Modifier.padding(vertical = 8.dp))
+                Text("部位微调 · ${categories.first { it.first == selected }.second}",
+                    color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("使用独立参数", color = LoonTextPrimary, fontSize = 14.sp)
+                    Switch(checked = hasOverride, onCheckedChange = { enabled ->
+                        onSettingsChanged(safe.withOptics(selected, if (enabled) optics else null))
+                    }, modifier = Modifier.testTag("glass-surface-override-switch"))
+                }
+                if (hasOverride) {
+                    GlassSlider("折射强度", optics.refractionDp, GlassOptics.MIN_REFRACTION_DP..GlassOptics.MAX_REFRACTION_DP,
+                        "${"%.1f".format(java.util.Locale.ROOT, optics.refractionDp)} dp", "glass-surface-refraction") {
+                        onSettingsChanged(safe.withOptics(selected, optics.copy(refractionDp = it)))
+                    }
+                    GlassSlider("色散", optics.dispersionDp, GlassOptics.MIN_DISPERSION_DP..GlassOptics.MAX_DISPERSION_DP,
+                        "${"%.1f".format(java.util.Locale.ROOT, optics.dispersionDp)} dp", "glass-surface-dispersion") {
+                        onSettingsChanged(safe.withOptics(selected, optics.copy(dispersionDp = it)))
+                    }
+                    GlassSlider("边缘带宽", optics.edgeWidthDp, GlassOptics.MIN_EDGE_WIDTH_DP..GlassOptics.MAX_EDGE_WIDTH_DP,
+                        "${optics.edgeWidthDp.toInt()} dp", "glass-surface-edge-width") {
+                        onSettingsChanged(safe.withOptics(selected, optics.copy(edgeWidthDp = it)))
+                    }
+                    GlassSlider("边缘高光", optics.edgeLightMultiplier, GlassOptics.MIN_EDGE_LIGHT_MULTIPLIER..GlassOptics.MAX_EDGE_LIGHT_MULTIPLIER,
+                        "${"%.2f".format(java.util.Locale.ROOT, optics.edgeLightMultiplier)}×", "glass-surface-edge-light") {
+                        onSettingsChanged(safe.withOptics(selected, optics.copy(edgeLightMultiplier = it)))
+                    }
+                }
+                TextButton(onClick = { onSettingsChanged(safe.withOptics(selected, null)) }, modifier = Modifier.testTag("glass-reset-surface")) {
+                    Text("重置此部位")
+                }
+            }
+            GlassTuningGroup(
+                title = "跟手动态",
+                subtitle = "快捷卡片跟手倾斜与回正速度；保持原有手势和触觉反馈。",
+                tag = "glass-motion-group",
+                lens = wallpaperScene
+            ) {
+                GlassSlider("倾斜幅度", safe.motion.tiltGain, GlassMotionTuning.MIN_TILT_GAIN..GlassMotionTuning.MAX_TILT_GAIN,
+                    "${"%.2f".format(java.util.Locale.ROOT, safe.motion.tiltGain)}×", "glass-motion-gain") {
+                    onSettingsChanged(safe.copy(motion = safe.motion.copy(tiltGain = it)).clamped())
+                }
+                GlassSlider("最大倾角", safe.motion.maxTiltDegrees, GlassMotionTuning.MIN_MAX_TILT_DEGREES..GlassMotionTuning.MAX_MAX_TILT_DEGREES,
+                    "${"%.1f".format(java.util.Locale.ROOT, safe.motion.maxTiltDegrees)}°", "glass-motion-max-tilt") {
+                    onSettingsChanged(safe.copy(motion = safe.motion.copy(maxTiltDegrees = it)).clamped())
+                }
+                GlassSlider("回正平滑", safe.motion.smoothing, GlassMotionTuning.MIN_SMOOTHING..GlassMotionTuning.MAX_SMOOTHING,
+                    "${"%.2f".format(java.util.Locale.ROOT, safe.motion.smoothing)}", "glass-motion-smoothing") {
+                    onSettingsChanged(safe.copy(motion = safe.motion.copy(smoothing = it)).clamped())
+                }
+            }
+            GlassTuningGroup(
+                title = "液态玻璃壁纸",
+                subtitle = "壁纸褶皱角度；调整时会自动启用壁纸效果。",
+                tag = "glass-wallpaper-group",
+                lens = wallpaperScene
+            ) {
+                GlassSlider("褶皱角度", wallpaperSettings.ribAngleDegrees,
+                    GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES..GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES,
+                    "${"%.1f".format(java.util.Locale.ROOT, wallpaperSettings.ribAngleDegrees)}°", "glass-wallpaper-rib-angle") {
+                    onWallpaperSettingsChanged(wallpaperSettings.copy(enabled = true, ribAngleDegrees = it))
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onSettingsChanged(GlassSettings.DEFAULT) }, modifier = Modifier.testTag("glass-effects-reset-all")) {
+                    Text("恢复全部默认")
+                }
+            }
+        }
+        Box(
+            Modifier.fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .onSizeChanged { headerHeightPx = it.height }
+                .zIndex(1f)
+                .testTag("glass-effects-pinned-header")
+        ) {
+            PageTitleGlass(
+                lens = titleScene,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("glass-effects-title-capsule"),
+                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack, modifier = Modifier.testTag("glass-settings-back")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = LoonTextPrimary)
+                    }
+                    Text("玻璃效果", color = LoonTextPrimary, fontWeight = FontWeight.Bold, fontSize = 21.sp)
+                }
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun GlassEditorCard(title: String, subtitle: String, lens: NavigationLensState? = null, content: @Composable () -> Unit) {
+    // Root fix for the wallpaper ribs showing through as hard white lines: sample the
+    // recorded overlay wallpaper through a real frosted lens (blur + refraction) instead
+    // of a translucent fill. The scene holds only the wallpaper (content is a sibling
+    // of the recorded background box), so there is no feedback. Glass off or no scene
+    // falls back to the opaque-ish Surface below.
+    if (GlassDefaults.enabled && lens != null) {
+        NavigationGlassSurface(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            lens = lens,
+            shape = RoundedCornerShape(22.dp),
+            cornerRadius = 22.dp,
+            strength = LensStrength.STANDARD,
+            frosted = true
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
+                content()
+            }
+        }
+    } else {
+        Surface(Modifier.fillMaxWidth().padding(top = 10.dp), shape = RoundedCornerShape(22.dp),
+            color = if (glassPalette.isDark) Color(0xFF202938).copy(alpha = .94f) else Color.White.copy(alpha = .92f),
+            tonalElevation = 0.dp, shadowElevation = 3.dp) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(subtitle, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>,
+    valueText: String, tag: String, onValueChangeFinished: (() -> Unit)? = null, onChange: (Float) -> Unit) {
+    val hapticStep = ((range.endInclusive - range.start) / 12f).coerceAtLeast(0.05f)
+    val onSliderValueChange = rememberHapticStepChange(
+        value = value,
+        minimum = range.start,
+        stepSize = hapticStep,
+        key = tag,
+        onValueChange = onChange
+    )
+    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = LoonTextPrimary, fontSize = 13.sp)
+            Text(valueText, color = LoonTextSecondary, fontSize = 12.sp, modifier = Modifier.testTag("$tag-value"))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            CompositionLocalProvider(LocalGlassColors provides defaultGlassColors(isDark = glassPalette.isDark, accent = IosBlue)) {
+                GlasmioSlider(
+                    value = value,
+                    onValueChange = onSliderValueChange,
+                    modifier = Modifier.fillMaxWidth().testTag(tag),
+                    valueRange = range,
+                    onValueChangeFinished = onValueChangeFinished
+                )
+            }
+        } else {
+            Slider(
+                value = value,
+                onValueChange = onSliderValueChange,
+                modifier = Modifier.fillMaxWidth().testTag(tag),
+                valueRange = range,
+                onValueChangeFinished = onValueChangeFinished
+            )
+        }
+    }
+}
