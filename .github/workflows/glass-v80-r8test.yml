@@ -55,7 +55,7 @@ jobs:
       - name: Build R8Test APK (disposable package, debug signing)
         run: |
           set -euo pipefail
-          ./gradlew assembleR8Test --no-daemon --no-configuration-cache
+          ./gradlew assembleR8Test --no-daemon --no-configuration-cache --stacktrace
       - name: Verify and record APK identity
         run: |
           set -euo pipefail
