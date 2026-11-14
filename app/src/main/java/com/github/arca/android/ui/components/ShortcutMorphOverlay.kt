@@ -91,6 +91,7 @@ internal fun shortcutMorphTargetRect(
 internal fun ShortcutMorphOverlay(
     visible: Boolean,
     sourceBounds: Rect?,
+    liveSourceBounds: (() -> Rect?)? = null,
     sourceTitle: String,
     sourceSubtitle: String,
     sourceIcon: @Composable () -> Unit,
@@ -143,7 +144,12 @@ internal fun ShortcutMorphOverlay(
                 rootWidthPx * 0.5f + with(density) { 24.dp.toPx() },
                 rootHeightPx * 0.5f + with(density) { 24.dp.toPx() }
             )
-            val start = sourceBounds ?: fallbackAnchor
+            // Resolve the morph anchor live every frame instead of trusting the
+            // open-time snapshot: the dashboard can scroll while the panel is open
+            // (the bounds map keeps updating), so a stale start rect lands the
+            // panel where the card used to be and the card visibly jumps when the
+            // overlay hands back. Same class of bug as the SSH client morph landing.
+            val start = liveSourceBounds?.invoke() ?: sourceBounds ?: fallbackAnchor
             val targetWidth = (maxWidth - 32.dp).coerceAtLeast(0.dp).coerceAtMost(420.dp)
             val targetWidthPx = with(density) { targetWidth.toPx() }
             val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp

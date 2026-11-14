@@ -818,6 +818,7 @@ fun DashboardScreen(
             ShortcutMorphOverlay(
                 visible = activeShortcutPanelId != null,
                 sourceBounds = shortcutPanelMorphBounds,
+                liveSourceBounds = { shortcutBounds.get()[activePanelShortcut.id] },
                 sourceTitle = activePanelShortcut.title,
                 sourceSubtitle = activePanelShortcut.subtitle,
                 sourceIcon = activePanelShortcut.icon,
