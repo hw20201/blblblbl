@@ -267,6 +267,10 @@ fun DashboardScreen(
     val titleScene = rememberNavigationLens()
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
+    // Bottom content inset: the floating dock overlays the page, so the last row must
+    // be able to scroll fully above the dock (dock height + bottom margin + nav bars)
+    // instead of resting behind its glass.
+    val dockBottomInset = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
     val isDarkTheme = LocalLoonColors.current.isDark
     // With glass enabled the shared backdrop already provides the colour field, so the screen
     // itself must stay transparent or it would paint over it.
@@ -307,7 +311,7 @@ fun DashboardScreen(
                     .bounceOverscroll(allowBottom = false)
                     .verticalScroll(state = scrollState, enabled = draggedId == null && pickedUpShortcutId == null)
                     .padding(horizontal = 20.dp)
-                    .padding(top = headerInset + 12.dp, bottom = 24.dp)
+                    .padding(top = headerInset + 12.dp, bottom = dockBottomInset + 12.dp)
             ) {
 
                 DashboardTrafficSummary(

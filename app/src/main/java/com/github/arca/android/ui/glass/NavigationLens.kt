@@ -280,12 +280,12 @@ fun NavigationGlassSurface(
     val optics = (opticsOverride ?: LocalGlassSettings.current.opticsFor(surfaceCategory)).clamped()
     // Keep both title capsules and the selected bottom-nav lens on Arca's independent
     // optical renderer; the selected capsule must not inherit Glasmio's blur/tint material.
-    val keepArcaOpticalLens = lens != null &&
-        (surfaceCategory == GlassSurfaceCategory.TITLE_CAPSULES ||
-            surfaceCategory == GlassSurfaceCategory.BOTTOM_NAVIGATION)
-    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
-        glasmioBackdrop != null && !keepArcaOpticalLens
-    ) {
+    val isOpticalLensCategory = surfaceCategory == GlassSurfaceCategory.TITLE_CAPSULES ||
+        surfaceCategory == GlassSurfaceCategory.BOTTOM_NAVIGATION
+    val keepArcaOpticalLens = lens != null && isOpticalLensCategory
+    val glasmioAvailable = GlassDefaults.enabled &&
+        LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() && glasmioBackdrop != null
+    if (glasmioAvailable && !keepArcaOpticalLens) {
         val material = glasmioMaterialFor(surfaceCategory)
         ArcaGlasmioGlassSurface(
             modifier = modifier, backdrop = glasmioBackdrop, shape = shape,

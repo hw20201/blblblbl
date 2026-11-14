@@ -123,6 +123,10 @@ fun SettingsScreen(
     // the single shared Glasmio backdrop used by the main material surfaces.
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
+    // Bottom content inset: the floating dock overlays the page, so the last row must
+    // be able to scroll fully above the dock (dock height + bottom margin + nav bars)
+    // instead of resting behind its glass.
+    val dockBottomInset = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
     Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
         Column(
@@ -133,7 +137,7 @@ fun SettingsScreen(
                 .testTag("settings-scroll")
                 .bounceOverscroll(allowBottom = false)
                 .verticalScroll(scrollState)
-                .padding(top = headerInset + 20.dp, bottom = 24.dp)
+                .padding(top = headerInset + 20.dp, bottom = dockBottomInset + 12.dp)
         ) {
             SettingsGroupHeader("network-core", "网络与核心", "连接基础、启动与局域网共享", Icons.Default.VpnKey, IosBlue)
             Spacer(Modifier.height(8.dp))

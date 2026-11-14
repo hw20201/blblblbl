@@ -138,6 +138,10 @@ fun ProxiesScreen(
     glassScene: NavigationLensState? = null
 ) {
     var showOptionsMenu by remember { mutableStateOf(false) }
+    // Bottom content inset: the floating dock overlays the page, so the last row must
+    // be able to scroll fully above the dock (dock height + bottom margin + nav bars)
+    // instead of resting behind its glass.
+    val dockBottomInset = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
     val activeTabState = if (selectedGroupName.isNotBlank()) {
         perGroupTabStates.getOrPut(selectedGroupName) { LazyListState() }
     } else tabsListState
@@ -361,7 +365,7 @@ fun ProxiesScreen(
                         modifier = Modifier.testTag("policy-node-list")
                             .fillMaxSize()
                             .bounceOverscroll(allowTop = false, allowBottom = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 24.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = dockBottomInset + 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(
@@ -429,7 +433,7 @@ fun ProxiesScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .bounceOverscroll(allowTop = false, allowBottom = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 24.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = dockBottomInset + 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         visibleGroups.forEach { groupName ->
