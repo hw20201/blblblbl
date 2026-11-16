@@ -90,7 +90,7 @@ internal fun interpolateShortcutMorphRect(start: Rect, end: Rect, progress: Floa
  */
 internal fun interpolateShortcutMorphRectDual(start: Rect, end: Rect, spreadRaw: Float, reachRaw: Float): Rect {
     // The row first lifts at its own size and place; growth then runs over what is left of the progress.
-    fun grow(p: Float) = ((p - MenuLiftEnd) / (1f - MenuLiftEnd)).coerceAtLeast(0f)
+    fun grow(p: Float) = ((p - MENU_LIFT_END) / (1f - MENU_LIFT_END)).coerceAtLeast(0f)
     val spread = grow(spreadRaw)
     val reach = grow(reachRaw)
     fun mix(from: Float, to: Float, f: Float) = from + (to - from) * f
@@ -105,10 +105,10 @@ internal fun interpolateShortcutMorphRectDual(start: Rect, end: Rect, spreadRaw:
 }
 
 /** Share of the opening spent only lifting the row out of its group, before it starts to grow. */
-internal const val MenuLiftEnd = 0.16f
+internal const val MENU_LIFT_END = 0.16f
 
 /** 0 to 1 over the lift phase: the row rises out of its group at its own size. */
-internal fun menuLiftAmount(spread: Float): Float = smoothMorphWindow(0f, MenuLiftEnd, spread)
+internal fun menuLiftAmount(spread: Float): Float = smoothMorphWindow(0f, MENU_LIFT_END, spread)
 
 /** The four corner radii of a source row, in dp. */
 internal data class ShortcutMorphCorners(val topStart: Dp, val topEnd: Dp, val bottomEnd: Dp, val bottomStart: Dp)
@@ -120,7 +120,7 @@ internal data class ShortcutMorphCorners(val topStart: Dp, val topEnd: Dp, val b
 internal fun menuMorphRadiusPx(sourcePx: Float, targetPx: Float, minDimensionPx: Float, spread: Float): Float {
     val target = targetPx.coerceAtMost(minDimensionPx / 2f)
     // Nothing happens to the corners while the row is only being lifted; then they travel straight to the panel's.
-    val t = smoothMorphWindow(MenuLiftEnd, 1f, spread)
+    val t = smoothMorphWindow(MENU_LIFT_END, 1f, spread)
     return sourcePx + (target - sourcePx) * t
 }
 
@@ -422,7 +422,7 @@ internal fun ShortcutMorphOverlay(
                     .then(if (menuProfile) Modifier.graphicsLayer {
                         // Lifted out of its group: a small rise in scale and a deeper shadow, at the row's own size.
                         val lift = menuLiftAmount(fraction)
-                        val settleOut = 1f - smoothMorphWindow(MenuLiftEnd, MenuLiftEnd + 0.2f, fraction)
+                        val settleOut = 1f - smoothMorphWindow(MENU_LIFT_END, MENU_LIFT_END + 0.2f, fraction)
                         val k = lift * settleOut
                         scaleX = 1f + 0.018f * k
                         scaleY = 1f + 0.018f * k
