@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import org.json.JSONObject
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.InputStream
 import java.io.ByteArrayOutputStream
@@ -23,12 +24,18 @@ enum class ScamalyticsEndpoint(val id: String, val host: String, val label: Stri
         fun parse(value: String): ScamalyticsEndpoint? {
             entries.firstOrNull { it.id == value }?.let { return it }
             val url = value.toHttpUrlOrNull() ?: return null
-            if (url.scheme != "https" || url.port != 443 || url.username.isNotEmpty() ||
-                url.password.isNotEmpty() || url.query != null || url.fragment != null ||
-                url.encodedPath !in listOf("/", "/v3", "/v3/")) return null
+            if (!url.isScamalyticsApiRoot()) return null
             return entries.firstOrNull { it.host == url.host }
         }
     }
+}
+
+/** An import URL must be exactly an HTTPS API root: no credentials, query, fragment or extra path. */
+private fun HttpUrl.isScamalyticsApiRoot(): Boolean {
+    if (scheme != "https" || port != 443) return false
+    if (username.isNotEmpty() || password.isNotEmpty()) return false
+    if (query != null || fragment != null) return false
+    return encodedPath in listOf("/", "/v3", "/v3/")
 }
 
 data class ScamalyticsCredentials(
@@ -92,12 +99,16 @@ internal fun readScamalyticsCredentials(input: InputStream): ScamalyticsCredenti
     return parseScamalyticsCredentials(JSONObject(output.toString(Charsets.UTF_8.name())))
 }
 
+/** Single throw site for credential parsing failures. */
+private fun invalidScamalyticsCredentials(reason: String): Nothing =
+    throw IllegalArgumentException(reason)
+
 internal fun parseScamalyticsCredentials(json: JSONObject): ScamalyticsCredentials {
-    val username = json.opt("username") as? String ?: throw IllegalArgumentException("Missing username")
-    val apiKey = json.opt("api_key") as? String ?: throw IllegalArgumentException("Missing API key")
+    val username = json.opt("username") as? String ?: invalidScamalyticsCredentials("Missing username")
+    val apiKey = json.opt("api_key") as? String ?: invalidScamalyticsCredentials("Missing API key")
     val endpoint = if (!json.has("endpoint")) ScamalyticsEndpoint.US else {
-        val value = json.opt("endpoint") as? String ?: throw IllegalArgumentException("Invalid endpoint")
-        ScamalyticsEndpoint.parse(value) ?: throw IllegalArgumentException("Invalid endpoint")
+        val value = json.opt("endpoint") as? String ?: invalidScamalyticsCredentials("Invalid endpoint")
+        ScamalyticsEndpoint.parse(value) ?: invalidScamalyticsCredentials("Invalid endpoint")
     }
     return ScamalyticsCredentials(username, apiKey, endpoint).validated()
 }

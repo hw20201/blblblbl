@@ -88,6 +88,9 @@ internal class IpConfigEntryState {
     }
 }
 
+/** Rethrows coroutine cancellation; shared by the panel's load/save/delete flows. */
+private fun rethrowCancellation(cancelled: CancellationException): Nothing = throw cancelled
+
 /** Shared body for the V93 morph column and the standalone glass sheet; owns no scroll container. */
 @Composable
 internal fun OutboundIpPanel(
@@ -131,7 +134,7 @@ internal fun OutboundIpPanel(
                 }
             }
         } catch (cancelled: CancellationException) {
-            throw cancelled
+            rethrowCancellation(cancelled)
         } catch (_: Exception) {
             credentialNotice = "无法读取本机凭据，请重新配置。"
         } finally {
@@ -281,7 +284,7 @@ internal fun OutboundIpPanel(
                         credentialNotice = "凭据已加密保存。点击检测才会查询。"
                         settingsOpen = false
                     } catch (cancelled: CancellationException) {
-                        throw cancelled
+                        rethrowCancellation(cancelled)
                     } catch (_: Exception) {
                         credentialError = "无法保存凭据，请检查输入与本机安全存储后重试。"
                     } finally { credentialBusy = false }
@@ -299,7 +302,7 @@ internal fun OutboundIpPanel(
                         credentialNotice = "本机凭据已删除。"
                         settingsOpen = false
                     } catch (cancelled: CancellationException) {
-                        throw cancelled
+                        rethrowCancellation(cancelled)
                     } catch (_: Exception) {
                         credentialError = "无法删除本机凭据，请重试。"
                     } finally { credentialBusy = false }

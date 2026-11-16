@@ -94,6 +94,9 @@ private fun containsIp(text: String, requestedIp: String): Boolean =
 private fun normalizedLabel(label: String): String =
     label.lowercase().trim().trimEnd(':').trim().replace(Regex("\\s*/\\s*"), "/").replace(WHITESPACE, " ")
 
+/** Single throw site for web page parse failures. */
+private fun failWebPage(reason: String): Nothing = throw IpLookupException(reason)
+
 /**
  * Parses the public Scamalytics web page for one IP (https://scamalytics.com/ip/<ip>).
  *
@@ -106,17 +109,17 @@ private fun normalizedLabel(label: String): String =
  * rejected, so stale or invented data can never appear as a result.
  */
 internal fun parseScamalyticsWebPage(html: String, requestedIp: String): ScamalyticsInfo {
-    if (html.isBlank()) throw IpLookupException("Scamalytics 网页返回了空页面。")
-    if (html.length > SCAMALYTICS_WEB_MAX_BYTES) throw IpLookupException("Scamalytics 网页返回的内容过大，已丢弃。")
+    if (html.isBlank()) failWebPage("Scamalytics 网页返回了空页面。")
+    if (html.length > SCAMALYTICS_WEB_MAX_BYTES) failWebPage("Scamalytics 网页返回的内容过大，已丢弃。")
     val content = html.replace(NON_CONTENT, " ")
     val text = textOf(content)
     val title = TITLE.find(content)?.groupValues?.get(1)?.let(::textOf).orEmpty()
 
     val lowered = (title + " " + text).lowercase()
     if (CHALLENGE_MARKUP.containsMatchIn(content) || CHALLENGE_TEXT.any { it in lowered }) {
-        throw IpLookupException("Scamalytics 网页需要人机验证或拒绝访问，暂时无法读取。")
+        failWebPage("Scamalytics 网页需要人机验证或拒绝访问，暂时无法读取。")
     }
-    if (text.isEmpty()) throw IpLookupException("Scamalytics 网页返回了空页面。")
+    if (text.isEmpty()) failWebPage("Scamalytics 网页返回了空页面。")
 
     // Structured data blocks (embedded JSON) are only read from pre/code elements.
     val jsonText = PRE_BLOCK.findAll(content).joinToString("\n") {
@@ -131,7 +134,7 @@ internal fun parseScamalyticsWebPage(html: String, requestedIp: String): Scamaly
     }.joinToString(" \n ")
     val identityText = if (ipTokens(zones).isNotEmpty()) zones else text
     if (!containsIp(identityText, requestedIp)) {
-        throw IpLookupException("Scamalytics 返回的 IP 与本次检测不匹配。")
+        failWebPage("Scamalytics 返回的 IP 与本次检测不匹配。")
     }
 
     // --- score: banner text and/or embedded JSON; anything invalid or conflicting is unknown. ---
@@ -188,7 +191,7 @@ internal fun parseScamalyticsWebPage(html: String, requestedIp: String): Scamaly
         ScamalyticsIndicator("X4Bnet Spambot", "黑名单", check(Check.X4BNET_SPAMBOT))
     )
     if (score == null && hostingProxy.all { it.detected == null } && blacklistMarkers.all { it.detected == null }) {
-        throw IpLookupException("Scamalytics 网页解析失败，请重试。")
+        failWebPage("Scamalytics 网页解析失败，请重试。")
     }
 
     return ScamalyticsInfo(

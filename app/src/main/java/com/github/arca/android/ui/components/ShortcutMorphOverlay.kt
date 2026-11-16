@@ -523,7 +523,9 @@ internal fun ShortcutMorphOverlay(
                             }
                         }
                     }
-                    if (pinnedOverlay != null && visible && !closing && fraction >= 0.999f) {
+                    // Pinned overlay: only once the panel is fully open and settled.
+                    val panelFullyOpen = visible && !closing && fraction >= 0.999f
+                    if (pinnedOverlay != null && panelFullyOpen) {
                         Box(Modifier.matchParentSize().testTag("$panelTestTag-pinned-overlay")) {
                             pinnedOverlay()
                         }
