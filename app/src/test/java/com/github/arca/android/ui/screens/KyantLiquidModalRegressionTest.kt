@@ -22,16 +22,12 @@ import com.github.arca.android.service.VpnState
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassPalettes
-import com.github.arca.android.ui.glass.GlassPreset
-import com.github.arca.android.ui.glass.GlassSettings
-import com.github.arca.android.ui.glass.LocalGlassSettings
-import com.github.arca.android.ui.glass.LocalKyantBackdrop
 import com.github.arca.android.ui.glass.NexusGlassBackground
 import com.github.arca.android.ui.glass.ProvideGlassTheme
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import com.github.arca.android.ui.theme.LocalAppLanguage
 import com.github.arca.android.ui.theme.MihomoTheme
 import com.github.kr328.clash.core.model.Proxy
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -44,7 +40,7 @@ import org.robolectric.annotation.GraphicsMode
 @OptIn(ExperimentalMaterial3Api::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class KyantLiquidModalRegressionTest {
+class GlasmioModalRegressionTest {
     @get:Rule val compose = createComposeRule()
 
     @After
@@ -54,8 +50,8 @@ class KyantLiquidModalRegressionTest {
     }
 
     @Test
-    fun ipDetectionSheetRendersUnderKyantLiquidGlass() {
-        setKyantContent {
+    fun ipDetectionSheetRendersUnderGlasmioFrostedGlass() {
+        setGlasmioContent {
             OutboundIpSheet(onRefresh = { OutboundIpInfo("203.0.113.9", source = "fixture") })
         }
 
@@ -65,10 +61,10 @@ class KyantLiquidModalRegressionTest {
     }
 
     @Test
-    fun nodeShortcutOpensAndSelectsUnderKyantLiquidGlass() {
+    fun nodeShortcutOpensAndSelectsUnderGlasmioFrostedGlass() {
         var selected: Pair<String, Proxy>? = null
         val node = Proxy("Tokyo", type = "Shadowsocks", delay = 45)
-        setKyantContent {
+        setGlasmioContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.STOPPED),
@@ -107,8 +103,8 @@ class KyantLiquidModalRegressionTest {
     }
 
     @Test
-    fun squareModalSurfaceFallsBackWithoutInvokingUnsupportedKyantLens() {
-        setKyantContent {
+    fun squareModalSurfaceRendersUnderGlasmioFrostedGlass() {
+        setGlasmioContent {
             GlassModalBottomSheet(onDismissRequest = {}, dragHandle = null) {
                 Box(Modifier.fillMaxWidth().height(48.dp).testTag("square-modal-content"))
             }
@@ -118,18 +114,17 @@ class KyantLiquidModalRegressionTest {
         compose.onNodeWithTag("square-modal-content").assertExists()
     }
 
-    private fun setKyantContent(content: @Composable () -> Unit) {
+    private fun setGlasmioContent(content: @Composable () -> Unit) {
         GlassDefaults.enabled = true
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
-                val backdrop = rememberLayerBackdrop()
-                CompositionLocalProvider(
-                    LocalAppLanguage provides "zh",
-                    LocalGlassSettings provides GlassSettings(glassPreset = GlassPreset.LIQUID),
-                    LocalKyantBackdrop provides backdrop
-                ) {
+                CompositionLocalProvider(LocalAppLanguage provides "zh") {
                     ProvideGlassTheme {
-                        NexusGlassBackground(kyantBackdrop = backdrop) {
+                        val backdrop = rememberArcaGlasmioBackdrop()
+                        NexusGlassBackground(
+                            sharedGlasmioBackdrop = backdrop,
+                            recordGlasmioBackdropSource = true
+                        ) {
                             content()
                         }
                     }

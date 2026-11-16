@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.NexusGlassBackground
 import com.github.arca.android.ui.glass.ProvideGlassTheme
 import com.github.arca.android.ui.theme.LocalAppLanguage
 import com.github.arca.android.ui.theme.MihomoTheme
@@ -34,11 +35,13 @@ class DnsScreenGlassTest {
                 MihomoTheme(ThemeMode.LIGHT) {
                     CompositionLocalProvider(LocalAppLanguage provides "zh") {
                         ProvideGlassTheme {
-                            DnsScreen(
+                            NexusGlassBackground {
+                                DnsScreen(
                                 fakeIpEnabled = false,
                                 onFakeIpEnabledChanged = { changes += it },
                                 onBack = {}
                             )
+                            }
                         }
                     }
                 }
@@ -67,7 +70,9 @@ class DnsScreenGlassTest {
                 MihomoTheme(ThemeMode.LIGHT) {
                     CompositionLocalProvider(LocalAppLanguage provides "zh") {
                         ProvideGlassTheme {
-                            DnsScreen(fakeIpEnabled = true, onFakeIpEnabledChanged = {}, onBack = {})
+                            NexusGlassBackground {
+                                DnsScreen(fakeIpEnabled = true, onFakeIpEnabledChanged = {}, onBack = {})
+                            }
                         }
                     }
                 }

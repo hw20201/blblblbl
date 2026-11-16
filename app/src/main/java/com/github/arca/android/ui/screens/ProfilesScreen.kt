@@ -15,9 +15,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,11 +29,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -44,6 +48,7 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import androidx.compose.ui.graphics.Shape
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +107,8 @@ fun ProfilesScreen(
     onReorderProfiles: ((List<ProfileItem>) -> Unit)? = null,
     onNavigateToOverride: ((ProfileItem) -> Unit)? = null,
     /** Pull-to-refresh: updates every remote subscription; suspends until all finish. */
-    onRefreshAllSubscriptions: (suspend () -> Unit)? = null
+    onRefreshAllSubscriptions: (suspend () -> Unit)? = null,
+    embeddedPanel: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -152,7 +158,8 @@ fun ProfilesScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
+            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
+            .testTag("profiles-screen-root")
     ) {
         // Cupertino Navigation Bar
         CupertinoNavBar(
@@ -183,6 +190,7 @@ fun ProfilesScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .padding(bottom = if (embeddedPanel) 24.dp else 0.dp)
                     .bounceOverscroll(),
                 contentAlignment = Alignment.Center
             ) {
@@ -251,7 +259,11 @@ fun ProfilesScreen(
                     }
                 },
                 state = pullState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clipToBounds()
+                    .testTag("profiles-list-viewport"),
                 indicator = {
                     PullToRefreshDefaults.Indicator(
                         state = pullState,
@@ -267,8 +279,9 @@ fun ProfilesScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .bounceOverscroll(allowTop = false)
-                    .padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp),
+                    .padding(horizontal = 16.dp)
+                    .testTag("profiles-list"),
+                contentPadding = PaddingValues(top = 10.dp, bottom = if (embeddedPanel) 24.dp else 120.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 itemsIndexed(localProfiles, key = { _, item -> item.id }) { index, item ->
@@ -514,185 +527,11 @@ fun ProfilesScreen(
     // 1. Add Subscription Sheet (Cupertino Style)
     // =========================================================================
     if (showAddSheet) {
-        var subName by remember { mutableStateOf("") }
-        var subUrl by remember { mutableStateOf("") }
-        val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
-
-        LaunchedEffect(Unit) {
-            // Smart auto-detect URL from clipboard
-            if (clipboard?.hasPrimaryClip() == true) {
-                val clipData = clipboard.primaryClip
-                if (clipData != null && clipData.itemCount > 0) {
-                    val clipText = clipData.getItemAt(0).text?.toString()?.trim() ?: ""
-                    if (clipText.startsWith("http://") || clipText.startsWith("https://")) {
-                        subUrl = clipText
-                        if (subName.isBlank()) {
-                            subName = runCatching {
-                                java.net.URI(clipText).host?.substringBefore(".") ?: ""
-                            }.getOrDefault("")
-                        }
-                    }
-                }
-            }
-        }
-
-        GlassModalBottomSheet(
+        ProfileAddSheet(
             onDismissRequest = { showAddSheet = false },
-            containerColor = LoonBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 36.dp)
-            ) {
-                Text(
-                    text = "添加配置",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LoonTextPrimary
-                )
-                Text(
-                    text = "支持通过远程订阅 URL 下载或导入本地 YAML 文件",
-                    fontSize = 12.5.sp,
-                    color = LoonTextSecondary,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
-                )
-
-                // Quick Import Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Local File Import
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(0.5.dp, LoonCardBorder, RoundedCornerShape(12.dp))
-                            .iosPressable {
-                                showAddSheet = false
-                                onImportLocalFile?.invoke()
-                            },
-                        color = LoonCard
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.UploadFile, contentDescription = null, tint = IosBlue, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("本地文件导入", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
-                        }
-                    }
-
-                    // Clipboard Paste
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(0.5.dp, LoonCardBorder, RoundedCornerShape(12.dp))
-                            .iosPressable {
-                                if (clipboard?.hasPrimaryClip() == true) {
-                                    val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
-                                    if (text.isNotBlank()) {
-                                        subUrl = text
-                                        AppNotice.show("已粘贴剪贴板内容")
-                                    }
-                                }
-                            },
-                        color = LoonCard
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.ContentPaste, contentDescription = null, tint = IosGreen, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("从剪贴板粘贴", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Grouped Input Fields
-                ProfilesPanelSurface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        TextField(
-                            value = subName,
-                            onValueChange = { subName = it },
-                            placeholder = { Text("订阅备注名称（选填）", fontSize = 13.5.sp, color = LoonTextMuted) },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = LoonBg,
-                                unfocusedContainerColor = LoonBg,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = LoonTextPrimary,
-                                unfocusedTextColor = LoonTextPrimary
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        TextField(
-                            value = subUrl,
-                            onValueChange = { subUrl = it },
-                            placeholder = { Text("订阅链接 URL (https://...)", fontSize = 13.5.sp, color = LoonTextMuted) },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = LoonBg,
-                                unfocusedContainerColor = LoonBg,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = LoonTextPrimary,
-                                unfocusedTextColor = LoonTextPrimary
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Primary Download & Save Button
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (subUrl.isNotBlank()) IosBlue else LoonTextMuted)
-                        .clickable(enabled = subUrl.isNotBlank()) {
-                            haptic.impact()
-                            onAddSubscription(subName.trim(), subUrl.trim())
-                            showAddSheet = false
-                        },
-                    color = if (subUrl.isNotBlank()) IosBlue else LoonTextMuted
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "下载并保存配置",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
+            onImportLocalFile = onImportLocalFile,
+            onAddSubscription = onAddSubscription
+        )
     }
 
     // =========================================================================
@@ -914,7 +753,7 @@ fun ProfilesScreen(
                                 Text("定时自动更新", fontSize = 15.sp, color = LoonTextPrimary)
                                 Text("后台静默拉取最新节点与规则", fontSize = 11.5.sp, color = LoonTextSecondary)
                             }
-                            CupertinoSwitch(
+                            ArcaGlasmioSwitch(
                                 checked = editAutoUpdate,
                                 onCheckedChange = { editAutoUpdate = it }
                             )
@@ -1161,5 +1000,204 @@ private fun ProfilesPanelSurface(
         GlassSurface(modifier = modifier, shape = shape) { content() }
     } else {
         Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ProfileAddSheet(
+    onDismissRequest: () -> Unit,
+    onImportLocalFile: (() -> Unit)?,
+    onAddSubscription: (String, String) -> Unit
+) {
+    val context = LocalContext.current
+    val haptic = rememberIosHaptic()
+    var subName by remember { mutableStateOf("") }
+    var subUrl by remember { mutableStateOf("") }
+    val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
+
+    LaunchedEffect(Unit) {
+        // Smart auto-detect URL from clipboard
+        if (clipboard?.hasPrimaryClip() == true) {
+            val clipData = clipboard.primaryClip
+            if (clipData != null && clipData.itemCount > 0) {
+                val clipText = clipData.getItemAt(0).text?.toString()?.trim() ?: ""
+                if (clipText.startsWith("http://") || clipText.startsWith("https://")) {
+                    subUrl = clipText
+                    if (subName.isBlank()) {
+                        subName = runCatching {
+                            java.net.URI(clipText).host?.substringBefore(".") ?: ""
+                        }.getOrDefault("")
+                    }
+                }
+            }
+        }
+    }
+
+    GlassModalBottomSheet(
+        onDismissRequest = { onDismissRequest() },
+        containerColor = LoonBg,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                text = "添加配置",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LoonTextPrimary
+            )
+            Text(
+                text = "支持通过远程订阅 URL 下载或导入本地 YAML 文件",
+                fontSize = 12.5.sp,
+                color = LoonTextSecondary,
+                modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
+            )
+
+            // Quick Import Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Local File Import
+                GlassSurface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .iosPressable {
+                            onDismissRequest()
+                            onImportLocalFile?.invoke()
+                        }
+                        .testTag("profile-add-local-file"),
+                    shape = RoundedCornerShape(12.dp),
+                    accent = IosBlue,
+                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
+                    surfaceAlphaScale = 0.88f
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null, tint = IosBlue, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("本地文件导入", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
+                    }
+                }
+
+                // Clipboard Paste
+                GlassSurface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .iosPressable {
+                            if (clipboard?.hasPrimaryClip() == true) {
+                                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
+                                if (text.isNotBlank()) {
+                                    subUrl = text
+                                    AppNotice.show("已粘贴剪贴板内容")
+                                }
+                            }
+                        }
+                        .testTag("profile-add-clipboard"),
+                    shape = RoundedCornerShape(12.dp),
+                    accent = IosGreen,
+                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
+                    surfaceAlphaScale = 0.88f
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, tint = IosGreen, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("从剪贴板粘贴", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Grouped Input Fields
+            ProfilesPanelSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TextField(
+                        value = subName,
+                        onValueChange = { subName = it },
+                        modifier = Modifier.fillMaxWidth().testTag("profile-add-name"),
+                        placeholder = { Text("订阅备注名称（选填）", fontSize = 13.5.sp, color = LoonTextMuted) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = LoonBg.copy(alpha = 0.72f),
+                            unfocusedContainerColor = LoonBg.copy(alpha = 0.58f),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedTextColor = LoonTextPrimary,
+                            unfocusedTextColor = LoonTextPrimary
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+
+                    TextField(
+                        value = subUrl,
+                        onValueChange = { subUrl = it },
+                        modifier = Modifier.fillMaxWidth().testTag("profile-add-url"),
+                        placeholder = { Text("订阅链接 URL (https://...)", fontSize = 13.5.sp, color = LoonTextMuted) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = LoonBg.copy(alpha = 0.72f),
+                            unfocusedContainerColor = LoonBg.copy(alpha = 0.58f),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedTextColor = LoonTextPrimary,
+                            unfocusedTextColor = LoonTextPrimary
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Primary Download & Save Button
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (subUrl.isNotBlank()) IosBlue else LoonTextMuted)
+                    .testTag("profile-add-submit")
+                    .clickable(enabled = subUrl.isNotBlank()) {
+                        haptic.impact()
+                        onAddSubscription(subName.trim(), subUrl.trim())
+                        onDismissRequest()
+                    },
+                color = if (subUrl.isNotBlank()) IosBlue else LoonTextMuted
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "下载并保存配置",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
     }
 }

@@ -160,10 +160,11 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("proxies_view_mode", "TABS") ?: "TABS"
         set(value) = prefs.edit().putString("proxies_view_mode", value).apply()
 
-    // Migrate once: show newly introduced actions while preserving custom order/visibility.
+    // Migrate once: keep custom visibility/order, but move untouched v76 defaults to the requested v77 set.
     private fun migrateShortcuts() {
         val editor = prefs.edit()
         var changed = false
+        val hasStoredVisible = prefs.contains("visible_shortcuts")
         var visible = prefs.getStringSet("visible_shortcuts", DashboardShortcuts.defaults.toSet()).orEmpty().toSet()
         if (!prefs.getBoolean("shortcuts_actions_v1", false)) {
             visible = visible + DashboardShortcuts.added
@@ -171,8 +172,23 @@ class SettingsManager(context: Context) {
             changed = true
         }
         if (!prefs.getBoolean("traffic_shortcut_v1", false)) {
-            visible = visible + "traffic"
+            if (hasStoredVisible) visible = visible + "traffic"
             editor.putBoolean("traffic_shortcut_v1", true)
+            changed = true
+        }
+        if (!prefs.getBoolean("shortcut_defaults_v77", false)) {
+            val oldDefaults = DashboardShortcuts.v76Defaults.toSet()
+            if (hasStoredVisible && visible == oldDefaults) {
+                visible = DashboardShortcuts.defaults.toSet()
+            }
+            val savedOrder = prefs.getString("shortcut_order", null)
+            if (savedOrder != null) {
+                val order = savedOrder.split(",").filter { it.isNotBlank() }.distinct()
+                if (order.toSet() == oldDefaults) {
+                    editor.putString("shortcut_order", DashboardShortcuts.defaults.joinToString(","))
+                }
+            }
+            editor.putBoolean("shortcut_defaults_v77", true)
             changed = true
         }
         if (changed) editor.putStringSet("visible_shortcuts", visible).apply()

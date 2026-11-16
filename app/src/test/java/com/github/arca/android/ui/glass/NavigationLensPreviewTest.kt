@@ -131,10 +131,10 @@ class NavigationLensPreviewTest {
             }
         }
         assertTrue("jelly must visibly stretch, not freeze on retarget", peak > 0.005f)
-        // Braking-only target lives in [-0.15, 0]; the jelly spring (damping
-        // 0.4) can overshoot its target by ~25%, so the trough floor is
-        // -0.15 * 1.25 ~= -0.19 (measured -0.132 on this scenario). The old
-        // -0.031 bound belonged to the retired speed-term formula.
+        // Braking-only target stays in [-0.15, 0]. The 0.62 damping ratio
+        // keeps the return rebound modest; retain a conservative lower bound
+        // for momentum across repeated retargets. The old -0.031 bound belonged
+        // to the retired speed-term formula.
         assertTrue("braking-only jelly stays bounded", trough >= -0.19f && peak <= 0.081f)
         assertEquals(0f, travel.value, 0.001f)
         assertEquals(0f, jelly.value, 0.001f)

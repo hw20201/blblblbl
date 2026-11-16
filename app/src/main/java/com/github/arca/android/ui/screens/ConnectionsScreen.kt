@@ -68,7 +68,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ConnectionsScreen(
     vpnState: VpnState,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    embeddedPanel: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
     var connections by remember { mutableStateOf<List<ConnectionInfo>>(emptyList()) }
@@ -98,10 +99,10 @@ fun ConnectionsScreen(
     Column(
         Modifier.fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
+            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
             .testTag("connections-root")
     ) {
-        CupertinoNavBar(
+        if (!embeddedPanel) CupertinoNavBar(
             title = "活动连接",
             subtitle = if (running && supported) "${connections.size} 个连接" else null,
             showBackButton = true,
@@ -118,7 +119,27 @@ fun ConnectionsScreen(
                     }
                 }
             }
-        )
+        ) else Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)
+                .testTag("connections-embedded-toolbar"),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (running && supported) "${connections.size} 个连接" else "实时连接",
+                color = LoonTextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f)
+            )
+            if (running && supported) {
+                IconButton(onClick = { paused = !paused }, modifier = Modifier.size(36.dp).testTag("connections-toggle-refresh")) {
+                    Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        contentDescription = if (paused) "继续刷新" else "暂停刷新", tint = IosBlue)
+                }
+                IconButton(onClick = { if (connections.isNotEmpty()) confirmCloseAll = true }, modifier = Modifier.size(36.dp).testTag("connections-close-all")) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = "断开全部连接", tint = AppPalette.danger)
+                }
+            }
+        }
         when {
             !running -> EmptyHint("代理未运行\n启动 VPN 后可查看实时连接")
             !supported -> EmptyHint("当前原生核心版本不支持连接列表\n请重新编译 native 库（build-native.sh）")
@@ -134,7 +155,10 @@ fun ConnectionsScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().bounceOverscroll(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp, end = 16.dp, top = 6.dp,
+                            bottom = if (embeddedPanel) 24.dp else 120.dp
+                        ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filtered, key = { it.id }) { c ->

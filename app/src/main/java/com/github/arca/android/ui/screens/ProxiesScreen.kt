@@ -12,6 +12,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -32,8 +35,12 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.glass.FROSTED_SELECTED_GLASS_TINT
@@ -51,9 +58,9 @@ import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LocalGlassTokens
 import com.github.arca.android.ui.glass.NavigationLensState
-import com.github.arca.android.ui.glass.LightGlassSurface
 import com.github.arca.android.ui.glass.LightGlassSelectedTint
 import com.github.arca.android.ui.glass.useProxyGroupGlass
 import com.github.arca.android.ui.glass.proxyCardNeedsOuterBorder
@@ -138,6 +145,8 @@ fun ProxiesScreen(
     glassScene: NavigationLensState? = null
 ) {
     var showOptionsMenu by remember { mutableStateOf(false) }
+    var policyMoreButtonBounds by remember { mutableStateOf<Rect?>(null) }
+    var hidePolicyMoreSource by remember { mutableStateOf(false) }
     val activeTabState = if (selectedGroupName.isNotBlank()) {
         perGroupTabStates.getOrPut(selectedGroupName) { LazyListState() }
     } else tabsListState
@@ -167,152 +176,6 @@ fun ProxiesScreen(
             modifier = Modifier.fillMaxSize()
                 .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
         ) {
-        // Settings BottomSheet (Smooth, modern, non-cluttered bottom sheet)
-        if (showOptionsMenu) {
-            com.github.arca.android.ui.glass.GlassModalBottomSheet(
-                onDismissRequest = { showOptionsMenu = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = LoonCard,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(vertical = 12.dp)
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(LoonTextMuted.copy(alpha = 0.3f))
-                    )
-                }
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .padding(bottom = 36.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    Text(
-                        text = "策略设置",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = LoonTextPrimary
-                    )
-
-                    // 1. 显示模式 (标签 / 列表)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "显示模式",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = LoonTextSecondary
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            val modes = listOf(
-                                "TABS" to AppStrings.get("proxies_view_tabs", lang),
-                                "LIST" to AppStrings.get("proxies_view_list", lang)
-                            )
-                            modes.forEach { (mode, label) ->
-                                val isSel = currentViewMode == mode
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .border(
-                                            0.75.dp,
-                                            LoonCardBorder.copy(alpha = if (isSel) .95f else .65f),
-                                            RoundedCornerShape(12.dp)
-                                        )
-                                        .clickable { onViewModeChanged(mode) },
-                                    color = if (isSel) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .22f else .09f) else LoonCard.copy(alpha = .72f),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier.padding(vertical = 11.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 13.5.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = LoonTextPrimary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. 节点排版 (单列 / 双列 / 三列)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "节点排版",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = LoonTextSecondary
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val cols = listOf(1 to "单列", 2 to "双列", 3 to "三列")
-                            cols.forEach { (colCount, label) ->
-                                val isSel = nodeColumns == colCount
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .border(
-                                            0.75.dp,
-                                            LoonCardBorder.copy(alpha = if (isSel) .95f else .65f),
-                                            RoundedCornerShape(12.dp)
-                                        )
-                                        .clickable { onNodeColumnsChanged(colCount) },
-                                    color = if (isSel) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .22f else .09f) else LoonCard.copy(alpha = .72f),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier.padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = LoonTextPrimary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 3. 策略组远程图标开关
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "显示策略组远程图标",
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = LoonTextPrimary
-                        )
-                        CupertinoSwitch(
-                            checked = showGroupIcons,
-                            onCheckedChange = { onShowGroupIconsChanged(it) }
-                        )
-                    }
-                }
-            }
-        }
-
         // =====================================================================
         // MODE 1: TABS VIEW (High-Performance, Butter Smooth)
         // =====================================================================
@@ -360,8 +223,8 @@ fun ProxiesScreen(
                         state = activeTabState,
                         modifier = Modifier.testTag("policy-node-list")
                             .fillMaxSize()
-                            .bounceOverscroll(allowTop = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
+                            .bounceOverscroll(allowTop = false, allowBottom = false),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(
@@ -428,8 +291,8 @@ fun ProxiesScreen(
                         state = listModeState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .bounceOverscroll(allowTop = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = 110.dp),
+                            .bounceOverscroll(allowTop = false, allowBottom = false),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         visibleGroups.forEach { groupName ->
@@ -545,20 +408,21 @@ fun ProxiesScreen(
                 ) }
             }
 
-            PageTitleGlass(titleScene, contentPadding = PaddingValues(horizontal = 2.dp),
-                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Health check button (Pure Lightning Bolt with Animation, no text, no circle background)
-                IconButton(
-                    onClick = {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button) {
                         if (selectedGroupName.isNotBlank()) {
                             onHealthCheck(selectedGroupName)
                         } else if (visibleGroups.isNotEmpty()) {
                             onHealthCheck(visibleGroups.first())
                         }
-                    },
-                    modifier = Modifier.size(48.dp)
+                    }.testTag("policy-health-check-button"),
+                    contentAlignment = Alignment.Center
                 ) {
+                    GlassSurface(Modifier.matchParentSize(), shape = CircleShape,
+                        surfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.TITLE_CAPSULES,
+                        surfaceAlphaScale = 0.9f) {}
                     AnimatedSpeedTestIcon(
                         isTesting = isAnyTesting,
                         tint = LoonTextPrimary,
@@ -568,18 +432,27 @@ fun ProxiesScreen(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // 3-Dots Settings Dialog Trigger (•••)
-                IconButton(
-                    onClick = { showOptionsMenu = true },
-                    modifier = Modifier.size(48.dp)
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                        .onGloballyPositioned { policyMoreButtonBounds = it.boundsInWindow() }
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button) {
+                            hidePolicyMoreSource = true
+                            showOptionsMenu = true
+                        }
+                        .graphicsLayer { alpha = if (hidePolicyMoreSource) 0f else 1f }
+                        .testTag("policy-more-button"),
+                    contentAlignment = Alignment.Center
                 ) {
+                    GlassSurface(Modifier.matchParentSize(), shape = CircleShape,
+                        surfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.TITLE_CAPSULES,
+                        surfaceAlphaScale = 0.9f) {}
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "更多设置",
-                        tint = LoonTextPrimary
+                        tint = LoonTextPrimary,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
-            }
             }
         }
 
@@ -631,6 +504,74 @@ fun ProxiesScreen(
                 }
             }
 
+        }
+
+        ShortcutMorphOverlay(
+            visible = showOptionsMenu,
+            sourceBounds = policyMoreButtonBounds,
+            liveSourceBounds = { policyMoreButtonBounds },
+            sourceTitle = "策略设置",
+            sourceSubtitle = "分组显示与节点排版",
+            sourceIcon = { Icon(Icons.Default.MoreVert, contentDescription = null, tint = LoonTextPrimary) },
+            lens = titleScene,
+            onDismissRequest = { showOptionsMenu = false },
+            onDismissed = { hidePolicyMoreSource = false },
+            panelTestTag = "policy-options-panel",
+            contentTestTag = "policy-options-content",
+            panelHeightFraction = 0.62f,
+            motionProfile = ShortcutMorphMotionProfile.QUVEN_MENU,
+            sourceCornerRadius = 24.dp,
+            sourceContent = {
+                Box(
+                    Modifier.fillMaxSize().testTag("policy-more-source-face"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = null, tint = LoonTextPrimary, modifier = Modifier.size(22.dp))
+                }
+            }
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("策略设置", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary)
+                    Text("调整当前分组的显示和排版", fontSize = 12.sp, color = LoonTextSecondary)
+                }
+                IconButton(onClick = { showOptionsMenu = false }, modifier = Modifier.size(36.dp).testTag("policy-options-close")) {
+                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("显示方式", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = LoonTextSecondary)
+                    AnimatedGlassSegmentGroup(
+                        options = listOf(
+                            "TABS" to AppStrings.get("proxies_view_tabs", lang),
+                            "LIST" to AppStrings.get("proxies_view_list", lang)
+                        ),
+                        selectedKey = currentViewMode,
+                        onSelect = onViewModeChanged,
+                        testTag = "proxies-view-mode"
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("节点排版", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = LoonTextSecondary)
+                    AnimatedGlassSegmentGroup(
+                        options = listOf("1" to "单列", "2" to "双列", "3" to "三列"),
+                        selectedKey = nodeColumns.toString(),
+                        onSelect = { onNodeColumnsChanged(it.toInt()) },
+                        testTag = "proxies-node-columns"
+                    )
+                }
+                HorizontalDivider(color = LoonCardBorder.copy(alpha = 0.35f), thickness = 0.7.dp)
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("显示策略组远程图标", fontSize = 13.5.sp, fontWeight = FontWeight.Medium, color = LoonTextPrimary)
+                        Text("在组标题旁展示远程图标", fontSize = 11.sp, color = LoonTextMuted)
+                    }
+                    ArcaGlasmioSwitch(checked = showGroupIcons, onCheckedChange = onShowGroupIconsChanged,
+                        modifier = Modifier.testTag("policy-group-icons-switch"))
+                }
+            }
         }
 
     }
@@ -744,7 +685,7 @@ private fun LoonGroupHeaderCard(
 
                 val arrowRotation by animateFloatAsState(
                     targetValue = if (isExpanded) 180f else 0f,
-                    animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
                     label = "arrow_rot"
                 )
                 Icon(
@@ -1097,8 +1038,8 @@ private fun LoonProxyItemCard(
 
 
 /**
- * Node capsules use the low-cost self-developed light glass: no backdrop replay, shader or blur,
- * so long node lists stay cheap. Group header cards keep the same material for consistency.
+ * Strategy and node cards share the app's Glasmio main material. The lazy proxy lists keep
+ * only visible cards composed; the flat fallback remains unchanged when glass is disabled.
  */
 @Composable
 private fun ProxyGlassCard(
@@ -1115,15 +1056,15 @@ private fun ProxyGlassCard(
         // the caller's modifier already carries the proxy-card tag, and a single node
         // can only hold one testTag, so merging the two tags loses one of them.
         Box(modifier) {
-            Box(
-                Modifier.matchParentSize()
-                    .testTag(if (selected) "proxy-selected-glass-material" else "proxy-group-glass-material")
-            )
-            LightGlassSurface(
+            Box(Modifier.matchParentSize()
+                .testTag(if (selected) "proxy-selected-glass-material" else "proxy-group-glass-material"))
+            Box(Modifier.matchParentSize().testTag("proxy-glasmio-main-material"))
+            GlassSurface(
                 modifier = Modifier.matchParentSize(),
                 shape = shape,
-                selected = selected,
-                accent = accent,
+                accent = if (selected) SelectedProxyCardFill else accent,
+                surfaceCategory = GlassSurfaceCategory.LARGE_PANELS,
+                surfaceAlphaScale = if (selected) 1f else 0.82f,
                 content = content
             )
         }
@@ -1149,4 +1090,63 @@ private fun androidx.compose.foundation.layout.BoxScope.ProxiesPullIndicator(
         containerColor = LoonCard,
         color = IosBlue
     )
+}
+
+@Composable
+private fun AnimatedGlassSegmentGroup(
+    options: List<Pair<String, String>>,
+    selectedKey: String,
+    onSelect: (String) -> Unit,
+    testTag: String
+) {
+    if (options.isEmpty()) return
+    val selectedIndex = options.indexOfFirst { it.first == selectedKey }.coerceAtLeast(0)
+    val animatedIndex by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = tween(durationMillis = 430, easing = FastOutSlowInEasing),
+        label = "$testTag-selection"
+    )
+    val isDark = LocalLoonColors.current.isDark
+    val shape = RoundedCornerShape(14.dp)
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(shape)
+            .background(if (isDark) Color.White.copy(alpha = 0.065f) else Color.Black.copy(alpha = 0.035f))
+            .border(0.7.dp, LoonCardBorder.copy(alpha = if (isDark) 0.38f else 0.32f), shape)
+            .testTag("$testTag-segment-group")
+    ) {
+        val segmentWidth = maxWidth / options.size
+        Box(
+            modifier = Modifier
+                .offset(x = segmentWidth * animatedIndex)
+                .width(segmentWidth)
+                .fillMaxHeight()
+                .padding(3.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(if (isDark) LoonBlue.copy(alpha = 0.25f) else LoonBlue.copy(alpha = 0.12f))
+        )
+        Row(Modifier.fillMaxSize()) {
+            options.forEach { (key, label) ->
+                val isSelected = key == selectedKey
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .selectable(selected = isSelected, role = Role.RadioButton) { onSelect(key) }
+                        .testTag("$testTag-$key"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) LoonTextPrimary else LoonTextSecondary,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
 }

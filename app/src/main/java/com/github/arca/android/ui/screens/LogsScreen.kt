@@ -5,7 +5,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,6 +23,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,7 +47,8 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogsScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    embeddedPanel: Boolean = false
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
@@ -79,10 +85,10 @@ fun LogsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
+            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
     ) {
         // Cupertino Navigation Bar
-        CupertinoNavBar(
+        if (!embeddedPanel) CupertinoNavBar(
             title = AppStrings.get("logs_title", lang),
             subtitle = "${filteredLogs.size} 条记录",
             showBackButton = true,
@@ -165,7 +171,59 @@ fun LogsScreen(
                 }
             },
             frosted = true
-        )
+        ) else Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)
+                .testTag("logs-embedded-toolbar"),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("${filteredLogs.size} 条记录", color = LoonTextSecondary, fontSize = 12.sp,
+                modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = { haptic.selection(); isStreamingPaused = !isStreamingPaused },
+                modifier = Modifier.size(34.dp).testTag("logs-toggle-streaming")
+            ) {
+                Icon(
+                    imageVector = if (isStreamingPaused) Icons.Default.PlayCircle else Icons.Default.PauseCircle,
+                    contentDescription = if (isStreamingPaused) "恢复流式输出" else "暂停流式输出",
+                    tint = if (isStreamingPaused) IosOrange else IosBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(
+                onClick = { haptic.selection(); isSearchVisible = !isSearchVisible },
+                modifier = Modifier.size(34.dp).testTag("logs-toggle-search")
+            ) {
+                Icon(Icons.Default.Search, contentDescription = "搜索",
+                    tint = if (isSearchVisible) IosBlue else LoonTextPrimary, modifier = Modifier.size(19.dp))
+            }
+            IconButton(
+                onClick = {
+                    haptic.selection()
+                    if (filteredLogs.isNotEmpty()) {
+                        val allText = filteredLogs.joinToString("\n") {
+                            "[${timeFormat.format(Date(it.timestamp))}] [${it.level.uppercase()}] ${it.message}"
+                        }
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, allText)
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "导出日志"))
+                    } else AppNotice.show("当前无日志可导出")
+                },
+                modifier = Modifier.size(34.dp).testTag("logs-export")
+            ) {
+                Icon(Icons.Default.Share, contentDescription = "导出", tint = LoonTextPrimary,
+                    modifier = Modifier.size(18.dp))
+            }
+            IconButton(
+                onClick = { haptic.selection(); showClearConfirmDialog = true },
+                modifier = Modifier.size(34.dp).testTag("logs-clear")
+            ) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = "清空", tint = LoonTextPrimary,
+                    modifier = Modifier.size(20.dp))
+            }
+        }
 
         // Expandable search bar
         AnimatedVisibility(
@@ -197,7 +255,9 @@ fun LogsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("logs-level-filters"),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             levels.forEach { (lvlKey, label) ->
@@ -220,13 +280,19 @@ fun LogsScreen(
                             haptic.selection()
                             selectedLevel = lvlKey
                         }
+                        .semantics { selected = isSelected }
+                        .testTag("logs-level-filter-$lvlKey")
                 ) {
                     Text(
                         text = label,
                         color = if (isSelected) Color.White else LoonTextPrimary,
                         fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier
+                            .padding(horizontal = if (lvlKey == "DEBUG") 10.dp else 14.dp, vertical = 6.dp)
+                            .testTag("logs-level-label-$lvlKey")
                     )
                 }
             }
@@ -239,13 +305,21 @@ fun LogsScreen(
                 .weight(1f)
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 16.dp)
+                .testTag("logs-console-area")
         ) {
             if (filteredLogs.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.45f)
+                        .align(Alignment.TopCenter)
+                        .testTag("logs-console-empty-state-zone"),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        modifier = Modifier.padding(bottom = 10.dp).testTag("logs-console-empty-state"),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
@@ -275,9 +349,16 @@ fun LogsScreen(
                         )
                     }
                 }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.55f)
+                        .align(Alignment.BottomCenter)
+                        .testTag("logs-console-future-logs-space")
+                )
             } else {
                 LogsPanelSurface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().testTag("logs-console-log-viewport"),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     LazyColumn(
@@ -285,7 +366,8 @@ fun LogsScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .bounceOverscroll()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .testTag("logs-console-list"),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(

@@ -137,7 +137,7 @@ fun NetworkShareScreen(
                                     color = LoonTextMuted
                                 )
                             }
-                            CupertinoSwitch(
+                            ArcaGlasmioSwitch(
                                 checked = allowLan,
                                 onCheckedChange = onAllowLanChanged
                             )

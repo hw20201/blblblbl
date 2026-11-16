@@ -99,7 +99,7 @@ android {
         applicationId = "com.github.arca.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 60
+        versionCode = 87
         versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -137,8 +137,8 @@ android {
         debug {
             isMinifyEnabled = false
             // Isolated disposable UI draft; never replaces the owner's installed production app.
-            applicationIdSuffix = ".draftglass"
-            versionNameSuffix = "-draft-glass-candidate12-reference-paced"
+            applicationIdSuffix = ".glasstest.fusion"
+            versionNameSuffix = "-glass-fusion-private-test"
         }
     }
 
@@ -160,18 +160,18 @@ android {
         manifest.srcFile("src/debug/AndroidManifest.xml")
     }
 
-    // Explicitly opt-in, side-by-side R8 experiment. This is not the production release:
-    // it has its own package id and a disposable debug signature so it can be installed
-    // alongside both the owner's app and the performance candidate for device diagnosis.
+    // Private R8-enabled test candidate; use the same disposable package and debug signer
+    // as the current v72 install so this build upgrades it while remaining separate from production.
     // Build only with :app:assembleR8Test; never promote without device validation.
     buildTypes.create("r8Test") {
         initWith(buildTypes.getByName("release"))
         isDebuggable = false
         isMinifyEnabled = true
         isShrinkResources = true
-        applicationIdSuffix = ".r8test"
-        versionNameSuffix = "-r8-experiment"
-        signingConfig = signingConfigs.getByName("debug")
+        applicationIdSuffix = ".glasstest.fusion"
+        versionNameSuffix = "-glass-fusion-private-test-v87-r8"
+        // Keep the local candidate unsigned; sign v86 on the existing remote host
+        // with the verified v80-v85 certificate. Never use this workspace's unrelated debug key.
         matchingFallbacks += listOf("release")
     }
 
@@ -231,7 +231,8 @@ dependencies {
     implementation("androidx.compose.foundation:foundation-layout:1.12.0")
     implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    implementation("io.github.kyant0:backdrop:2.0.1")
+    implementation("io.github.neoruaa.glasmio:glasmio-glass:0.1.3")
+    implementation("io.github.neoruaa.glasmio:glasmio-ui:0.1.3")
     
     // Coroutines & Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

@@ -36,6 +36,8 @@ import com.github.arca.android.ui.theme.LoonTextSecondary
 import com.github.arca.android.ui.theme.AppPalette
 
 /** Navigation hub; existing managers and screens retain ownership of their resources. */
+internal enum class ConfigurationCenterDestination { PROFILES, SCRIPTS, RULES, APP_ROUTING }
+
 @Composable
 fun ConfigurationCenterScreen(
     onNavigateToProfiles: () -> Unit,
@@ -43,7 +45,8 @@ fun ConfigurationCenterScreen(
     onNavigateToRules: () -> Unit,
     onNavigateToAppRouting: () -> Unit,
     onBack: () -> Unit,
-    scrollState: ScrollState = rememberScrollState()
+    scrollState: ScrollState = rememberScrollState(),
+    embeddedPanel: Boolean = false
 ) {
     val titleScene = rememberNavigationLens()
     var headerHeightPx by remember { mutableIntStateOf(0) }
@@ -56,14 +59,18 @@ fun ConfigurationCenterScreen(
     ) {
         Column(
             Modifier.fillMaxSize()
-                .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene) else Modifier)
+                .then(if (GlassDefaults.enabled && !embeddedPanel) Modifier.recordNavigationScene(titleScene) else Modifier)
                 .testTag("configuration-center-scroll")
                 .verticalScroll(scrollState)
-                .padding(top = headerInset + 32.dp, bottom = 136.dp),
+                .padding(
+                    top = if (embeddedPanel) 4.dp else headerInset + 32.dp,
+                    bottom = if (embeddedPanel) 24.dp else 136.dp
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             ConfigurationCenterSection("配置 / 订阅", "configuration-center-section-header-0") {
                 CupertinoCell(
+                    modifier = Modifier.testTag("configuration-center-profiles-entry"),
                     title = "配置文件与订阅", subtitle = "导入本地配置、管理配置及刷新订阅",
                     icon = Icons.Default.FolderOpen, iconBg = AppPalette.iconBrightBlue,
                     showChevron = true, onClick = onNavigateToProfiles
@@ -71,6 +78,7 @@ fun ConfigurationCenterScreen(
             }
             ConfigurationCenterSection("脚本", "configuration-center-section-header-1") {
                 CupertinoCell(
+                    modifier = Modifier.testTag("configuration-center-scripts-entry"),
                     title = "脚本管理", subtitle = "管理全局脚本；单配置覆写仍在配置详情中设置",
                     icon = Icons.Default.Code, iconBg = AppPalette.iconBrightBlue,
                     showChevron = true, onClick = onNavigateToScripts
@@ -82,12 +90,14 @@ fun ConfigurationCenterScreen(
                 footer = "保留当前配置中的规则与资源；更新和重载继续使用原有配置流程。"
             ) {
                 CupertinoCell(
+                    modifier = Modifier.testTag("configuration-center-rules-entry"),
                     title = "规则资源", subtitle = "查看与筛选当前配置中的规则",
                     icon = Icons.Default.Rule, iconBg = AppPalette.iconYellowAmber,
                     showChevron = true, onClick = onNavigateToRules
                 )
                 CupertinoIndentedDivider(startIndent = 56.dp)
                 CupertinoCell(
+                    modifier = Modifier.testTag("configuration-center-app-routing-entry"),
                     title = "应用分流", subtitle = "管理按应用代理设置",
                     icon = Icons.Default.Apps, iconBg = AppPalette.iconViolet,
                     showChevron = true, onClick = onNavigateToAppRouting
@@ -95,7 +105,7 @@ fun ConfigurationCenterScreen(
             }
         }
 
-        Box(
+        if (!embeddedPanel) Box(
             Modifier.fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()

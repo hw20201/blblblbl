@@ -43,7 +43,8 @@ fun AppearanceScreen(
     onBack: () -> Unit,
     wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
     onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = { GlassDefaults.wallpaper = it },
-    listState: LazyListState = rememberLazyListState()
+    listState: LazyListState = rememberLazyListState(),
+    embeddedPanel: Boolean = false
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -66,6 +67,10 @@ fun AppearanceScreen(
         "ru" to "Русский"
     )
 
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
+    ReportSettingsDetailScrollOffset {
+        if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else listState.firstVisibleItemScrollOffset
+    }
     // The old verticalScroll eagerly composed every section, including the wallpaper editor's
     // animated canvas and two 108-cell color grids. Keep the same one-surface scroll behavior, but
     // compose lower settings only when approached; this bounds entry work to the visible sections.
@@ -81,8 +86,8 @@ fun AppearanceScreen(
                 .bounceOverscroll(),
             state = listState,
             contentPadding = PaddingValues(
-                top = headerInset + 24.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp
+                top = if (embeddedPanel) (edgeInsets?.top ?: 8.dp) else headerInset + 24.dp,
+                bottom = if (embeddedPanel) (edgeInsets?.bottom ?: 24.dp) else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -90,6 +95,7 @@ fun AppearanceScreen(
                 CupertinoGroupedSection(title = AppStrings.get("settings_theme", lang)) {
                     themes.forEachIndexed { index, (mode, label) ->
                         CupertinoCell(
+                            modifier = Modifier.testTag("appearance-theme-${mode.name.lowercase()}"),
                             title = label,
                             trailing = {
                                 if (themeMode == mode) Icon(
@@ -121,6 +127,7 @@ fun AppearanceScreen(
                 CupertinoGroupedSection(title = AppStrings.get("settings_language", lang)) {
                     langs.forEachIndexed { index, (code, label) ->
                         CupertinoCell(
+                            modifier = Modifier.testTag("appearance-language-${code.lowercase()}"),
                             title = label,
                             trailing = {
                                 if (currentLanguage == code) Icon(
@@ -162,14 +169,14 @@ fun AppearanceScreen(
                         title = "显示策略组远程图标",
                         subtitle = "在节点列表中展示代理协议或服务商的专用图标",
                         trailing = {
-                            CupertinoSwitch(checked = showGroupIcons, onCheckedChange = onShowGroupIconsChanged)
+                            ArcaGlasmioSwitch(checked = showGroupIcons, onCheckedChange = onShowGroupIconsChanged)
                         }
                     )
                 }
             }
         }
 
-        Box(
+        if (!embeddedPanel) Box(
             Modifier.fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()

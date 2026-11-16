@@ -9,6 +9,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunStack
 import com.github.arca.android.ui.components.ShortcutTouchVariant
+import com.github.arca.android.ui.glass.NexusGlassBackground
+import com.github.arca.android.ui.glass.ProvideGlassTheme
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import com.github.arca.android.ui.theme.MihomoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -27,13 +30,18 @@ class ShortcutTouchSettingsSelectorTest {
         val chosen = mutableStateOf(ShortcutTouchVariant.GentleFloat)
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
-                SettingsScreen(
-                    scrollState = rememberScrollState(), tunStack = TunStack.MIPS,
-                    bootOnStartup = false, allowLan = false, fakeIpEnabled = false,
-                    shortcutTouchVariant = chosen.value, onShortcutTouchVariantChanged = { chosen.value = it },
-                    onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
-                    onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
-                )
+                ProvideGlassTheme {
+                    val backdrop = rememberArcaGlasmioBackdrop()
+                    NexusGlassBackground(sharedGlasmioBackdrop = backdrop) {
+                        SettingsScreen(
+                            scrollState = rememberScrollState(), tunStack = TunStack.MIPS,
+                            bootOnStartup = false, allowLan = false, fakeIpEnabled = false,
+                            shortcutTouchVariant = chosen.value, onShortcutTouchVariantChanged = { chosen.value = it },
+                            onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                            onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
+                        )
+                    }
+                }
             }
         }
         listOf(
@@ -52,16 +60,21 @@ class ShortcutTouchSettingsSelectorTest {
         val hotSwitch = mutableStateOf(true)
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
-                SettingsScreen(
-                    scrollState = rememberScrollState(), tunStack = TunStack.DEFAULT,
-                    bootOnStartup = false, allowLan = false, fakeIpEnabled = false,
-                    unifiedDelayEnabled = unifiedDelay.value,
-                    profileHotSwitchEnabled = hotSwitch.value,
-                    onUnifiedDelayChanged = { unifiedDelay.value = it },
-                    onProfileHotSwitchChanged = { hotSwitch.value = it },
-                    onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
-                    onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
-                )
+                ProvideGlassTheme {
+                    val backdrop = rememberArcaGlasmioBackdrop()
+                    NexusGlassBackground(sharedGlasmioBackdrop = backdrop) {
+                        SettingsScreen(
+                            scrollState = rememberScrollState(), tunStack = TunStack.DEFAULT,
+                            bootOnStartup = false, allowLan = false, fakeIpEnabled = false,
+                            unifiedDelayEnabled = unifiedDelay.value,
+                            profileHotSwitchEnabled = hotSwitch.value,
+                            onUnifiedDelayChanged = { unifiedDelay.value = it },
+                            onProfileHotSwitchChanged = { hotSwitch.value = it },
+                            onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                            onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
+                        )
+                    }
+                }
             }
         }
         compose.onNodeWithTag("settings-profile-hot-switch").performScrollTo().performClick()

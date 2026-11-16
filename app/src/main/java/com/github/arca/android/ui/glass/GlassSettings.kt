@@ -2,7 +2,10 @@ package com.github.arca.android.ui.glass
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
 /** One typed, versioned source of truth for the app's glass rendering controls. */
 @Serializable
@@ -83,7 +86,53 @@ data class GlassMotionTuning(
 }
 
 @Serializable
-enum class GlassPreset { CUSTOM, LIQUID }
+@OptIn(ExperimentalSerializationApi::class)
+enum class GlassPreset {
+    /** Old saved preset names all decode to the single Glasmio renderer. */
+    @SerialName("GLASMIO_FROSTED")
+    @JsonNames("CUSTOM", "LIQUID")
+    UNIFIED
+}
+
+internal fun GlassPreset.usesGlasmioFrosted(apiLevel: Int = android.os.Build.VERSION.SDK_INT): Boolean =
+    this == GlassPreset.UNIFIED && apiLevel >= android.os.Build.VERSION_CODES.TIRAMISU
+
+@Serializable
+@Immutable
+data class GlasmioFrostedTuning(
+    val blurRadiusDp: Float = DEFAULT_BLUR_RADIUS_DP,
+    val refractionHeightDp: Float = DEFAULT_REFRACTION_HEIGHT_DP,
+    val refractionAmountDp: Float = DEFAULT_REFRACTION_AMOUNT_DP,
+    val tintStrength: Float = DEFAULT_TINT_STRENGTH,
+    val surfaceAlphaMultiplier: Float = DEFAULT_SURFACE_ALPHA_MULTIPLIER
+) {
+    fun clamped() = copy(
+        blurRadiusDp = blurRadiusDp.safeIn(MIN_BLUR_RADIUS_DP, MAX_BLUR_RADIUS_DP, DEFAULT_BLUR_RADIUS_DP),
+        refractionHeightDp = refractionHeightDp.safeIn(MIN_REFRACTION_HEIGHT_DP, MAX_REFRACTION_HEIGHT_DP, DEFAULT_REFRACTION_HEIGHT_DP),
+        refractionAmountDp = refractionAmountDp.safeIn(MIN_REFRACTION_AMOUNT_DP, MAX_REFRACTION_AMOUNT_DP, DEFAULT_REFRACTION_AMOUNT_DP),
+        tintStrength = tintStrength.safeIn(MIN_TINT_STRENGTH, MAX_TINT_STRENGTH, DEFAULT_TINT_STRENGTH),
+        surfaceAlphaMultiplier = surfaceAlphaMultiplier.safeIn(MIN_SURFACE_ALPHA_MULTIPLIER, MAX_SURFACE_ALPHA_MULTIPLIER, DEFAULT_SURFACE_ALPHA_MULTIPLIER)
+    )
+
+    companion object {
+        const val MIN_BLUR_RADIUS_DP = 0f
+        const val MAX_BLUR_RADIUS_DP = 16f
+        const val DEFAULT_BLUR_RADIUS_DP = 5f
+        const val MIN_REFRACTION_HEIGHT_DP = 0f
+        const val MAX_REFRACTION_HEIGHT_DP = 32f
+        const val DEFAULT_REFRACTION_HEIGHT_DP = 12f
+        const val MIN_REFRACTION_AMOUNT_DP = 0f
+        const val MAX_REFRACTION_AMOUNT_DP = 32f
+        const val DEFAULT_REFRACTION_AMOUNT_DP = 13.5f
+        const val MIN_TINT_STRENGTH = 0f
+        const val MAX_TINT_STRENGTH = 0.5f
+        const val DEFAULT_TINT_STRENGTH = 0.12f
+        const val MIN_SURFACE_ALPHA_MULTIPLIER = 0.4f
+        const val MAX_SURFACE_ALPHA_MULTIPLIER = 1.6f
+        const val DEFAULT_SURFACE_ALPHA_MULTIPLIER = 1.25f
+        val DEFAULT = GlasmioFrostedTuning()
+    }
+}
 
 @Serializable
 @Immutable
@@ -94,14 +143,11 @@ data class GlassSettings(
     val surfaceOverrides: Map<GlassSurfaceCategory, GlassOptics> = emptyMap(),
     val motion: GlassMotionTuning = GlassMotionTuning.DEFAULT,
     val shortcutGlassLevel: ShortcutGlassLevel = ShortcutGlassLevel.Extreme,
-    val glassPreset: GlassPreset = GlassPreset.CUSTOM,
-    /** Kyant preset's own global optics: each preset edits its own parameter set. */
-    val liquidGlobalOptics: GlassOptics = GlassOptics.DEFAULT
+    val glassPreset: GlassPreset = GlassPreset.UNIFIED,
+    /** Retained only to decode legacy preferences; it is not exposed as a glass mode. */
+    val liquidGlobalOptics: GlassOptics = GlassOptics.DEFAULT,
+    val glasmioFrosted: GlasmioFrostedTuning = GlasmioFrostedTuning.DEFAULT
 ) {
-    /** The global optics of the given preset (CUSTOM uses [globalOptics]). */
-    fun globalOpticsFor(preset: GlassPreset): GlassOptics =
-        if (preset == GlassPreset.LIQUID) liquidGlobalOptics.clamped() else globalOptics.clamped()
-
     fun opticsFor(surface: GlassSurfaceCategory): GlassOptics =
         (surfaceOverrides[surface] ?: globalOptics).clamped()
 
@@ -112,8 +158,10 @@ data class GlassSettings(
 
     fun clamped() = copy(
         schemaVersion = CURRENT_SCHEMA_VERSION,
+        glassPreset = GlassPreset.UNIFIED,
         globalOptics = globalOptics.clamped(),
         liquidGlobalOptics = liquidGlobalOptics.clamped(),
+        glasmioFrosted = glasmioFrosted.clamped(),
         surfaceOverrides = surfaceOverrides.mapValues { it.value.clamped() },
         motion = motion.clamped()
     )

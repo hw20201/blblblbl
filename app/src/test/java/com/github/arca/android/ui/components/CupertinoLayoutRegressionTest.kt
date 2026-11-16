@@ -1,5 +1,6 @@
 package com.github.arca.android.ui.components
 
+import com.github.arca.android.ui.glass.NexusGlassBackground
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -76,12 +77,15 @@ class CupertinoLayoutRegressionTest {
         val originalLocale = Locale.getDefault()
         val selected = mutableListOf<String>()
         compose.setContent {
-            AppearanceScreen(
-                themeMode = ThemeMode.SYSTEM, onThemeModeChanged = {},
-                onLanguageChanged = { selected += it },
-                showGroupIcons = true, onShowGroupIconsChanged = {},
-                nodeColumns = 2, onNodeColumnsChanged = {}, onBack = {},
-            )
+            // The appearance page draws Glasmio glass, which must be hosted by a backdrop provider.
+            NexusGlassBackground {
+                AppearanceScreen(
+                    themeMode = ThemeMode.SYSTEM, onThemeModeChanged = {},
+                    onLanguageChanged = { selected += it },
+                    showGroupIcons = true, onShowGroupIconsChanged = {},
+                    nodeColumns = 2, onNodeColumnsChanged = {}, onBack = {},
+                )
+            }
         }
         compose.onNodeWithTag("appearance-scroll-content").performScrollToNode(hasText("简体中文"))
         compose.onNodeWithText("简体中文").performClick()

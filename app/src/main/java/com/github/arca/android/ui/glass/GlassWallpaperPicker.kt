@@ -1,5 +1,11 @@
 package com.github.arca.android.ui.glass
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 
+import android.os.Build
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -23,9 +29,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,11 +54,16 @@ import kotlin.math.roundToInt
 import com.github.arca.android.ui.theme.LoonTextMuted
 import com.github.arca.android.ui.theme.LoonTextPrimary
 import com.github.arca.android.ui.theme.LoonTextSecondary
+import com.github.arca.android.ui.components.ArcaGlasmioSwitch
 import com.github.arca.android.data.SavedWallpaperPalette
 import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.ui.glass.NavigationGlassSurface
 import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.LensStrength
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
+import io.github.neoruaa.glasmio.glass.glassBackdropSource
+import io.github.neoruaa.glasmio.glass.trackBackdropPosition
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop as rememberGlasmioLayerBackdrop
 
 /** Compact wallpaper editor. Straight fluted ribs only; the curved-refraction style was removed. */
 @Composable
@@ -77,6 +88,10 @@ fun GlassWallpaperPicker(
         label = "wallpaper-preview-phase"
     )
     val lens = rememberNavigationLens()
+    val glasmioBackdrop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) rememberGlasmioLayerBackdrop() else null
+    val previewSourceModifier = glasmioBackdrop?.let {
+        Modifier.glassBackdropSource(it).trackBackdropPosition(it)
+    } ?: Modifier.recordNavigationScene(lens)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("自定义褶皱壁纸已直接用于应用背景", color = LoonTextSecondary, fontSize = 12.sp)
 
@@ -112,23 +127,29 @@ fun GlassWallpaperPicker(
                 modifier = Modifier.testTag("wallpaper-save-current-palette")
             ) { Text("收纳配色") }
         }
-        if (paletteEditorExpanded) {
-            Text("选中一个色位，再用色板或 RGB 滑杆调色", color = LoonTextMuted, fontSize = 11.sp)
-            GlassPalettePicker(
-                selected = GlassPalettes.byKey(GlassPalettes.keyForColor(settings.colorAt(selectedColor))),
-                labelProvider = { "混合主色 ${selectedColor + 1}" },
-                onSelect = { spec -> onSettingsChanged(settings.withColor(selectedColor, spec.accent)) },
-                modifier = Modifier.testTag("wallpaper-color-grid")
-            )
-            val activeColor = settings.colorAt(selectedColor)
-            RgbChannelSlider("R", activeColor.red, Modifier.testTag("wallpaper-rgb-red")) { channel ->
-                onSettingsChanged(settings.withColor(selectedColor, Color(channel / 255f, activeColor.green, activeColor.blue)))
-            }
-            RgbChannelSlider("G", activeColor.green, Modifier.testTag("wallpaper-rgb-green")) { channel ->
-                onSettingsChanged(settings.withColor(selectedColor, Color(activeColor.red, channel / 255f, activeColor.blue)))
-            }
-            RgbChannelSlider("B", activeColor.blue, Modifier.testTag("wallpaper-rgb-blue")) { channel ->
-                onSettingsChanged(settings.withColor(selectedColor, Color(activeColor.red, activeColor.green, channel / 255f)))
+        AnimatedVisibility(
+            visible = paletteEditorExpanded,
+            enter = fadeIn(tween(360, easing = FastOutSlowInEasing)) + expandVertically(tween(520, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(280)) + shrinkVertically(tween(420, easing = FastOutSlowInEasing))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("选中一个色位，再用色板或 RGB 滑杆调色", color = LoonTextMuted, fontSize = 11.sp)
+                GlassPalettePicker(
+                    selected = GlassPalettes.byKey(GlassPalettes.keyForColor(settings.colorAt(selectedColor))),
+                    labelProvider = { "混合主色 ${selectedColor + 1}" },
+                    onSelect = { spec -> onSettingsChanged(settings.withColor(selectedColor, spec.accent)) },
+                    modifier = Modifier.testTag("wallpaper-color-grid")
+                )
+                val activeColor = settings.colorAt(selectedColor)
+                RgbChannelSlider("R", activeColor.red, Modifier.testTag("wallpaper-rgb-red")) { channel ->
+                    onSettingsChanged(settings.withColor(selectedColor, Color(channel / 255f, activeColor.green, activeColor.blue)))
+                }
+                RgbChannelSlider("G", activeColor.green, Modifier.testTag("wallpaper-rgb-green")) { channel ->
+                    onSettingsChanged(settings.withColor(selectedColor, Color(activeColor.red, channel / 255f, activeColor.blue)))
+                }
+                RgbChannelSlider("B", activeColor.blue, Modifier.testTag("wallpaper-rgb-blue")) { channel ->
+                    onSettingsChanged(settings.withColor(selectedColor, Color(activeColor.red, activeColor.green, channel / 255f)))
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -138,17 +159,23 @@ fun GlassWallpaperPicker(
                 modifier = Modifier.testTag("wallpaper-toggle-saved-palettes")
             ) { Text(if (savedPalettesExpanded) "收起" else "展开") }
         }
-        if (savedPalettesExpanded) {
-            if (savedPalettes.isEmpty()) {
-                Text("收纳后的三色配色会显示在这里。", color = LoonTextMuted, fontSize = 11.sp)
-            } else {
-                savedPalettes.forEachIndexed { index, entry ->
-                    SavedWallpaperPaletteRow(
-                        entry = entry,
-                        index = index,
-                        onApply = { onSettingsChanged(entry.applyTo(settings)) },
-                        onDelete = { savedPalettes = settingsManager.deleteWallpaperPalette(entry.name) }
-                    )
+        AnimatedVisibility(
+            visible = savedPalettesExpanded,
+            enter = fadeIn(tween(350, easing = FastOutSlowInEasing)) + expandVertically(tween(500, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(260)) + shrinkVertically(tween(410, easing = FastOutSlowInEasing))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                if (savedPalettes.isEmpty()) {
+                    Text("收纳后的三色配色会显示在这里。", color = LoonTextMuted, fontSize = 11.sp)
+                } else {
+                    savedPalettes.forEachIndexed { index, entry ->
+                        SavedWallpaperPaletteRow(
+                            entry = entry,
+                            index = index,
+                            onApply = { onSettingsChanged(entry.applyTo(settings)) },
+                            onDelete = { savedPalettes = settingsManager.deleteWallpaperPalette(entry.name) }
+                        )
+                    }
                 }
             }
         }
@@ -157,33 +184,19 @@ fun GlassWallpaperPicker(
                 Text("缓慢色彩波动", color = LoonTextPrimary, fontSize = 13.sp)
                 Text("轻微移动混色边界；关闭后保持静态", color = LoonTextMuted, fontSize = 11.sp)
             }
-            Switch(
+            ArcaGlasmioSwitch(
                 checked = settings.colorFlow,
                 onCheckedChange = { onSettingsChanged(settings.copy(enabled = true, colorFlow = it)) },
                 modifier = Modifier.testTag("wallpaper-color-flow-toggle")
             )
         }
 
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("褶皱角度", color = LoonTextPrimary, fontSize = 13.sp)
-                Text("正值向下向左斜，负值向下向右斜；0 为竖直", color = LoonTextMuted, fontSize = 11.sp)
-            }
-            Text("%.1f°".format(settings.ribAngleDegrees), color = LoonTextMuted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
-        }
-        Slider(
-            value = settings.ribAngleDegrees.coerceIn(GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES, GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES),
-            onValueChange = { onSettingsChanged(settings.copy(enabled = true, ribAngleDegrees = it)) },
-            valueRange = GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES..GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES,
-            steps = 139,
-            modifier = Modifier.fillMaxWidth().testTag("wallpaper-rib-angle")
-        )
-
         Box(Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(22.dp)).testTag("wallpaper-live-preview")) {
-            Canvas(Modifier.fillMaxSize().recordNavigationScene(lens)) {
+            Canvas(Modifier.fillMaxSize().then(previewSourceModifier)) {
                 val seconds = if (settings.colorFlow) progress / (2.0 * Math.PI).toFloat() * 54f else 0f
                 drawGlassWallpaper(settings, seconds)
             }
+            val glassSample: @Composable () -> Unit = {
             NavigationGlassSurface(
                 modifier = Modifier.align(Alignment.Center).fillMaxWidth(.72f).height(78.dp)
                     .testTag("wallpaper-glass-sample"),
@@ -201,6 +214,14 @@ fun GlassWallpaperPicker(
                     Text("直纹 · 边缘高光", color = LoonTextSecondary, fontSize = 11.sp)
                 }
             }
+            }
+            if (glasmioBackdrop != null) {
+                GlasmioBackdropProvider(glasmioBackdrop) {
+                    CompositionLocalProvider(LocalArcaGlasmioBackdrop provides glasmioBackdrop) {
+                        glassSample()
+                    }
+                }
+            } else glassSample()
         }
     }
     if (showSaveDialog) {

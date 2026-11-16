@@ -6,11 +6,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
+import android.os.Trace
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -165,10 +168,12 @@ class MihomoVpnService : VpnService() {
         startJob = serviceScope.launch(Dispatchers.Default) {
             lifecycleMutex.withLock {
             try {
+                val traceStartup = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                val startupStartedAtNanos = if (traceStartup) SystemClock.elapsedRealtimeNanos() else 0L
                 currentCoroutineContext().ensureActive()
                 // 1. Initialize native core
-                ClashCore.init(this@MihomoVpnService)
-                val coreVer = ClashCore.getCoreVersion()
+                measureStartupStage("core_init", traceStartup) { ClashCore.init(this@MihomoVpnService) }
+                val coreVer = measureStartupStage("core_version", traceStartup) { ClashCore.getCoreVersion() }
 
                 // 2. Select and prepare configuration
                 val settings = SettingsManager(this@MihomoVpnService)
@@ -183,15 +188,19 @@ class MihomoVpnService : VpnService() {
                 if (!nativeTunOptions) {
                     Log.w(TAG, "Native bridge has no TUN options contract; MTU/pacing settings stay at defaults")
                 }
-                val profiles = ConfigManager.getProfiles(this@MihomoVpnService)
+                val profiles = measureStartupStage("profile_lookup", traceStartup) {
+                    ConfigManager.getProfiles(this@MihomoVpnService)
+                }
                 val activeProfile = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
 
-                val configFile = ConfigManager.prepareConfig(
-                    this@MihomoVpnService, activeProfile?.file, ipv6Enabled = ipv6
-                )
+                val configFile = measureStartupStage("prepare_config", traceStartup) {
+                    ConfigManager.prepareConfig(
+                        this@MihomoVpnService, activeProfile?.file, ipv6Enabled = ipv6
+                    )
+                }
 
                 // 3. Load config into core
-                val loadRes = ClashCore.load(configFile)
+                val loadRes = measureStartupStage("load_config", traceStartup) { ClashCore.load(configFile) }
                 if (loadRes.isFailure) {
                     error("加载配置文件失败: ${loadRes.exceptionOrNull()?.message}")
                 }
@@ -274,7 +283,8 @@ class MihomoVpnService : VpnService() {
                     }
                 }
 
-                val pfd = builder.establish() ?: error("无法建立 VPN TUN 接口 (Builder.establish() 返回 null)")
+                val pfd = measureStartupStage("establish_tun", traceStartup) { builder.establish() }
+                    ?: error("无法建立 VPN TUN 接口 (Builder.establish() 返回 null)")
                 vpnInterface = pfd
 
                 // 5. Borrow the app-owned FD; the native listener owns a separate duplicate.
@@ -282,16 +292,18 @@ class MihomoVpnService : VpnService() {
                 val selectedStack = settings.tunStack.key
                 val gateway = if (ipv6) "172.19.0.1/30,fdfe:dcba:9876::1/126" else "172.19.0.1/30"
                 val portal = if (ipv6) "172.19.0.2,fdfe:dcba:9876::2" else "172.19.0.2"
-                ClashCore.startTun(
-                    fd = pfd.fd,
-                    stack = selectedStack,
-                    gateway = gateway,
-                    portal = portal,
-                    dns = portal,
-                    mtu = mtu,
-                    congestionController = congestion,
-                    vpnService = this@MihomoVpnService
-                )
+                measureStartupStage("native_start_tun", traceStartup) {
+                    ClashCore.startTun(
+                        fd = pfd.fd,
+                        stack = selectedStack,
+                        gateway = gateway,
+                        portal = portal,
+                        dns = portal,
+                        mtu = mtu,
+                        congestionController = congestion,
+                        vpnService = this@MihomoVpnService
+                    )
+                }
                 currentCoroutineContext().ensureActive()
 
                 // 6. Report running only after the native listener has started successfully.
@@ -302,6 +314,10 @@ class MihomoVpnService : VpnService() {
                 )
 
                 startTrafficMonitor()
+                if (traceStartup) {
+                    val totalMs = (SystemClock.elapsedRealtimeNanos() - startupStartedAtNanos) / 1_000_000L
+                    Log.d(TAG, "VPN startup total=${totalMs}ms")
+                }
                 Log.i(TAG, "Nexus VPN successfully started! Core: $coreVer, ipv6=$ipv6, mtu=$mtu, cc=$congestion")
                 com.github.arca.android.data.LogRepository.addLog(
                     "info",
@@ -326,6 +342,19 @@ class MihomoVpnService : VpnService() {
                 stopSelf()
             }
             }
+        }
+    }
+
+    private inline fun <T> measureStartupStage(name: String, traceEnabled: Boolean, block: () -> T): T {
+        if (!traceEnabled) return block()
+        val startedAtNanos = SystemClock.elapsedRealtimeNanos()
+        Trace.beginSection("ArcaVPN/$name")
+        return try {
+            block()
+        } finally {
+            val durationMicros = (SystemClock.elapsedRealtimeNanos() - startedAtNanos) / 1_000L
+            Trace.endSection()
+            Log.d(TAG, "VPN startup stage $name=${durationMicros}us")
         }
     }
 

@@ -43,7 +43,8 @@ fun AppRoutingScreen(
     isLoading: Boolean,
     onBack: (() -> Unit)? = null,
     onModeChanged: (PerAppProxyMode) -> Unit,
-    onTogglePackage: (String) -> Unit
+    onTogglePackage: (String) -> Unit,
+    embeddedPanel: Boolean = false
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var showSystemApps by remember { mutableStateOf(false) }
@@ -64,14 +65,14 @@ fun AppRoutingScreen(
         filtered.partition { selectedPackages.contains(it.packageName) }
     }
 
-    // One transparent edge-to-edge list owns the controls and every app row. The title/back
-    // row floats above it, so searching, filters and results all move as one continuous page.
+    // One transparent edge-to-edge list owns the controls and every app row. In embedded mode
+    // the panel host already handles system insets, so only the full-screen page adds status-bar space.
     Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("app-routing-list").bounceOverscroll(),
             contentPadding = PaddingValues(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
-                bottom = 120.dp
+                top = (if (embeddedPanel) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 56.dp,
+                bottom = if (embeddedPanel) 24.dp else 120.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -110,7 +111,7 @@ fun AppRoutingScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(AppStrings.get("app_show_system", lang), color = LoonTextSecondary, fontSize = 12.sp)
                             Spacer(Modifier.width(8.dp))
-                            CupertinoSwitch(checked = showSystemApps, onCheckedChange = { showSystemApps = it })
+                            ArcaGlasmioSwitch(checked = showSystemApps, onCheckedChange = { showSystemApps = it })
                         }
                     }
                 }
@@ -210,7 +211,7 @@ fun AppRoutingScreen(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().statusBarsPadding().zIndex(1f)) {
+        Box(Modifier.fillMaxWidth().then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding()).zIndex(1f)) {
             CupertinoNavBar(
                 title = AppStrings.get("app_routing_title", lang),
                 showBackButton = onBack != null,

@@ -5,7 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -47,11 +49,14 @@ data class DnsQueryResult(
 fun DnsScreen(
     fakeIpEnabled: Boolean,
     onFakeIpEnabledChanged: (Boolean) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    embeddedPanel: Boolean = false,
+    listState: LazyListState? = null
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
+    val pageListState = listState ?: rememberLazyListState()
 
     var testDomainInput by remember { mutableStateOf("") }
     var isQuerying by remember { mutableStateOf(false) }
@@ -114,16 +119,22 @@ fun DnsScreen(
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
             .testTag("dns-page-root")
     ) {
-        // One full-screen list moves behind the pinned, translucent navigation bar.
+        // In a morph panel the empty-state explanation is pinned inside the panel, not
+        // left as the final lazy item where it can sit behind the floating Dock.
+        Column(Modifier.fillMaxSize().testTag("dns-page-body")) {
         LazyColumn(
+            state = pageListState,
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .testTag("dns-page-list")
                 .bounceOverscroll()
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                top = if (embeddedPanel) 8.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                // Leave a deliberate scroll tail above the pinned explanation so
+                // the final DNS row can settle fully clear of the fixed hint.
+                bottom = if (embeddedPanel) 20.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -150,7 +161,7 @@ fun DnsScreen(
                                     color = LoonTextMuted
                                 )
                             }
-                            CupertinoSwitch(
+                            ArcaGlasmioSwitch(
                                 checked = fakeIpEnabled,
                                 onCheckedChange = { onFakeIpEnabledChanged(it) },
                                 modifier = Modifier.testTag("dns-fakeip-switch")
@@ -335,11 +346,12 @@ fun DnsScreen(
                             Triple("8.8.8.8", "Google DNS (国外回退)", AppPalette.iconYellowAmber)
                         )
 
-                        servers.forEach { (ip, label, badgeColor) ->
+                        servers.forEachIndexed { rowIndex, (ip, label, badgeColor) ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 5.dp),
+                                    .padding(vertical = 5.dp)
+                                    .testTag("dns-upstream-row-$rowIndex"),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -405,7 +417,7 @@ fun DnsScreen(
             // Card 5: Recent DNS Query Log Entries
             item(key = "dns_logs_header") {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("dns-logs-header"),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -418,7 +430,7 @@ fun DnsScreen(
                 }
             }
 
-            if (dnsLogs.isEmpty()) {
+            if (dnsLogs.isEmpty() && !embeddedPanel) {
                 item(key = "empty_dns_logs") {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -471,8 +483,27 @@ fun DnsScreen(
                 }
             }
         }
+        if (embeddedPanel) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = LoonCard,
+                border = androidx.compose.foundation.BorderStroke(1.dp, LoonCardBorder),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("dns-panel-bottom-hint")
+            ) {
+                Text(
+                    text = if (dnsLogs.isEmpty()) "暂无捕获的 DNS 查询记录\n代理启动后网络域名解析事件将在此展示"
+                    else "最近 DNS 解析记录 · 上下滚动查看",
+                    color = LoonTextMuted,
+                    fontSize = 12.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                )
+            }
+        }
+        }
 
-        Box(
+        if (!embeddedPanel) Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()

@@ -39,7 +39,8 @@ fun RulesScreen(
     rules: List<ParsedRule>,
     totalRules: Int,
     tunnelMode: TunnelMode,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    embeddedPanel: Boolean = false
 ) {
     val clipboardManager = LocalClipboardManager.current
     val lang = LocalAppLanguage.current
@@ -80,7 +81,7 @@ fun RulesScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("rules-list").bounceOverscroll(),
             contentPadding = PaddingValues(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 50.dp,
+                top = (if (embeddedPanel) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 50.dp,
                 bottom = 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -221,7 +222,7 @@ fun RulesScreen(
                 }
             }
         }
-        Box(Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
+        Box(Modifier.align(Alignment.TopCenter).then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())) {
             CupertinoNavBar(
                 title = AppStrings.get("rules_screen_title", lang),
                 subtitle = "${tunnelMode.displayName} · 共 $totalRules 条规则",

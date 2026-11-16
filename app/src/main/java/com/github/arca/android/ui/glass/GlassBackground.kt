@@ -1,4 +1,12 @@
 package com.github.arca.android.ui.glass
+import android.os.Build
+import androidx.compose.runtime.CompositionLocalProvider
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
+import io.github.neoruaa.glasmio.glass.glassBackdropSource
+import io.github.neoruaa.glasmio.glass.trackBackdropPosition
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop as rememberGlasmioLayerBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop as GlasmioLayerBackdrop
+import io.github.neoruaa.glasmio.glass.render.Backdrop
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,8 +27,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -29,6 +35,27 @@ import kotlin.random.Random
 
 /** A reproducible seed may be supplied to previews; app sessions start a fresh route. */
 internal val LocalSoftMeshSeed = staticCompositionLocalOf<Long?> { null }
+
+/** Create a Glasmio layer source for live page content on API 33+. */
+@Composable
+fun rememberArcaGlasmioBackdrop(enabled: Boolean = true): GlasmioLayerBackdrop? {
+    if (!enabled || !GlassDefaults.enabled || !LocalGlassSettings.current.glassPreset.usesGlasmioFrosted()) return null
+    return rememberGlasmioLayerBackdrop()
+}
+
+fun Modifier.recordArcaGlasmioBackdropSource(backdrop: GlasmioLayerBackdrop?): Modifier =
+    if (backdrop == null) this else glassBackdropSource(backdrop).trackBackdropPosition(backdrop)
+
+@Composable
+fun ProvideArcaGlasmioBackdrop(backdrop: Backdrop?, content: @Composable () -> Unit) {
+    if (backdrop == null) {
+        content()
+    } else {
+        CompositionLocalProvider(LocalArcaGlasmioBackdrop provides backdrop) {
+            GlasmioBackdropProvider(backdrop = backdrop) { content() }
+        }
+    }
+}
 
 /** The approved pale ice-blue/lavender field, independent of legacy preset accent names. */
 internal val IceLavenderMesh = listOf(
@@ -50,8 +77,10 @@ fun NexusGlassBackground(
     modifier: Modifier = Modifier,
     palette: GlassPaletteSpec = LocalGlassPalette.current,
     backdropRecorder: Modifier = Modifier,
-    kyantBackdrop: LayerBackdrop? = null,
     testBackdropVariant: String? = null,
+    sharedGlasmioBackdrop: Backdrop? = null,
+    recordGlasmioBackdropSource: Boolean = sharedGlasmioBackdrop == null,
+    drawBackground: Boolean = true,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -74,6 +103,15 @@ fun NexusGlassBackground(
                 )
             }
             content()
+        }
+        return
+    }
+    val glasmioBackdrop = sharedGlasmioBackdrop ?: if (drawBackground && LocalGlassSettings.current.glassPreset.usesGlasmioFrosted())
+        rememberGlasmioLayerBackdrop() else null
+    val glasmioLayerBackdrop = glasmioBackdrop as? GlasmioLayerBackdrop
+    if (!drawBackground) {
+        Box(modifier = modifier.fillMaxSize()) {
+            ProvideArcaGlasmioBackdrop(glasmioBackdrop) { content() }
         }
         return
     }
@@ -120,7 +158,9 @@ fun NexusGlassBackground(
     Box(modifier = modifier.fillMaxSize().clipToBounds()) {
         Box(
             modifier = Modifier.fillMaxSize().graphicsLayer().then(backdropRecorder)
-                .then(if (kyantBackdrop != null) Modifier.layerBackdrop(kyantBackdrop) else Modifier)
+                .then(if (recordGlasmioBackdropSource && glasmioLayerBackdrop != null)
+                    Modifier.glassBackdropSource(glasmioLayerBackdrop).trackBackdropPosition(glasmioLayerBackdrop)
+                else Modifier)
                 .then(if (testBackdropId == null) Modifier.background(base).drawBehind {
                     val time = seconds.value // draw-phase read; no foreground recomposition/layout.
                     if (wallpaper.enabled) {
@@ -159,6 +199,6 @@ fun NexusGlassBackground(
                 )
             }
         }
-        content()
+        ProvideArcaGlasmioBackdrop(glasmioBackdrop) { content() }
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithTag
@@ -131,6 +132,8 @@ class ProxiesGlassRenderingTest {
                 compose.waitForIdle()
                 assertEquals("Osaka", selected.value)
                 compose.onNodeWithTag("proxy-selected-glass-material", useUnmergedTree = true).assertExists()
+                assertTrue(compose.onAllNodesWithTag("proxy-glasmio-main-material", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty())
                 saveScreenshot("proxies-${if (isDark) "dark" else "light"}-$count-columns")
             }
         }

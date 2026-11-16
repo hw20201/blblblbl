@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl
+import org.json.JSONObject
 import okhttp3.Request
 import java.io.IOException
 import java.net.Inet6Address
@@ -23,6 +25,24 @@ data class OutboundIpInfo(
     val organization: String? = null,
     val asn: String? = null,
     val source: String
+)
+
+data class ScamalyticsIndicator(
+    val source: String,
+    val label: String,
+    val detected: Boolean?
+)
+
+data class ScamalyticsInfo(
+    val ipAddress: String,
+    val hostingProxySignals: List<ScamalyticsIndicator>,
+    val blacklistMarkers: List<ScamalyticsIndicator>,
+    val blacklistCount: Int?,
+    val ip2proxyBlacklistType: String?,
+    val proxyType: String?,
+    val proxyTypeSource: String?,
+    val proxyTypeRequiresPremium: Boolean,
+    val usageType: String?
 )
 
 class OutboundIpRepository(
@@ -142,3 +162,79 @@ class OutboundIpRepository(
         private const val IPQUERY_URL = "https://api.ipquery.io/?format=json"
     }
 }
+
+private const val SCAMALYTICS_PREMIUM_PLACEHOLDER = "PREMIUM FIELD - upgrade to view"
+
+private fun requireScamalyticsObject(json: JSONObject): JSONObject {
+    val scamalytics = json.optJSONObject("scamalytics") ?: throw IOException("Invalid Scamalytics response")
+    if (scamalytics.optString("status") != "ok") throw IOException("Scamalytics response not successful")
+    return scamalytics
+}
+
+internal fun parseScamalyticsResponse(json: JSONObject, requestedIp: String): ScamalyticsInfo {
+    val scamalytics = requireScamalyticsObject(json)
+    val returnedIp = scamalytics.safeText("ip") ?: throw IOException("Scamalytics response has no IP")
+    if (returnedIp != requestedIp) throw IOException("Scamalytics response IP mismatch")
+
+    val proxy = scamalytics.optJSONObject("scamalytics_proxy")
+    val external = json.optJSONObject("external_datasources")
+    val ip2proxy = external?.optJSONObject("ip2proxy")
+    val ip2proxyLite = external?.optJSONObject("ip2proxy_lite")
+    val firehol = external?.optJSONObject("firehol")
+    val ipsum = external?.optJSONObject("ipsum")
+    val spamhaus = external?.optJSONObject("spamhaus_drop")
+    val x4bnet = external?.optJSONObject("x4bnet")
+
+    val hostingProxy = listOf(
+        ScamalyticsIndicator("Scamalytics", "数据中心 / Hosting", proxy.boolValue("is_datacenter")),
+        ScamalyticsIndicator("Scamalytics", "VPN", proxy.boolValue("is_vpn")),
+        ScamalyticsIndicator("Scamalytics", "住宅代理", proxy.boolValue("is_resproxy")),
+        ScamalyticsIndicator("FireHOL", "代理", firehol.boolValue("is_proxy")),
+        ScamalyticsIndicator("X4BNet", "数据中心 / Hosting", x4bnet.boolValue("is_datacenter")),
+        ScamalyticsIndicator("X4BNet", "Tor", x4bnet.boolValue("is_tor"))
+    )
+    val blacklistMarkers = listOf(
+        ScamalyticsIndicator("Scamalytics", "外部黑名单", scamalytics.boolValue("is_blacklisted_external")),
+        ScamalyticsIndicator("IP2Proxy Lite", "黑名单", ip2proxyLite.boolValue("ip_blacklisted")),
+        ScamalyticsIndicator("FireHOL", "近 30 天", firehol.boolValue("ip_blacklisted_30")),
+        ScamalyticsIndicator("FireHOL", "近 1 天", firehol.boolValue("ip_blacklisted_1day")),
+        ScamalyticsIndicator("IPsum", "黑名单", ipsum.boolValue("ip_blacklisted")),
+        ScamalyticsIndicator("Spamhaus DROP", "黑名单", spamhaus.boolValue("ip_blacklisted")),
+        ScamalyticsIndicator("X4BNet", "垃圾邮件标记", x4bnet.boolValue("is_blacklisted_spambot"))
+    )
+
+    val premiumProxyType = ip2proxy.safeText("proxy_type")
+    val liteProxyType = ip2proxyLite.safeText("proxy_type")
+    val premiumPlaceholder = premiumProxyType == SCAMALYTICS_PREMIUM_PLACEHOLDER
+    val actualPremiumType = premiumProxyType?.takeUnless { it == SCAMALYTICS_PREMIUM_PLACEHOLDER }
+    val actualLiteType = liteProxyType?.takeUnless { it == SCAMALYTICS_PREMIUM_PLACEHOLDER }
+    val selectedProxyType = actualPremiumType ?: actualLiteType
+
+    return ScamalyticsInfo(
+        ipAddress = returnedIp,
+        hostingProxySignals = hostingProxy,
+        blacklistMarkers = blacklistMarkers,
+        blacklistCount = (ipsum?.opt("num_blacklists") as? Number)?.toInt()?.takeIf { it >= 0 },
+        ip2proxyBlacklistType = ip2proxyLite.safeText("ip_blacklist_type"),
+        proxyType = selectedProxyType,
+        proxyTypeSource = when {
+            actualPremiumType != null -> "IP2Proxy"
+            actualLiteType != null -> "IP2Proxy Lite"
+            else -> null
+        },
+        proxyTypeRequiresPremium = premiumPlaceholder && actualLiteType == null,
+        usageType = ip2proxyLite.safeText("usage_type")
+    )
+}
+
+private fun JSONObject?.boolValue(key: String): Boolean? = when (val value = this?.opt(key)) {
+    is Boolean -> value
+    else -> null
+}
+
+private fun JSONObject?.safeText(key: String): String? {
+    val value = this?.opt(key) ?: return null
+    if (value == JSONObject.NULL) return null
+    return value.toString().trim().takeIf { it.isNotEmpty() && it != "null" }
+}
+

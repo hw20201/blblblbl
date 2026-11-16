@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.Role
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -53,11 +55,15 @@ import androidx.compose.ui.window.Dialog
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassRadius
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
+import com.github.arca.android.ui.glass.LocalGlassTokens
+import com.github.arca.android.ui.glass.glassSurface
 import com.github.arca.android.ui.glass.DEFAULT_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.rememberNavigationLens
+import io.github.neoruaa.glasmio.ui.GlasmioSwitch as NativeGlasmioSwitch
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -185,6 +191,94 @@ fun CupertinoGroupedSection(
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp, end = 14.dp)
             )
         }
+    }
+}
+
+/**
+ * A group whose rows are separate glass cards with a small gap between them, instead of one slab cut
+ * by hairlines. The group's outer corners stay large; the corners where two rows meet are small, so a
+ * stack still reads as one group. Every card is a real object with its own bounds, which is what lets a
+ * row lift out of the list and grow into a panel as itself.
+ */
+@Composable
+fun CupertinoSeparatedSection(
+    modifier: Modifier = Modifier,
+    header: String? = null,
+    title: String? = null,
+    footer: String? = null,
+    gap: androidx.compose.ui.unit.Dp = SeparatedRowGap,
+    content: @Composable SeparatedSectionScope.() -> Unit
+) {
+    val displayHeader = header ?: title
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        if (!displayHeader.isNullOrBlank()) {
+            Text(
+                text = displayHeader.uppercase(),
+                color = LoonTextSecondary,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.3.sp,
+                modifier = Modifier.padding(start = 14.dp, bottom = 6.dp)
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            SeparatedSectionScope.content()
+        }
+        if (!footer.isNullOrBlank()) {
+            Text(
+                text = footer,
+                color = LoonTextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(start = 14.dp, top = 6.dp, end = 14.dp)
+            )
+        }
+    }
+}
+
+/** Corner radius where two rows of a separated group meet. */
+val SeparatedInnerRadius = 4.dp
+
+/** Gap between two rows of a separated group. */
+val SeparatedRowGap = 2.dp
+
+object SeparatedSectionScope
+
+/** Position of a row inside a separated group, which decides which corners stay large. */
+enum class SeparatedRowPosition { Only, First, Middle, Last }
+
+fun separatedRowShape(position: SeparatedRowPosition, outer: androidx.compose.ui.unit.Dp = GlassRadius.section): RoundedCornerShape {
+    val o = outer
+    val i = SeparatedInnerRadius
+    return when (position) {
+        SeparatedRowPosition.Only -> RoundedCornerShape(o)
+        SeparatedRowPosition.First -> RoundedCornerShape(topStart = o, topEnd = o, bottomStart = i, bottomEnd = i)
+        SeparatedRowPosition.Middle -> RoundedCornerShape(i)
+        SeparatedRowPosition.Last -> RoundedCornerShape(topStart = i, topEnd = i, bottomStart = o, bottomEnd = o)
+    }
+}
+
+/**
+ * One row of a separated group, drawn as its own glass card. [onBounds] reports the card's window bounds and
+ * [shapeRadiusPx] its largest corner, so a morph can start from the card itself.
+ */
+@Composable
+fun SeparatedSectionScope.SeparatedRow(
+    position: SeparatedRowPosition,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val shape = separatedRowShape(position)
+    if (GlassDefaults.enabled) {
+        GlassSurface(modifier = modifier.fillMaxWidth(), shape = shape) {
+            Column(Modifier.fillMaxWidth()) { content() }
+        }
+    } else {
+        Surface(
+            modifier = modifier.fillMaxWidth().clip(shape).border(0.5.dp, LoonCardBorder, shape),
+            color = LoonCard,
+            shape = shape
+        ) { Column(Modifier.fillMaxWidth()) { content() } }
     }
 }
 
@@ -333,71 +427,28 @@ fun CupertinoDivider(
     )
 }
 
-// =============================================================================
-// Authentic Cupertino Switch (51dp x 31dp, 27dp circle thumb, spring damping)
-// =============================================================================
-
+/**
+ * App-level haptic adapter for Glasmio's real switch. Track, liquid thumb, gesture,
+ * state semantics and glass rendering all come from Glasmio 0.1.3; this function
+ * deliberately draws no switch UI of its own.
+ */
 @Composable
-fun CupertinoSwitch(
+fun ArcaGlasmioSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
     val haptic = rememberIosHaptic()
-    val checkedTrackColor = IosGreen
-    val uncheckedTrackColor = LoonSwitchUncheckedTrack
-
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) checkedTrackColor else uncheckedTrackColor,
-        animationSpec = tween(durationMillis = 200),
-        label = "switch_track_color"
+    NativeGlasmioSwitch(
+        checked = checked,
+        onCheckedChange = { next ->
+            onCheckedChange(next)
+            if (next != checked) haptic.lightTick()
+        },
+        modifier = modifier,
+        enabled = enabled
     )
-
-    // Thumb slide position: width is 51dp, thumb is 27dp, padding is 2dp on each side.
-    // Unchecked offset: 2dp. Checked offset: 51 - 27 - 2 = 22dp.
-    val targetOffset = if (checked) 22.dp else 2.dp
-    val thumbOffset by animateDpAsState(
-        targetValue = targetOffset,
-        animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 650f
-        ),
-        label = "switch_thumb_offset"
-    )
-
-    Box(
-        modifier = modifier
-            .size(width = 51.dp, height = 31.dp)
-            .clip(RoundedCornerShape(15.5.dp))
-            .background(trackColor)
-            .toggleable(
-                value = checked,
-                role = Role.Switch,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                enabled = enabled,
-                onValueChange = { value ->
-                    onCheckedChange(value)
-                    haptic.lightTick()
-                }
-            ),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        // Thumb circle with subtle iOS drop shadow
-        Box(
-            modifier = Modifier
-                .offset(x = thumbOffset)
-                .size(27.dp)
-                .shadow(
-                    elevation = 2.dp,
-                    shape = CircleShape,
-                    spotColor = Color(0x33000000)
-                )
-                .clip(CircleShape)
-                .background(Color.White)
-        )
-    }
 }
 
 // =============================================================================
@@ -434,13 +485,22 @@ fun CupertinoNavBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(modifier = Modifier.widthIn(min = 60.dp), contentAlignment = Alignment.CenterStart) {
+                Box(
+                    modifier = Modifier.widthIn(min = 60.dp).fillMaxHeight().then(
+                        if (showBackButton && onBack != null) {
+                            Modifier.clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    haptic.lightTick()
+                                    onBack()
+                                }
+                                .testTag("navigation-back-button")
+                        } else Modifier
+                    ),
+                    contentAlignment = Alignment.CenterStart
+                ) {
                     if (showBackButton && onBack != null) {
                         Row(
-                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable {
-                                haptic.lightTick()
-                                onBack()
-                            }.padding(horizontal = 6.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(

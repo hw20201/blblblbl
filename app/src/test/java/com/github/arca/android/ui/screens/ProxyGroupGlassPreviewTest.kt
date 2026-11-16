@@ -150,6 +150,8 @@ class ProxyGroupGlassPreviewTest {
         if (stage != "before" && glass) {
             assertTrue("New GROUP glass material must actually be exercised",
                 compose.onAllNodesWithTag("proxy-group-glass-material", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            assertTrue("GROUP cards use the app's Glasmio main material",
+                compose.onAllNodesWithTag("proxy-glasmio-main-material", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         }
         val mode = if (dark) "dark" else "light"
         val suffix = (if (scrolled) "scroll" else "top") + (if (label.isEmpty()) "" else "-$label")

@@ -43,6 +43,7 @@ import com.github.arca.android.service.MihomoVpnService
 import com.github.arca.android.service.VpnState
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -54,19 +55,24 @@ import com.github.arca.android.ui.glass.GlassPalettes
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.glassPalette
-import com.github.arca.android.ui.glass.LocalKyantBackdrop
 import com.github.arca.android.ui.glass.NexusGlassBackground
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.github.arca.android.ui.glass.ProvideArcaGlasmioBackdrop
 import com.github.arca.android.ui.glass.ProvideGlassTheme
 import com.github.arca.android.ui.glass.ProvideSoftMeshMotion
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
 import com.github.arca.android.ui.glass.rememberNavigationLens
+import com.github.arca.android.ui.glass.NavigationLensGlobalBounds
 import com.github.arca.android.ui.glass.recordNavigationScene
 import com.github.arca.android.ui.components.LoonFloatingBottomBar
+import com.github.arca.android.ui.components.BOTTOM_BAR_BOTTOM_MARGIN
+import com.github.arca.android.ui.components.MainDockContentViewport
 import com.github.arca.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.arca.android.ui.components.LocalShortcutTouchVariant
 import com.github.arca.android.ui.components.ShortcutTouchVariant
 import com.github.arca.android.ui.components.LocalShortcutMotionEnabled
 import com.github.arca.android.ui.components.rememberShortcutAnimationsEnabled
+import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
 import com.github.arca.android.ui.screens.*
 import com.github.arca.android.ui.theme.LoonBg
 import com.github.arca.android.ui.theme.MihomoTheme
@@ -101,6 +107,29 @@ enum class SubScreen {
     GLASS_EFFECTS,
     CONNECTIONS
 }
+
+internal data class SubScreenBackdropPolicy(
+    val useRootWallpaperBackdrop: Boolean,
+    val drawWallpaperBackground: Boolean
+)
+
+@Suppress("UNUSED_PARAMETER")
+internal fun subScreenBackdropPolicy(
+    screen: SubScreen,
+    apiLevel: Int,
+    pageBackdropAvailable: Boolean
+): SubScreenBackdropPolicy {
+    return SubScreenBackdropPolicy(
+        useRootWallpaperBackdrop = true,
+        drawWallpaperBackground = true
+    )
+}
+
+internal fun shouldHideSettingsParentContent(
+    subScreenActive: Boolean,
+    currentPage: Int,
+    targetPage: Int
+): Boolean = subScreenActive && (currentPage == 2 || targetPage == 2)
 
 /** Persists the current sub-screen across configuration changes. */
 private val subScreenSaver: Saver<SubScreen?, String> = Saver(
@@ -212,6 +241,10 @@ class MainActivity : ComponentActivity() {
         // Connection state changes only on lifecycle transitions; traffic samples use a
         // separate flow so they cannot invalidate the app shell or navigation tree.
         val vpnState by MihomoVpnService.vpnState.collectAsState()
+        LaunchedEffect(vpnState.error) {
+            val error = vpnState.error?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+            AppNotice.error(error)
+        }
         val requestMonitoringEnabled by RequestLogRepository.monitoringEnabled.collectAsState()
 
         var profiles by remember { mutableStateOf(emptyList<ProfileItem>()) }
@@ -297,9 +330,11 @@ class MainActivity : ComponentActivity() {
         var testingNodes by remember { mutableStateOf(setOf<String>()) }
         val pagerState = rememberPagerState(initialPage = currentTab, pageCount = { 3 })
         val coroutineScope = rememberCoroutineScope()
-        LaunchedEffect(pagerState.currentPage) {
-            if (currentTab != pagerState.currentPage) {
-                currentTab = pagerState.currentPage
+        // Mirror the pager into state only once it has come to rest; writing it while the page is still
+        // sliding recomposes the whole scene in the middle of the motion.
+        LaunchedEffect(pagerState) {
+            snapshotFlow { pagerState.settledPage }.collect { settled ->
+                if (currentTab != settled) currentTab = settled
             }
         }
 
@@ -765,6 +800,21 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val launchProfileImport: () -> Unit = {
+            profileImportLauncher.launch("*/*")
+        }
+        val addProfileSubscription: (String, String) -> Unit = { name, url ->
+            lifecycleScope.launch {
+                val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
+                if (res.isSuccess) {
+                    reloadProfiles()
+                    AppNotice.show("订阅添加成功")
+                } else {
+                    AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}", long = true)
+                }
+            }
+        }
+
         val handleSubScreenBack: () -> Unit = {
             currentSubScreen = configurationParent(currentSubScreen, fromConfigurationCenter, overrideTargetProfileId != null)
             if (currentSubScreen == null || currentSubScreen == SubScreen.CONFIGURATION_CENTER) {
@@ -777,20 +827,12 @@ class MainActivity : ComponentActivity() {
             handleSubScreenBack()
         }
 
-        // Each recorded background owns its own Kyant layer. Sharing one LayerBackdrop between the
-        // tab background and the sub-screen overlay let the overlay take over (and on exit release)
-        // the recording, so tab glass went blank after returning from a shortcut, and a draw during
-        // the exit transition could touch a released layer.
-        val kyantBackdrop = rememberLayerBackdrop()
-        val overlayKyantBackdrop = rememberLayerBackdrop()
-
         CompositionLocalProvider(
             LocalAppLanguage provides appLanguage,
             // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled },
             LocalShortcutTouchVariant provides shortcutTouchVariant,
             LocalGlassSettings provides glassSettings,
-            LocalKyantBackdrop provides kyantBackdrop,
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
         ProvideGlassTheme {
@@ -802,33 +844,54 @@ class MainActivity : ComponentActivity() {
         }) {
         val cardScene = rememberNavigationLens()
         val navigationLens = rememberNavigationLens()
+        val navigationLensBoundsState = remember { mutableStateOf<NavigationLensGlobalBounds?>(null) }
         val overlayWallpaperScene = rememberNavigationLens()
+        val rootGlasmioBackdrop = rememberArcaGlasmioBackdrop()
         val subScreenTransitionState = remember {
             androidx.compose.animation.core.MutableTransitionState(currentSubScreen != null)
         }
         subScreenTransitionState.targetState = currentSubScreen != null
+        val subScreenBackdropActive = subScreenTransitionState.currentState || subScreenTransitionState.targetState
+        val hideSettingsParentContent = shouldHideSettingsParentContent(
+            subScreenActive = subScreenBackdropActive,
+            currentPage = pagerState.currentPage,
+            targetPage = pagerState.targetPage
+        )
+        // Record the page independently from the selected lens, and share it with the base dock for real content refraction.
+        val subScreenPageSource = rememberArcaGlasmioBackdrop()
+        val subScreenGlasmioBackdrop = if (rootGlasmioBackdrop != null && subScreenPageSource != null)
+            rememberSharedGlassBackdrop(rootGlasmioBackdrop, subScreenPageSource)
+        else rootGlasmioBackdrop
         Box(Modifier.fillMaxSize()) {
+        // The dock base samples wallpaper plus the recorded page; the selected Arca lens keeps its independent scene.
         NexusGlassBackground(
             modifier = if (GlassDefaults.enabled) Modifier.recordNavigationScene(navigationLens) else Modifier,
             palette = glassPalette,
             backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier,
-            kyantBackdrop = kyantBackdrop
+            sharedGlasmioBackdrop = rootGlasmioBackdrop,
+            recordGlasmioBackdropSource = true
         ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
-            // 1. Compose visible/approaching tabs, not every distant glass page at startup.
+            // Main tabs end at the dock top; reserve that area as a sibling slot, not pager padding.
+            MainDockContentViewport {
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = false,
-                beyondViewportPageCount = 0,
+                // Prepare the adjacent tab before it enters the viewport to avoid a first-frame hitch.
+                beyondViewportPageCount = 1,
                 modifier = Modifier.fillMaxSize()
+                    // The floating dock overlays the page. Do not hard-clip the scene at
+                    // the dock's top edge: content must remain visible through its glass.
+                    .recordArcaGlasmioBackdropSource(subScreenPageSource)
+                    .graphicsLayer { alpha = if (hideSettingsParentContent) 0f else 1f }
             ) { page ->
-                // Keep precomposed neighbours (including glass display lists) within
-                // their own page. Titles still overlay and sample their local scroll scene.
-                Box(Modifier.fillMaxSize().graphicsLayer { clip = true }) {
+                // Keep page drawing unclipped so the floating glass dock can reveal the
+                // live page beneath it. Individual cards/surfaces retain their own shapes.
+                Box(Modifier.fillMaxSize().graphicsLayer { clip = false }) {
                     when (page) {
                         0 -> {
                             val mainGroupProxies = computedGroupMap[mainProxyGroupName]?.proxies
@@ -846,6 +909,85 @@ class MainActivity : ComponentActivity() {
                                 scrollState = dashboardScrollState,
                                 vpnState = vpnState,
                                 requestMonitoringEnabled = requestMonitoringEnabled,
+                                profiles = profiles,
+                                selectedProfileId = selectedProfileId,
+                                onQuickProfileSelect = { profile ->
+                                    lifecycleScope.launch {
+                                        val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
+                                        val loaded = if (shouldHotSwitch) {
+                                            runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    val conf = ConfigManager.prepareConfig(this@MainActivity, profile.file)
+                                                    ClashCore.load(conf)
+                                                }
+                                            }
+                                        } else Result.success(Unit)
+                                        if (loaded.isSuccess) {
+                                            selectedProfileId = profile.id
+                                            settingsManager.selectedProfileId = profile.id
+                                            parseActiveProfile()
+                                            liveGroupMap = emptyMap()
+                                            if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
+                                            AppNotice.show(if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}")
+                                        } else {
+                                            AppNotice.show("配置切换失败，仍保留当前配置：${loaded.exceptionOrNull()?.message}", long = true)
+                                        }
+                                    }
+                                },
+                                onQuickImportLocalFile = launchProfileImport,
+                                onQuickAddSubscription = addProfileSubscription,
+                                rules = parsedProfile.rules,
+                                fakeIpEnabled = fakeIpEnabled,
+                                onFakeIpEnabledChanged = { enabled ->
+                                    fakeIpEnabled = enabled
+                                    settingsManager.fakeIpEnabled = enabled
+                                    if (vpnState.status == VpnState.Status.RUNNING) {
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                            val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                            ClashCore.load(conf)
+                                        }
+                                    }
+                                },
+                                perAppProxyMode = perAppMode,
+                                selectedPackages = selectedPackages,
+                                apps = installedApps,
+                                isAppsLoading = isAppsLoading,
+                                onEnsureAppsLoaded = {
+                                    if (installedApps.isEmpty() && !isAppsLoading) {
+                                        isAppsLoading = true
+                                        lifecycleScope.launch {
+                                            try {
+                                                installedApps = withContext(Dispatchers.IO) {
+                                                    AppInfoManager.getInstalledApps(this@MainActivity)
+                                                }
+                                            } finally {
+                                                isAppsLoading = false
+                                            }
+                                        }
+                                    }
+                                },
+                                onPerAppProxyModeChanged = { mode ->
+                                    perAppMode = mode
+                                    settingsManager.perAppProxyMode = mode
+                                },
+                                onToggleAppPackage = { pkg ->
+                                    val updated = if (selectedPackages.contains(pkg)) selectedPackages - pkg else selectedPackages + pkg
+                                    selectedPackages = updated
+                                    settingsManager.selectedPackages = updated
+                                },
+                                allowLan = allowLan,
+                                onAllowLanChanged = { enabled ->
+                                    allowLan = enabled
+                                    settingsManager.allowLan = enabled
+                                    if (vpnState.status == VpnState.Status.RUNNING) {
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                            val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                            ClashCore.load(conf)
+                                        }
+                                    }
+                                },
                                 currentMode = tunnelMode,
                                 activeProfileName = DashboardData.activeProfile(profiles, selectedProfileId)?.name ?: "未选择配置",
                                 mainGroupName = mainProxyGroupName,
@@ -879,6 +1021,7 @@ class MainActivity : ComponentActivity() {
                                     settingsManager.shortcutOrder = updated
                                 },
                                 glassScene = cardScene,
+                                navigationLensBoundsState = navigationLensBoundsState,
                             )
                         }
                         1 -> {
@@ -1025,12 +1168,206 @@ class MainActivity : ComponentActivity() {
                             onNavigateToConnections = { currentSubScreen = SubScreen.CONNECTIONS },
                             onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                             onNavigateToDns = { currentSubScreen = SubScreen.DNS },
-                            onNavigateToGlassEffects = { currentSubScreen = SubScreen.GLASS_EFFECTS }
+                            onNavigateToGlassEffects = { currentSubScreen = SubScreen.GLASS_EFFECTS },
+                            appearanceDetailContent = {
+                                AppearanceScreen(
+                                    themeMode = currentThemeMode,
+                                    onThemeModeChanged = onThemeModeChanged,
+                                    wallpaperSettings = GlassDefaults.wallpaper,
+                                    onWallpaperSettingsChanged = { value ->
+                                        GlassDefaults.wallpaper = value
+                                        settingsManager.glassWallpaperSettings = value
+                                    },
+                                    onLanguageChanged = { code -> appLanguage = code },
+                                    nodeColumns = nodeColumns,
+                                    onNodeColumnsChanged = { cols ->
+                                        nodeColumns = cols
+                                        settingsManager.nodeColumns = cols
+                                    },
+                                    showGroupIcons = showGroupIcons,
+                                    onShowGroupIconsChanged = { show ->
+                                        showGroupIcons = show
+                                        settingsManager.showGroupIcons = show
+                                    },
+                                    onBack = {},
+                                    listState = appearanceListState,
+                                    embeddedPanel = true
+                                )
+                            },
+                            glassEffectsDetailContent = {
+                                GlassEffectsScreen(
+                                    settings = glassSettings,
+                                    onSettingsChanged = { updated ->
+                                        glassSettings = updated.clamped()
+                                        settingsManager.glassSettings = glassSettings
+                                    },
+                                    wallpaperSettings = GlassDefaults.wallpaper,
+                                    onWallpaperSettingsChanged = { value ->
+                                        GlassDefaults.wallpaper = value
+                                        settingsManager.glassWallpaperSettings = value
+                                    },
+                                    wallpaperScene = overlayWallpaperScene,
+                                    onBack = {},
+                                    scrollState = glassEffectsScrollState,
+                                    embeddedPanel = true
+                                )
+                            },
+                            dnsDetailContent = {
+                                DnsScreen(
+                                    fakeIpEnabled = fakeIpEnabled,
+                                    onFakeIpEnabledChanged = { enabled ->
+                                        fakeIpEnabled = enabled
+                                        settingsManager.fakeIpEnabled = enabled
+                                        if (vpnState.status == VpnState.Status.RUNNING) {
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val active = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.firstOrNull()
+                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
+                                                ClashCore.load(conf)
+                                            }
+                                        }
+                                    },
+                                    onBack = {},
+                                    embeddedPanel = true
+                                )
+                            },
+                            connectionsDetailContent = {
+                                ConnectionsScreen(
+                                    vpnState = vpnState,
+                                    onBack = {},
+                                    embeddedPanel = true
+                                )
+                            },
+                            logsDetailContent = {
+                                LogsScreen(onBack = {}, embeddedPanel = true)
+                            },
+                            configurationCenterDetailContent = { closePanel ->
+                                var destination by remember { mutableStateOf<ConfigurationCenterDestination?>(null) }
+                                BackHandler(enabled = destination != null) { destination = null }
+                                when (destination) {
+                                    null -> ConfigurationCenterScreen(
+                                        onNavigateToProfiles = { destination = ConfigurationCenterDestination.PROFILES },
+                                        onNavigateToScripts = {
+                                            overrideTargetProfile = null
+                                            overrideTargetProfileId = null
+                                            destination = ConfigurationCenterDestination.SCRIPTS
+                                        },
+                                        onNavigateToRules = { destination = ConfigurationCenterDestination.RULES },
+                                        onNavigateToAppRouting = { destination = ConfigurationCenterDestination.APP_ROUTING },
+                                        onBack = closePanel,
+                                        scrollState = configurationCenterScrollState,
+                                        embeddedPanel = true
+                                    )
+                                    ConfigurationCenterDestination.PROFILES -> ProfilesScreen(
+                                        profiles = profiles,
+                                        selectedProfileId = selectedProfileId,
+                                        onBack = { destination = null },
+                                        onSelectProfile = { profile ->
+                                            lifecycleScope.launch {
+                                                val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
+                                                val loaded = if (shouldHotSwitch) withContext(Dispatchers.IO) {
+                                                    runCatching {
+                                                        val config = ConfigManager.prepareConfig(this@MainActivity, profile.file)
+                                                        ClashCore.load(config).getOrThrow()
+                                                        settingsManager.getAllSelectedNodes().forEach { (group, node) ->
+                                                            runCatching { ClashCore.patchSelector(group, node) }
+                                                        }
+                                                    }
+                                                } else Result.success(Unit)
+                                                if (loaded.isSuccess) {
+                                                    selectedProfileId = profile.id
+                                                    settingsManager.selectedProfileId = profile.id
+                                                    parseActiveProfile()
+                                                    liveGroupMap = emptyMap()
+                                                    if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
+                                                    AppNotice.show(if (shouldHotSwitch) "已热切换配置: ${profile.name}" else "已选择配置: ${profile.name}")
+                                                } else {
+                                                    AppNotice.show("配置切换失败，仍保留当前配置：${loaded.exceptionOrNull()?.message}", long = true)
+                                                }
+                                            }
+                                        },
+                                        onAddSubscription = addProfileSubscription,
+                                        onUpdateProfile = { profile ->
+                                            reloadProfiles()
+                                            if (selectedProfileId == profile.id) parseActiveProfile()
+                                        },
+                                        onRefreshSubscription = { profile ->
+                                            if (profile.url != null) lifecycleScope.launch {
+                                                val result = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url)
+                                                if (result.isSuccess) {
+                                                    reloadProfiles()
+                                                    AppNotice.show("订阅更新成功")
+                                                } else AppNotice.show("更新失败: ${result.exceptionOrNull()?.message}", long = true)
+                                            }
+                                        },
+                                        onRefreshAllSubscriptions = {
+                                            val remote = profiles.filter { !it.url.isNullOrBlank() }
+                                            if (remote.isEmpty()) AppNotice.info("没有可更新的远程订阅") else {
+                                                var failed = 0
+                                                for (profile in remote) {
+                                                    val result = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url!!)
+                                                    if (result.isFailure) failed++
+                                                }
+                                                reloadProfiles()
+                                                if (failed == 0) AppNotice.success("已更新 ${remote.size} 个订阅")
+                                                else AppNotice.error("${remote.size - failed} 个成功，$failed 个更新失败")
+                                            }
+                                        },
+                                        onDeleteProfile = { profile ->
+                                            ConfigManager.deleteProfile(this@MainActivity, profile.id)
+                                            reloadProfiles()
+                                        },
+                                        onImportLocalFile = launchProfileImport,
+                                        onReorderProfiles = { newOrderList ->
+                                            profiles = newOrderList
+                                            ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
+                                        },
+                                        onNavigateToOverride = { profile ->
+                                            destination = null
+                                            closePanel()
+                                            fromConfigurationCenter = true
+                                            overrideTargetProfile = profile
+                                            overrideTargetProfileId = profile.id
+                                            currentSubScreen = SubScreen.PROFILE_OVERRIDE
+                                        },
+                                        embeddedPanel = true
+                                    )
+                                    ConfigurationCenterDestination.SCRIPTS -> ScriptsScreen(
+                                        onBack = { destination = null },
+                                        onScriptsChanged = { parseActiveProfile() },
+                                        embeddedPanel = true
+                                    )
+                                    ConfigurationCenterDestination.RULES -> RulesScreen(
+                                        rules = parsedProfile.rules,
+                                        totalRules = parsedProfile.totalRules,
+                                        tunnelMode = tunnelMode,
+                                        onBack = { destination = null },
+                                        embeddedPanel = true
+                                    )
+                                    ConfigurationCenterDestination.APP_ROUTING -> AppRoutingScreen(
+                                        currentMode = perAppMode,
+                                        selectedPackages = selectedPackages,
+                                        apps = installedApps,
+                                        isLoading = isAppsLoading,
+                                        onBack = { destination = null },
+                                        onModeChanged = { mode ->
+                                            perAppMode = mode
+                                            settingsManager.perAppProxyMode = mode
+                                        },
+                                        onTogglePackage = { pkg ->
+                                            val updated = if (selectedPackages.contains(pkg)) selectedPackages - pkg else selectedPackages + pkg
+                                            selectedPackages = updated
+                                            settingsManager.selectedPackages = updated
+                                        },
+                                        embeddedPanel = true
+                                    )
+                                }
+                            }
                         )
                     }
                 }
 
             } // bounded pager page
+            } // MainDockContentViewport
 
             var lastActiveSubScreen by remember { mutableStateOf<SubScreen?>(null) }
             LaunchedEffect(currentSubScreen) {
@@ -1145,8 +1482,18 @@ class MainActivity : ComponentActivity() {
                     label = "SubScreenOverlayTransition"
                 ) { subScreen ->
                     if (subScreen != null) {
-                    NexusGlassBackground(palette = glassPalette, backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(overlayWallpaperScene) else Modifier, kyantBackdrop = overlayKyantBackdrop) {
-                    CompositionLocalProvider(LocalKyantBackdrop provides overlayKyantBackdrop) {
+                    val backdropPolicy = subScreenBackdropPolicy(
+                        screen = subScreen,
+                        apiLevel = Build.VERSION.SDK_INT,
+                        pageBackdropAvailable = subScreenGlasmioBackdrop != null
+                    )
+                    val overlayGlasmioBackdrop = if (backdropPolicy.useRootWallpaperBackdrop)
+                        rootGlasmioBackdrop else subScreenGlasmioBackdrop
+                    NexusGlassBackground(palette = glassPalette, backdropRecorder = if (GlassDefaults.enabled && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU)
+                        Modifier.recordNavigationScene(overlayWallpaperScene) else Modifier,
+                        sharedGlasmioBackdrop = overlayGlasmioBackdrop,
+                        recordGlasmioBackdropSource = false,
+                        drawBackground = backdropPolicy.drawWallpaperBackground) {
                         when (subScreen) {
                             SubScreen.CONFIGURATION_CENTER -> ConfigurationCenterScreen(
                                 onNavigateToProfiles = {
@@ -1200,17 +1547,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
-                                    onAddSubscription = { name, url ->
-                                        lifecycleScope.launch {
-                                            val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
-                                            if (res.isSuccess) {
-                                                reloadProfiles()
-                                                AppNotice.show("订阅添加成功")
-                                            } else {
-                                                AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}", long = true)
-                                            }
-                                        }
-                                    },
+                                    onAddSubscription = addProfileSubscription,
                                     onUpdateProfile = { profile ->
                                         reloadProfiles()
                                         if (selectedProfileId == profile.id) {
@@ -1249,9 +1586,7 @@ class MainActivity : ComponentActivity() {
                                         ConfigManager.deleteProfile(this@MainActivity, profile.id)
                                         reloadProfiles()
                                     },
-                                    onImportLocalFile = {
-                                        profileImportLauncher.launch("*/*")
-                                    },
+                                    onImportLocalFile = launchProfileImport,
                                     onReorderProfiles = { newOrderList ->
                                         profiles = newOrderList
                                         ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
@@ -1423,8 +1758,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                    } // overlay Kyant provider
-                    }
+                    } // overlay Glasmio scene
                 }
             }
         }
@@ -1441,28 +1775,34 @@ class MainActivity : ComponentActivity() {
                     .align(Alignment.BottomCenter)
                     .wrapContentSize(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = BOTTOM_BAR_BOTTOM_MARGIN)
             ) {
+                ProvideArcaGlasmioBackdrop(subScreenGlasmioBackdrop) {
                 LoonFloatingBottomBar(
                     selectedTab = pagerState.targetPage,
                     onTabSelected = { tabIndex ->
-                        currentTab = tabIndex
                         coroutineScope.launch {
+                            // A spring in the same family as the dock's selection pill, so the page and the pill
+                            // move as one; it can be interrupted by the next tap without a stall.
                             pagerState.animateScrollToPage(
                                 page = tabIndex,
-                                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                                animationSpec = spring(dampingRatio = 0.86f, stiffness = 380f, visibilityThreshold = 0.5f)
                             )
-                        }
-                        if (tabIndex == 1) {
-                            if (vpnState.status == VpnState.Status.RUNNING) {
-                                refreshProxiesOnline()
-                            } else if (parsedProfile.groups.isEmpty()) {
-                                parseActiveProfile()
+                            // Data refreshes commit state into the destination page; run them once it has landed,
+                            // not in the middle of the slide.
+                            if (tabIndex == 1) {
+                                if (vpnState.status == VpnState.Status.RUNNING) {
+                                    refreshProxiesOnline()
+                                } else if (parsedProfile.groups.isEmpty()) {
+                                    parseActiveProfile()
+                                }
                             }
                         }
                     },
-                    lens = navigationLens
+                    lens = navigationLens,
+                    onLensBoundsChanged = { navigationLensBoundsState.value = it }
                 )
+                }
             }
             // One-click import confirmation (clash://install-config).
             val incomingLink by pendingSubscriptionLink.collectAsState()

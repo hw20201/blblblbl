@@ -273,19 +273,38 @@ fun NavigationGlassSurface(
     surfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.LARGE_PANELS,
     /** Optional explicit optics for editors/previews that must mirror an in-progress value. */
     opticsOverride: GlassOptics? = null,
+    frostedBlurRadiusDp: Dp = 12.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = glassPalette
-    val density = LocalDensity.current.density
+    val glasmioBackdrop = LocalArcaGlasmioBackdrop.current
     val optics = (opticsOverride ?: LocalGlassSettings.current.opticsFor(surfaceCategory)).clamped()
+    // Keep both title capsules and the selected bottom-nav lens on Arca's independent
+    // optical renderer; the selected capsule must not inherit Glasmio's blur/tint material.
+    val isOpticalLensCategory = surfaceCategory == GlassSurfaceCategory.TITLE_CAPSULES ||
+        surfaceCategory == GlassSurfaceCategory.BOTTOM_NAVIGATION
+    val keepArcaOpticalLens = lens != null && isOpticalLensCategory
+    val glasmioAvailable = GlassDefaults.enabled &&
+        LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
+        glasmioBackdrop != null && !keepArcaOpticalLens
+    if (glasmioAvailable) {
+        val material = glasmioMaterialFor(surfaceCategory)
+        ArcaGlasmioGlassSurface(
+            modifier = modifier, backdrop = glasmioBackdrop, shape = shape,
+            tint = frostedTint ?: palette.base, material = material,
+            surfaceCategory = surfaceCategory, opticsOverride = opticsOverride, content = content
+        )
+        return
+    }
+    val density = LocalDensity.current.density
     var origin by remember { mutableStateOf(Offset.Zero) }
     val shader = remember {
         if (Build.VERSION.SDK_INT >= 33) RuntimeShader(NAVIGATION_LENS_SHADER) else null
     }
     val effectCache = remember(shader) { NavigationLensEffectCache() }
-    val frostEffect = remember(density, frosted) {
+    val frostEffect = remember(density, frosted, frostedBlurRadiusDp) {
         if (frosted && Build.VERSION.SDK_INT >= 31)
-            RenderEffect.createBlurEffect(12f * density, 12f * density, Shader.TileMode.CLAMP)
+            RenderEffect.createBlurEffect(frostedBlurRadiusDp.value * density, frostedBlurRadiusDp.value * density, Shader.TileMode.CLAMP)
         else null
     }
     // Navigation stays clear; only explicitly frosted title/utility capsules diffuse the scene.

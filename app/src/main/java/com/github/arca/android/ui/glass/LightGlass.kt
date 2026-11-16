@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 /**
  * Low-cost self-developed glass for dense, repeated surfaces (proxy node capsules, notices).
  *
- * No backdrop replay, no RenderEffect, no RuntimeShader and no Kyant layer: a translucent
+ * No backdrop replay, RenderEffect or RuntimeShader: a translucent
  * diagonal tint, one cached specular hairline on top, a soft inner rim and a faint bottom bounce.
  * Every brush is created in drawWithCache, so scrolling a long node list only replays paint.
  */

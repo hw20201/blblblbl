@@ -158,7 +158,7 @@ fun ProfileOverrideScreen(
                                 icon = Icons.Default.Javascript,
                                 iconBg = if (isChecked) IosBlue else AppPalette.iconGray,
                                 trailing = {
-                                    CupertinoSwitch(
+                                    ArcaGlasmioSwitch(
                                         checked = isChecked,
                                         onCheckedChange = { checked ->
                                             if (checked) selectedScriptIds.add(script.id)

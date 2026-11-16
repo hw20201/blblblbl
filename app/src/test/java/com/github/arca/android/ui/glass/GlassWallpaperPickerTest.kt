@@ -40,6 +40,7 @@ class GlassWallpaperPickerTest {
             }
         }
         assertTrue(settings.value.enabled)
+        compose.onNodeWithTag("wallpaper-rib-angle").assertDoesNotExist()
         compose.onNodeWithTag("wallpaper-mode-fluted").assertDoesNotExist()
         compose.onNodeWithTag("wallpaper-color-grid").assertDoesNotExist()
         compose.onNodeWithTag("wallpaper-toggle-color-grid").performClick()

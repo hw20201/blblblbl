@@ -1,5 +1,6 @@
 package com.github.arca.android.ui.screens
 
+import com.github.arca.android.ui.glass.NexusGlassBackground
 import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
@@ -25,9 +26,14 @@ class DashboardScreenTest {
     private val shortcutOrder = listOf("nodes", "profiles", "rules", "request_logs")
     private val noOp: () -> Unit = {}
 
+    /** The dashboard draws Glasmio glass, which must be hosted by a backdrop provider. */
+    private fun setGlassContent(content: @androidx.compose.runtime.Composable () -> Unit) {
+        compose.setContent { NexusGlassBackground { content() } }
+    }
+
     @Test fun liveTrafficSamplesUpdateTheLeafCardWithoutChangingDashboardInputs() {
         val metrics = MutableStateFlow(TrafficMetrics())
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.RUNNING),
@@ -67,7 +73,7 @@ class DashboardScreenTest {
     }
 
     @Test fun oldTestWallpaperChoicesAreNotShownOnTheUserDashboard() {
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.STOPPED),
@@ -107,7 +113,7 @@ class DashboardScreenTest {
         val rules = mutableStateOf(0)
         val monitoringEnabled = mutableStateOf(true)
 
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = vpnState.value,
@@ -165,7 +171,7 @@ class DashboardScreenTest {
     }
     @Test fun modePickerExpandsFromItsControlAndSelectsInPlace() {
         var selected: TunnelMode? = null
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.STOPPED),
@@ -214,7 +220,7 @@ class DashboardScreenTest {
 
     @Test fun modePickerShapeMorphHasAVisibleIntermediateSize() {
         compose.mainClock.autoAdvance = false
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.STOPPED),
@@ -263,7 +269,7 @@ class DashboardScreenTest {
 
     @Test fun modePickerKeepsCapsuleFixedAndOpensDownward() {
         compose.mainClock.autoAdvance = false
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.STOPPED),
@@ -322,7 +328,7 @@ class DashboardScreenTest {
 
     @Test fun homepageTrafficPanelShowsLiveDirectionsWithoutRecordedTotals() {
         val metrics = MutableStateFlow(TrafficMetrics("12 KB/s", "4 MB/s"))
-        compose.setContent {
+        setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.RUNNING),

@@ -22,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
@@ -45,15 +47,15 @@ import kotlin.math.tanh
  *  follow  = SpringDescription.withDampingRatio(stiffness 1024, ratio 0.9):
  *            while dragging the lens CHASES the finger on a spring instead
  *            of snapping to it; that lag is what feeds the jelly.
- *  jelly   = SpringDescription.withDampingRatio(stiffness 100, ratio 0.4):
- *            very bouncy, it wobbles several times after a fast slide. */
+ *  jelly   = SpringDescription.withDampingRatio(stiffness 180, ratio 0.62):
+ *            one restrained elastic rebound, then a quicker return to rest. */
 internal object LensMotion {
     val travelStiffness = (4.0 * PI * PI / (0.4 * 0.4)).toFloat()
     const val travelDamping = 1.0f
     const val followStiffness = 1024f
     const val followDamping = 0.9f
-    const val jellyStiffness = 100f
-    const val jellyDamping = 0.4f
+    const val jellyStiffness = 180f
+    const val jellyDamping = 0.62f
     val expansionStiffness = (4.0 * PI * PI / (0.25 * 0.25)).toFloat()
     const val jellyAspect = 1.4f
     const val expansionScale = 1.28f
@@ -114,6 +116,64 @@ internal fun insetLensRect(
     val top = (barHeight - height) / 2f
     return Rect(left, top, left + width, top + height)
 }
+
+/** Fraction of an item content box covered by the rounded shell, sampled from the shell's actual animated bounds. */
+internal fun roundedRectOverlapFraction(item: Rect, shell: Rect, cornerRadius: Float, samples: Int = 48): Float {
+    val itemHasNoArea = item.width <= 0f || item.height <= 0f
+    val shellHasNoArea = shell.width <= 0f || shell.height <= 0f
+    if (itemHasNoArea || shellHasNoArea || samples <= 0) return 0f
+    val radius = cornerRadius.coerceIn(0f, minOf(shell.width, shell.height) / 2f)
+    val step = item.width / samples
+    var area = 0f
+    repeat(samples) { index ->
+        val x = item.left + (index + 0.5f) * step
+        if (x < shell.left || x > shell.right) return@repeat
+        val cornerDx = when {
+            radius <= 0f -> 0f
+            x < shell.left + radius -> shell.left + radius - x
+            x > shell.right - radius -> x - (shell.right - radius)
+            else -> 0f
+        }.coerceIn(0f, radius)
+        val halfHeight = if (radius <= 0f || cornerDx <= 0f) shell.height / 2f
+            else kotlin.math.sqrt((radius * radius - cornerDx * cornerDx).coerceAtLeast(0f))
+        val top = shell.center.y - halfHeight
+        val bottom = shell.center.y + halfHeight
+        val overlapHeight = (minOf(item.bottom, bottom) - maxOf(item.top, top)).coerceAtLeast(0f)
+        area += overlapHeight * step
+    }
+    return (area / (item.width * item.height)).coerceIn(0f, 1f)
+}
+
+/** Window-space bounds of the selected rounded navigation shell. */
+data class NavigationLensGlobalBounds(
+    val rect: Rect,
+    val cornerRadiusPx: Float
+)
+
+internal fun navigationLensGlobalBounds(
+    localShell: Rect,
+    windowOrigin: Offset,
+    cornerRadiusPx: Float
+): NavigationLensGlobalBounds {
+    val globalRect = Rect(
+        localShell.left + windowOrigin.x,
+        localShell.top + windowOrigin.y,
+        localShell.right + windowOrigin.x,
+        localShell.bottom + windowOrigin.y
+    )
+    val radius = cornerRadiusPx.coerceIn(0f, minOf(globalRect.width, globalRect.height) / 2f)
+    return NavigationLensGlobalBounds(globalRect, radius)
+}
+
+internal fun overlapTintProgress(
+    itemBounds: Rect?,
+    lensBounds: NavigationLensGlobalBounds?
+): Float = if (itemBounds == null || lensBounds == null) 0f
+    else roundedRectOverlapFraction(itemBounds, lensBounds.rect, lensBounds.cornerRadiusPx)
+
+internal fun interpolateLensTint(start: Color, target: Color, progress: Float): Color =
+    androidx.compose.ui.graphics.lerp(start, target, progress.coerceIn(0f, 1f))
+
 
 /**
  * Port of FlClash _Spring. Retarget with the current velocity, not a fresh tween.

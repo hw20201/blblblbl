@@ -1,4 +1,17 @@
 package com.github.arca.android.ui.components
+import androidx.compose.ui.platform.LocalDensity
+import com.github.arca.android.ui.glass.roundedRectOverlapFraction
+import com.github.arca.android.ui.glass.insetLensRect
+import com.github.arca.android.ui.glass.navigationLensGlobalBounds
+import com.github.arca.android.ui.glass.overlapTintProgress
+import com.github.arca.android.ui.glass.interpolateLensTint
+import com.github.arca.android.ui.glass.usesGlasmioFrosted
+import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.LocalGlassSettings
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.CompositionLocalProvider
+import android.os.Build
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
@@ -22,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -29,9 +43,11 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -42,12 +58,16 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale as scaleDrawing
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.ui.glass.GlassAccent
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassRadius
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
+import com.github.arca.android.ui.glass.LensStrength
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.glass.LocalShortcutBlurEnabled
 import com.github.arca.android.ui.glass.glassTextPrimary
@@ -55,6 +75,7 @@ import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.glassPalette
 import com.github.arca.android.ui.glass.NavigationLens
 import com.github.arca.android.ui.glass.NavigationLensOpticsState
+import com.github.arca.android.ui.glass.NavigationLensGlobalBounds
 import com.github.arca.android.ui.glass.lensTabMagnification
 import com.github.arca.android.ui.glass.NavigationGlassSurface
 import com.github.arca.android.ui.glass.glassTextSecondary
@@ -455,6 +476,8 @@ private fun IosTrafficArrow(
     }
 }
 
+private val LocalDnsShortcutTintProgress = staticCompositionLocalOf { 0f }
+
 @Composable
 fun LoonShortcutCard(
     modifier: Modifier = Modifier,
@@ -468,7 +491,9 @@ fun LoonShortcutCard(
     /** Disable only the Gaussian filter for same-material visual comparisons. */
     blurEnabled: Boolean = LocalShortcutBlurEnabled.current,
     onPickupChanged: (Boolean) -> Unit = {},
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    lensBounds: NavigationLensGlobalBounds? = null,
+    lensTintTarget: Color? = null
 ) {
     val haptic = rememberIosHaptic()
     val touchVariant = LocalShortcutTouchVariant.current
@@ -480,6 +505,10 @@ fun LoonShortcutCard(
         frozenPose = previewPose,
         onPickupChanged = onPickupChanged
     )
+    var iconBoundsInWindow by remember(title) { mutableStateOf<Rect?>(null) }
+    var labelBoundsInWindow by remember(title) { mutableStateOf<Rect?>(null) }
+    val iconTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(iconBoundsInWindow, lensBounds)
+    val labelTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(labelBoundsInWindow, lensBounds)
     val experimental = touchVariant != null && !isEditing
     val fixedSlot = modifier.height(118.dp)
     val slotModifier = if (experimental) fixedSlot.then(touchMotion.gestureModifier)
@@ -509,7 +538,14 @@ fun LoonShortcutCard(
                 shortcutDockLens = true,
                 shortcutRefraction = touchMotion.refraction
             ) {
-                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier)
+                ShortcutCardContent(
+                    title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier,
+                    tintTarget = lensTintTarget,
+                    iconTintProgress = iconTintProgress,
+                    labelTintProgress = labelTintProgress,
+                    onIconBoundsChanged = if (lensTintTarget == null) null else { bounds -> iconBoundsInWindow = bounds },
+                    onLabelBoundsChanged = if (lensTintTarget == null) null else { bounds -> labelBoundsInWindow = bounds }
+                )
             }
         } else {
             Surface(
@@ -519,23 +555,42 @@ fun LoonShortcutCard(
                     .border(0.5.dp, LoonCardBorder, RoundedCornerShape(18.dp)),
                 color = LoonCard
             ) {
-                ShortcutCardContent(title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier)
+                ShortcutCardContent(
+                    title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier,
+                    tintTarget = lensTintTarget,
+                    iconTintProgress = iconTintProgress,
+                    labelTintProgress = labelTintProgress,
+                    onIconBoundsChanged = if (lensTintTarget == null) null else { bounds -> iconBoundsInWindow = bounds },
+                    onLabelBoundsChanged = if (lensTintTarget == null) null else { bounds -> labelBoundsInWindow = bounds }
+                )
             }
         }
         }
     }
 }
 
+private fun LayoutCoordinates.toWindowRect(): Rect {
+    val origin = localToWindow(Offset.Zero)
+    return Rect(origin.x, origin.y, origin.x + size.width, origin.y + size.height)
+}
+
 /** Shared body of [LoonShortcutCard]; identical in both material variants. */
 @Composable
-private fun ShortcutCardContent(
+internal fun ShortcutCardContent(
     title: String,
     subtitle: String,
     icon: @Composable () -> Unit,
     isEditing: Boolean,
     onDelete: (() -> Unit)?,
-    contentPerspectiveModifier: Modifier = Modifier
+    contentPerspectiveModifier: Modifier = Modifier,
+    tintTarget: Color? = null,
+    iconTintProgress: Float = 0f,
+    labelTintProgress: Float = 0f,
+    onIconBoundsChanged: ((Rect) -> Unit)? = null,
+    onLabelBoundsChanged: ((Rect) -> Unit)? = null
 ) {
+    val titleTint = tintTarget?.let { interpolateLensTint(LoonTextPrimary, it, labelTintProgress) } ?: LoonTextPrimary
+    val subtitleTint = tintTarget?.let { interpolateLensTint(LoonTextSecondary, it, labelTintProgress) } ?: LoonTextSecondary
     // This single inner layer is shared by every glyph, chevron and icon. Its residual
     // perspective is contact-dependent; the outer glass surface and its follow animation stay put.
     Box(modifier = Modifier.fillMaxSize().then(contentPerspectiveModifier)) {
@@ -544,10 +599,11 @@ private fun ShortcutCardContent(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = 14.dp, top = 14.dp, end = 56.dp)
+                .then(if (onLabelBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { onLabelBoundsChanged(it.toWindowRect()) })
         ) {
             Text(
                 text = title,
-                color = LoonTextPrimary,
+                color = titleTint,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
@@ -556,7 +612,7 @@ private fun ShortcutCardContent(
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = subtitle,
-                    color = LoonTextSecondary,
+                    color = subtitleTint,
                     fontSize = 12.sp,
                     maxLines = 1
                 )
@@ -594,10 +650,11 @@ private fun ShortcutCardContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 10.dp, bottom = 10.dp)
-                .size(54.dp),
+                .size(54.dp)
+            .then(if (onIconBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { onIconBoundsChanged(it.toWindowRect()) }),
             contentAlignment = Alignment.BottomEnd
         ) {
-            icon()
+            CompositionLocalProvider(LocalDnsShortcutTintProgress provides iconTintProgress) { icon() }
         }
 
         // Red minus/remove button badge at top-right in edit mode
@@ -984,12 +1041,17 @@ fun NetworkShareIllustration() {
 
 @Composable
 fun DnsIllustration() {
+    val tintProgress = LocalDnsShortcutTintProgress.current
     Box(modifier = Modifier.size(54.dp)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
+            val greenTarget = Color(0xFF22C55E)
             val gradient = Brush.linearGradient(
-                colors = listOf(Color(0xFF34D399), Color(0xFF059669)),
+                colors = listOf(
+                    interpolateLensTint(Color(0xFF34D399), greenTarget, tintProgress),
+                    interpolateLensTint(Color(0xFF059669), greenTarget, tintProgress)
+                ),
                 start = Offset(0f, 0f),
                 end = Offset(w, h)
             )
@@ -1081,12 +1143,32 @@ fun LoonFloatingBottomBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    lens: NavigationLensState? = null
+    lens: NavigationLensState? = null,
+    onLensBoundsChanged: (NavigationLensGlobalBounds?) -> Unit = {}
 ) {
     if (GlassDefaults.enabled) {
         var selectionPulse by remember { mutableIntStateOf(0) }
         var dragPosition by remember { mutableStateOf<Float?>(null) }
         val optics = remember { NavigationLensOpticsState(selectedTab.toFloat()) }
+        val density = LocalDensity.current
+        var barWindowOrigin by remember { mutableStateOf<Offset?>(null) }
+        var barLayoutSize by remember { mutableStateOf(IntSize.Zero) }
+        val localLensShell = if (lens != null && barLayoutSize.width > 0 && barLayoutSize.height > 0) {
+            val frame = optics.frame
+            val width = barLayoutSize.width.toFloat()
+            val height = barLayoutSize.height.toFloat()
+            insetLensRect(frame.position, frame.stretch, frame.expansion, width / BOTTOM_BAR_SLOTS, width, height, density.density)
+        } else null
+        val shellRadius = localLensShell?.let { minOf(with(density) { GlassRadius.bar.toPx() }, it.height / 2f) } ?: 0f
+        val origin = barWindowOrigin
+        val globalLensBounds = if (localLensShell != null && origin != null) {
+            navigationLensGlobalBounds(localLensShell, origin, shellRadius)
+        } else null
+        SideEffect { onLensBoundsChanged(globalLensBounds) }
+        val selectTabWithHaptic = rememberHapticValueAction<Int> { tab ->
+            selectionPulse++
+            onTabSelected(tab)
+        }
         // One refracting backdrop layer only. Sharp foreground drawing shares its position;
         // the tab layout, semantic nodes and touch targets never grow or move.
         Box(
@@ -1096,17 +1178,53 @@ fun LoonFloatingBottomBar(
                 .height(BOTTOM_BAR_HEIGHT)
                 .testTag("navigation-dock")
                 .navigationLensDrag(BOTTOM_BAR_SLOTS, { dragPosition = it }, { tab ->
-                    selectionPulse++
-                    onTabSelected(tab)
+                    selectTabWithHaptic(tab)
                 })
                 // Resting glass is inset; clicked glass grows symmetrically over the selected option.
                 .graphicsLayer { clip = false }
+                .onGloballyPositioned { coordinates ->
+                    val nextOrigin = coordinates.localToWindow(Offset.Zero)
+                    if (barWindowOrigin != nextOrigin) barWindowOrigin = nextOrigin
+                    if (barLayoutSize != coordinates.size) barLayoutSize = coordinates.size
+                }
         ) {
-            // Capsule keeps the cheap static material: no scene sampling, no shader pass.
-            GlassSurface(
-                modifier = Modifier.matchParentSize(),
-                shape = RoundedCornerShape(GlassRadius.bar)
-            ) {}
+            // Base tray reuses Glasmio with fixed 8dp frost and restrained refraction; the selected pill stays on its separate Arca lens.
+            val currentGlassSettings = LocalGlassSettings.current
+            val dockGlassSettings = remember(currentGlassSettings) {
+                currentGlassSettings.copy(glasmioFrosted = currentGlassSettings.glasmioFrosted.copy(
+                    blurRadiusDp = 8f,
+                    refractionAmountDp = currentGlassSettings.glasmioFrosted.refractionAmountDp * BOTTOM_DOCK_REFRACTION_AMOUNT
+                ))
+            }
+            val useGlasmioDock = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                currentGlassSettings.glassPreset.usesGlasmioFrosted() && LocalArcaGlasmioBackdrop.current != null
+            if (useGlasmioDock) {
+                CompositionLocalProvider(LocalGlassSettings provides dockGlassSettings) {
+                    NavigationGlassSurface(
+                        modifier = Modifier.matchParentSize(),
+                        lens = null,
+                        shape = RoundedCornerShape(GlassRadius.bar),
+                        cornerRadius = GlassRadius.bar,
+                        strength = LensStrength.STANDARD,
+                        refractionAmount = { BOTTOM_DOCK_REFRACTION_AMOUNT },
+                        surfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
+                        showRim = true
+                    ) {}
+                }
+            } else {
+                NavigationGlassSurface(
+                    modifier = Modifier.matchParentSize(),
+                    lens = lens,
+                    shape = RoundedCornerShape(GlassRadius.bar),
+                    cornerRadius = GlassRadius.bar,
+                    strength = LensStrength.STANDARD,
+                    refractionAmount = { BOTTOM_DOCK_REFRACTION_AMOUNT },
+                    frosted = true,
+                    frostedBlurRadiusDp = 8.dp,
+                    surfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
+                    showRim = true
+                ) {}
+            }
             NavigationLens(
                 selectedSlot = selectedTab.coerceIn(0, BOTTOM_BAR_SLOTS - 1),
                 slotCount = BOTTOM_BAR_SLOTS,
@@ -1116,14 +1234,13 @@ fun LoonFloatingBottomBar(
                 dragPosition = dragPosition,
                 optics = optics
             )
-            BottomBarItems(selectedTab, { tab ->
-                selectionPulse++
-                onTabSelected(tab)
-            }, glassMode = true, optics = if (lens != null) optics else null)
+            BottomBarItems(selectedTab, selectTabWithHaptic,
+                glassMode = true, optics = if (lens != null) optics else null)
         }
         return
     }
 
+    SideEffect { onLensBoundsChanged(null) }
     Surface(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0x1F000000))
@@ -1137,10 +1254,42 @@ fun LoonFloatingBottomBar(
 
 /** Number of slots in the bottom bar; the lens travels between their centres. */
 private const val BOTTOM_BAR_SLOTS = 3
+/** Keep base-dock bending moderate relative to the stronger selected lens. */
+private const val BOTTOM_DOCK_REFRACTION_AMOUNT = 0.55f
 
 /** Fixed capsule height: liquid motion never changes the navigation layout. */
-private val BOTTOM_BAR_HEIGHT = 64.dp
+internal val BOTTOM_BAR_HEIGHT = 64.dp
 private val BOTTOM_BAR_WIDTH = 304.dp
+
+internal val BOTTOM_BAR_BOTTOM_MARGIN = 16.dp
+internal fun mainDockContentInset(navigationBarsBottom: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
+    BOTTOM_BAR_HEIGHT + BOTTOM_BAR_BOTTOM_MARGIN + navigationBarsBottom
+
+/** Dock-aware scroll tail keeps the final Dashboard card above the dock with a small visible gap. */
+internal val DASHBOARD_DOCK_CLEAR_GAP = 16.dp
+internal fun dashboardScrollContentInset(navigationBarsBottom: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
+    mainDockContentInset(navigationBarsBottom) + DASHBOARD_DOCK_CLEAR_GAP
+
+/**
+ * Full-height page scene behind the floating dock.
+ *
+ * The dock is intentionally translucent: the page must continue beneath it so cards,
+ * icons and text remain visible through the glass. Clipping the page at the dock's top
+ * edge creates the conspicuous horizontal "cut-off" line seen in the previous layout.
+ * Scrollable pages should keep their own bottom content inset so their final items can
+ * still be brought fully above the dock.
+ */
+@Composable
+internal fun MainDockContentViewport(
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("main-page-content-viewport"),
+        content = content
+    )
+}
 
 @Composable
 private fun BottomBarItems(
@@ -1148,6 +1297,24 @@ private fun BottomBarItems(
     glassMode: Boolean = false, hideSelectedIcon: Boolean = false,
     optics: NavigationLensOpticsState? = null
 ) {
+        val density = LocalDensity.current
+        val barWidthDp = minOf(BOTTOM_BAR_WIDTH, LocalConfiguration.current.screenWidthDp.dp)
+        val barWidthPx = with(density) { barWidthDp.toPx() }
+        val barHeightPx = with(density) { BOTTOM_BAR_HEIGHT.toPx() }
+        val slotPitchPx = barWidthPx / BOTTOM_BAR_SLOTS
+        val shell = optics?.frame?.let { frame ->
+            insetLensRect(frame.position, frame.stretch, frame.expansion, slotPitchPx, barWidthPx, barHeightPx, density.density)
+        }
+        val shellRadius = shell?.let { minOf(with(density) { GlassRadius.bar.toPx() }, it.height / 2f) } ?: 0f
+        val contentWidthPx = with(density) { minOf(72.dp, (barWidthDp / BOTTOM_BAR_SLOTS.toFloat() - 12.dp).coerceAtLeast(1.dp)).toPx() }
+        val contentHeightPx = with(density) { 38.dp.toPx() }
+        fun overlapFor(slot: Int): Float? {
+            val currentShell = shell ?: return null
+            val left = slot * slotPitchPx + (slotPitchPx - contentWidthPx) / 2f
+            val item = androidx.compose.ui.geometry.Rect(left, (barHeightPx - contentHeightPx) / 2f,
+                left + contentWidthPx, (barHeightPx + contentHeightPx) / 2f)
+            return roundedRectOverlapFraction(item, currentShell, shellRadius)
+        }
         Row(
             modifier = Modifier
                 .then(if (glassMode) Modifier.widthIn(max = BOTTOM_BAR_WIDTH).fillMaxWidth() else Modifier)
@@ -1163,6 +1330,7 @@ private fun BottomBarItems(
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 0,
                 opticalScale = optics?.let { { lensTabMagnification(0, it.frame.position, it.frame.expansion) } },
+                lensCoverage = if (glassMode && optics != null) overlapFor(0) else null,
                 onClick = { onTabSelected(0) }
             )
             BottomNavItem(
@@ -1174,6 +1342,7 @@ private fun BottomBarItems(
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 1,
                 opticalScale = optics?.let { { lensTabMagnification(1, it.frame.position, it.frame.expansion) } },
+                lensCoverage = if (glassMode && optics != null) overlapFor(1) else null,
                 onClick = { onTabSelected(1) }
             )
             BottomNavItem(
@@ -1183,6 +1352,7 @@ private fun BottomBarItems(
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 2,
                 opticalScale = optics?.let { { lensTabMagnification(2, it.frame.position, it.frame.expansion) } },
+                lensCoverage = if (glassMode && optics != null) overlapFor(2) else null,
                 onClick = { onTabSelected(2) }
             )
         }
@@ -1248,14 +1418,22 @@ private fun BottomNavItem(
     modifier: Modifier = Modifier,
     hideIcon: Boolean = false,
     opticalScale: (() -> Float)? = null,
+    lensCoverage: Float? = null,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
-    val tint by animateColorAsState(
-        targetValue = if (isSelected) IosBlue else Color(0xFF8E8E93),
+    // The tint follows the lens coverage directly: the colour is a pure function
+    // of how much of this tab the glass currently covers, so the blue travels
+    // with the capsule instead of fading in on its own 200ms clock after the
+    // capsule arrives. The coverage itself is already animated by the lens spring.
+    val coverageTint = lensCoverage?.let { lerp(Color(0xFF8E8E93), IosBlue, it.coerceIn(0f, 1f)) }
+    val fallbackTarget = if (isSelected) IosBlue else Color(0xFF8E8E93)
+    val fallbackTint by animateColorAsState(
+        targetValue = fallbackTarget,
         animationSpec = tween(durationMillis = 200),
         label = "nav_tint"
     )
+    val tint = coverageTint ?: fallbackTint
     val scale = if (opticalScale == null) {
         val legacyScale by animateFloatAsState(
             targetValue = if (isSelected) 1.08f else 1.0f,

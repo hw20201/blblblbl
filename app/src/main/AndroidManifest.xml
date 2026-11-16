@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Glasmio rendering and its slider are invoked only behind API 33+ guards; older devices retain compatible fallbacks. -->
+    <uses-sdk tools:overrideLibrary="io.github.neoruaa.glasmio.ui,io.github.neoruaa.glasmio.glass,io.github.neoruaa.glasmio.core,io.github.neoruaa.glasmio.icons" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />

@@ -77,12 +77,41 @@ class LensMotionSmoothnessTest {
     }
 
     @Test
+    fun jellyImpactReturnsWithOneRestrainedRebound() {
+        val jelly = LensSpring(0f, LensMotion.jellyStiffness, LensMotion.jellyDamping)
+        var now = 0L
+        jelly.springTo(-0.15f, now)
+        // Hold a brief braking impulse, then let the deformation spring back.
+        repeat(10) {
+            now += frameNanos
+            jelly.tick(now)
+        }
+        val impactStretch = jelly.value
+        jelly.springTo(0f, now)
+        var positiveRebound = 0f
+        var peakAbsStretch = abs(impactStretch)
+        var settleFrames = 0
+        while (jelly.running && settleFrames < 120) {
+            now += frameNanos
+            jelly.tick(now)
+            positiveRebound = maxOf(positiveRebound, jelly.value)
+            peakAbsStretch = maxOf(peakAbsStretch, abs(jelly.value))
+            settleFrames++
+        }
+        assertTrue("braking impulse should remain visibly elastic: $impactStretch", impactStretch < -0.06f)
+        assertTrue("return should include a small liquid rebound: $positiveRebound", positiveRebound > 0.001f)
+        assertTrue("rebound must stay restrained: $peakAbsStretch", peakAbsStretch < 0.21f)
+        assertTrue("jelly should settle promptly; frames=$settleFrames", settleFrames <= 72)
+        assertEquals(0f, jelly.value, 0f)
+    }
+
+    @Test
     fun expansionDropsWhenTravelArrivesWithoutWaitingForJelly() {
         // FlClash _dropLift drops the lift once the lens has arrived
         // (lift >= 0.975 and |lens.target - lens.value| <= 0.04); the jelly
         // is a shape morph that settles on its own and is NOT part of the
-        // gate. Waiting for the jelly (~2s at stiffness 100 / damping 0.4)
-        // left the shell floating long after arrival, which the owner
+        // gate. Its elastic return runs independently and must not hold the
+        // shell floating after arrival, which the owner
         // reported as the lens taking too long to fall back down.
         val pitch = 304f / 3f
         val barWidth = 304f

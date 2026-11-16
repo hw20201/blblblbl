@@ -16,7 +16,12 @@ import com.github.kr328.clash.core.model.Proxy
 import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.service.VpnState
+import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.ui.components.ShortcutSearchField
+import com.github.arca.android.ui.glass.NexusGlassBackground
+import com.github.arca.android.ui.glass.ProvideGlassTheme
+import com.github.arca.android.ui.theme.LocalAppLanguage
+import com.github.arca.android.ui.theme.MihomoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -44,7 +49,11 @@ class NexusNavigationRegressionTest {
         var selected: Pair<String, Proxy>? = null
         val node = Proxy("Tokyo", type = "Shadowsocks", delay = 45)
         compose.setContent {
-            DashboardScreen(
+            MihomoTheme(ThemeMode.LIGHT) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                    ProvideGlassTheme {
+                        NexusGlassBackground {
+                            DashboardScreen(
                 scrollState = ScrollState(0),
                 vpnState = VpnState(status = VpnState.Status.STOPPED),
                 currentMode = TunnelMode.RULE,
@@ -70,6 +79,10 @@ class NexusNavigationRegressionTest {
                 onUpdateVisibleShortcuts = {},
                 onUpdateShortcutOrder = {},
             )
+                        }
+                    }
+                }
+            }
         }
 
         compose.onNodeWithTag("shortcut-nodes").performClick()
@@ -84,7 +97,7 @@ class NexusNavigationRegressionTest {
     @Test fun rulesPageTitleUsesCapsuleAndBackStillWorks() {
         var backed = false
         compose.setContent {
-            RulesScreen(emptyList(), 0, TunnelMode.RULE) { backed = true }
+            RulesScreen(emptyList(), 0, TunnelMode.RULE, onBack = { backed = true })
         }
         compose.onNodeWithTag("navigation-title-capsule").assertExists()
         compose.onNodeWithTag("navigation-bar-transparent-row").assertExists()
@@ -97,7 +110,7 @@ class NexusNavigationRegressionTest {
             ParsedRule(type = "DOMAIN", payload = "host-$index.example", target = "Proxy")
         }
         compose.setContent {
-            RulesScreen(rules, rules.size, TunnelMode.RULE) {}
+            RulesScreen(rules, rules.size, TunnelMode.RULE, onBack = {})
         }
         compose.onNodeWithTag("rules-list").assertExists()
         repeat(8) {

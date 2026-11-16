@@ -32,11 +32,14 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalDensity
@@ -49,6 +52,10 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.zIndex
 import com.github.kr328.clash.core.model.Proxy
 import com.github.arca.android.data.DashboardData
+import com.github.arca.android.data.ProfileItem
+import com.github.arca.android.data.ParsedRule
+import com.github.arca.android.data.PerAppProxyMode
+import com.github.arca.android.data.InstalledApp
 import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.service.TrafficMetrics
@@ -57,15 +64,16 @@ import kotlinx.coroutines.flow.StateFlow
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
-import com.github.arca.android.ui.glass.NavigationGlassSurface
-import com.github.arca.android.ui.glass.LensStrength
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.NavigationLensState
+import com.github.arca.android.ui.glass.NavigationLensGlobalBounds
+import com.github.arca.android.ui.glass.glassPalette
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.theme.*
 import kotlin.math.roundToInt
+import java.util.concurrent.atomic.AtomicReference
 
 data class ShortcutDef(
     val id: String,
@@ -120,23 +128,44 @@ fun DashboardScreen(
     onNavigateToTraffic: () -> Unit = {},
     onUpdateVisibleShortcuts: (Set<String>) -> Unit,
     onUpdateShortcutOrder: (List<String>) -> Unit,
-    glassScene: NavigationLensState? = null
+    profiles: List<ProfileItem> = emptyList(),
+    selectedProfileId: String? = null,
+    onQuickProfileSelect: (ProfileItem) -> Unit = {},
+    onQuickImportLocalFile: (() -> Unit)? = null,
+    onQuickAddSubscription: (String, String) -> Unit = { _, _ -> },
+    rules: List<ParsedRule> = emptyList(),
+    fakeIpEnabled: Boolean = false,
+    onFakeIpEnabledChanged: (Boolean) -> Unit = {},
+    perAppProxyMode: PerAppProxyMode = PerAppProxyMode.DISABLED,
+    selectedPackages: Set<String> = emptySet(),
+    apps: List<InstalledApp> = emptyList(),
+    isAppsLoading: Boolean = false,
+    onEnsureAppsLoaded: () -> Unit = {},
+    onPerAppProxyModeChanged: (PerAppProxyMode) -> Unit = {},
+    onToggleAppPackage: (String) -> Unit = {},
+    allowLan: Boolean = false,
+    onAllowLanChanged: (Boolean) -> Unit = {},
+    glassScene: NavigationLensState? = null,
+    navigationLensBoundsState: State<NavigationLensGlobalBounds?>? = null
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
+    val selectedNavigationLensBounds = navigationLensBoundsState?.value
     val coroutineScope = rememberCoroutineScope()
     var modePickerOpen by remember { mutableStateOf(false) }
     val modePickerProgress = remember { Animatable(0f) }
     val pickerMorph = modePickerProgress.value.coerceIn(0f, 1f)
-    // A fixed, slightly enlarged capsule is measured in both states. The same glass shell owns
-    // the collapsed capsule and grows only downward when opened.
+    val panelReveal = FastOutSlowInEasing.transform(pickerMorph)
+    val optionsReveal = ((panelReveal - 0.08f) / 0.92f).coerceIn(0f, 1f)
+    val showPickerOptions = modePickerOpen || pickerMorph > 0.001f
+    // The opaque selector keeps one palette surface as its contour grows downward.
     val collapsedPickerWidth = 136.dp
     val capsuleHeight = 48.dp
     val optionHeight = 40.dp
     val pickerHeight = capsuleHeight + 96.dp * pickerMorph
     val closeModePicker: () -> Unit = {
         modePickerOpen = false
-        coroutineScope.launch { modePickerProgress.animateTo(0f, tween(180, easing = FastOutSlowInEasing)) }
+        coroutineScope.launch { modePickerProgress.animateTo(0f, spring(dampingRatio = 0.96f, stiffness = 320f)) }
     }
     val toggleModePicker: () -> Unit = {
         if (modePickerOpen) {
@@ -144,21 +173,33 @@ fun DashboardScreen(
         } else {
             modePickerOpen = true
             coroutineScope.launch {
-                modePickerProgress.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
+                modePickerProgress.animateTo(1f, spring(dampingRatio = 0.96f, stiffness = 320f))
             }
         }
     }
-    BackHandler(enabled = modePickerOpen, onBack = closeModePicker)
+    val toggleModePickerWithHaptic = rememberHapticAction(toggleModePicker)
+    val chooseModeWithHaptic = rememberHapticValueAction(onModeSelected)
+    BackHandler(enabled = modePickerOpen, onBack = toggleModePickerWithHaptic)
 
-    // State for Quick Node Selector Modal
-    var showQuickNodeSelector by remember { mutableStateOf(false) }
+    // Every shortcut can morph from its own card into the shared glass panel.
+    // Keep geometry outside Compose state so scrolling only updates the tiny bounds map.
+    var activeShortcutPanelId by remember { mutableStateOf<String?>(null) }
+    var shortcutPanelDataId by remember { mutableStateOf<String?>(null) }
+    var hiddenShortcutId by remember { mutableStateOf<String?>(null) }
+    var shortcutPanelMorphBounds by remember { mutableStateOf<Rect?>(null) }
+    val shortcutBounds = remember { AtomicReference<Map<String, Rect>>(emptyMap()) }
     var quickNodeSearchQuery by remember { mutableStateOf("") }
     var isTestingQuickSheet by remember { mutableStateOf(false) }
-    val quickNodeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    // ModalBottomSheet drives its own hidden-to-expanded transition on entry.
-    // Do not call expand() from a second effect; that competes with the same animation.
-
+    val dashboardRootCoordinates = remember { AtomicReference<LayoutCoordinates?>(null) }
+    val openShortcutPanel = remember {
+        {
+            id: String ->
+            shortcutPanelDataId = id
+            shortcutPanelMorphBounds = shortcutBounds.get()[id]
+            hiddenShortcutId = id
+            activeShortcutPanelId = id
+        }
+    }
     // Visual In-Place Shortcuts Edit State
     var isEditingShortcuts by remember { mutableStateOf(false) }
     var showAddShortcutSheet by remember { mutableStateOf(false) }
@@ -205,7 +246,7 @@ fun DashboardScreen(
                 Icon(Icons.Default.Public, contentDescription = null, tint = IosBlue, modifier = Modifier.size(38.dp))
             }) { showOutboundIp = true },
             "nodes" to ShortcutDef("nodes", AppStrings.get("shortcut_nodes", lang), "$totalNodes", { NodesIllustration() }) {
-                showQuickNodeSelector = true
+                openShortcutPanel("nodes")
             },
             "profiles" to ShortcutDef("profiles", AppStrings.get("shortcut_profiles", lang), activeProfileName, { ProfilesIllustration() }) {
                 onNavigateToProfiles()
@@ -280,6 +321,7 @@ fun DashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onGloballyPositioned { dashboardRootCoordinates.set(it) }
                 .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
         ) {
             Column(
@@ -288,10 +330,14 @@ fun DashboardScreen(
                     .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
                     .background(topBgBrush)
                     .testTag("dashboard-scroll")
-                    .bounceOverscroll()
+                    .bounceOverscroll(allowBottom = false)
+                    // Keep the page viewport full-height behind the translucent dock; reserve clearance in scroll content.
                     .verticalScroll(state = scrollState, enabled = draggedId == null && pickedUpShortcutId == null)
                     .padding(horizontal = 20.dp)
-                    .padding(top = headerInset + 12.dp, bottom = 110.dp)
+                    .padding(
+                        top = headerInset + 12.dp,
+                        bottom = dashboardScrollContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                    )
             ) {
 
                 DashboardTrafficSummary(
@@ -422,8 +468,19 @@ fun DashboardScreen(
                                         scaleX = scale
                                         scaleY = scale
                                         shadowElevation = if (isBeingDragged) 24f else 0f
+                                        alpha = if (item.id == hiddenShortcutId) 0f else 1f
                                     }
                                     .testTag("shortcut-${item.id}")
+                                itemModifier = itemModifier.onGloballyPositioned { coordinates ->
+                                    val root = dashboardRootCoordinates.get()
+                                    if (root != null) {
+                                        val topLeft = root.localPositionOf(coordinates, Offset.Zero)
+                                        val width = coordinates.size.width.toFloat()
+                                        val height = coordinates.size.height.toFloat()
+                                        val bounds = Rect(topLeft.x, topLeft.y, topLeft.x + width, topLeft.y + height)
+                                        shortcutBounds.set(shortcutBounds.get() + (item.id to bounds))
+                                    }
+                                }
 
                                 if (isEditingShortcuts) {
                                     itemModifier = itemModifier.pointerInput(item.id) {
@@ -498,6 +555,8 @@ fun DashboardScreen(
                                 icon = item.icon,
                                 isEditing = isEditingShortcuts,
                                 lens = glassScene,
+                                lensBounds = if (item.id == "dns") selectedNavigationLensBounds else null,
+                                lensTintTarget = if (item.id == "dns") Color(0xFF22C55E) else null,
                                 onPickupChanged = { picked ->
                                     if (picked) pickedUpShortcutId = item.id
                                     else if (pickedUpShortcutId == item.id) pickedUpShortcutId = null
@@ -507,7 +566,9 @@ fun DashboardScreen(
                                         onUpdateVisibleShortcuts(visibleShortcuts - item.id)
                                     }
                                 },
-                                onClick = item.onClick
+                                onClick = {
+                                    if (item.id == "vpn") item.onClick() else openShortcutPanel(item.id)
+                                }
                             )
                         }
                     }
@@ -554,23 +615,6 @@ fun DashboardScreen(
                 }
             }
 
-            if (vpnState.error != null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Surface(
-                    color = AppPalette.dangerSoftBg,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = RedDanger, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = vpnState.error, color = RedDanger, fontSize = 13.sp)
-                    }
-                }
-            }
 
             } // Only scrolling content belongs to the recorded scene.
 
@@ -598,7 +642,7 @@ fun DashboardScreen(
                     ) }
 
                     // Top Right iOS Cupertino Switch (aligned directly with ARCA title)
-                    CupertinoSwitch(
+                    ArcaGlasmioSwitch(
                         checked = isRunning || isStarting,
                         onCheckedChange = { onToggleVpn() }
                     )
@@ -618,78 +662,121 @@ fun DashboardScreen(
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
                 ) {
-                    val pickerShape = RoundedCornerShape(20.dp)
+                    val pickerCornerRadius = (24f - 3f * panelReveal).dp
+                    val pickerShape = RoundedCornerShape(pickerCornerRadius)
+                    val optionShape = RoundedCornerShape(13.dp)
                     val otherModes = modeOptions.filterNot { it.first == currentMode }.take(2)
                     val outerPickerModifier = Modifier
                         .requiredSize(collapsedPickerWidth, pickerHeight)
                         .testTag(if (modePickerOpen) "mode-picker-panel" else "mode-picker-trigger")
                         .semantics { selected = modePickerOpen }
                         .clip(pickerShape)
-                        .clickable(interactionSource = null, indication = null, onClick = toggleModePicker)
+                        .clickable(interactionSource = null, indication = null, onClick = toggleModePickerWithHaptic)
                     Box(outerPickerModifier) {
-                        NavigationGlassSurface(
-                            modifier = Modifier.fillMaxSize(),
-                            lens = titleScene,
-                            shape = pickerShape,
-                            cornerRadius = 24.dp,
-                            strength = LensStrength.SUBTLE,
-                            surfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.TITLE_CAPSULES,
-                            frosted = true,
-                            showRim = true
-                        ) {
-                            if (modePickerOpen) {
-                                Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 4.dp)) {
-                                    Spacer(Modifier.height(capsuleHeight - 8.dp))
-                                    Spacer(Modifier.height(4.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        otherModes.forEach { (mode, title) ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(optionHeight)
-                                                        .testTag("mode-option-${mode.name.lowercase()}")
-                                                        .clip(RoundedCornerShape(14.dp))
-                                                        .semantics { selected = mode == currentMode }
-                                                        .clickable {
-                                                            onModeSelected(mode)
-                                                            closeModePicker()
-                                                        }
-                                                        .padding(horizontal = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(
-                                                        title,
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        fontSize = 15.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = LoonTextPrimary,
-                                                        maxLines = 1,
-                                                        softWrap = false
-                                                    )
-                                                }
-                                            }
-                                    }
-                                }
-                            }
-                        }
-                        // Keep a legible, persistently visible glass face over the live lens.
-                        // The lens remains underneath for refraction; this soft neutral veil and
-                        // quiet rim keep the collapsed capsule from disappearing on pale scenes.
+                        val pickerEdge = glassPalette.edge.copy(
+                            alpha = (glassPalette.edge.alpha * 0.32f).coerceIn(0f, 0.10f)
+                        )
+                        val pickerDivider = glassPalette.edge.copy(
+                            alpha = (glassPalette.edge.alpha * 0.18f).coerceIn(0f, 0.06f)
+                        )
                         Box(
                             Modifier.matchParentSize()
                                 .background(
                                     Brush.verticalGradient(
-                                        0f to Color.White.copy(alpha = 0.24f),
-                                        0.55f to Color.White.copy(alpha = 0.16f),
-                                        1f to Color.White.copy(alpha = 0.10f)
+                                        listOf(
+                                            glassPalette.panelStart.copy(alpha = 1f),
+                                            glassPalette.panelEnd.copy(alpha = 1f)
+                                        )
                                     ),
                                     pickerShape
                                 )
-                                .border(0.8.dp, Color.White.copy(alpha = 0.72f), pickerShape)
+                                .border(0.45.dp, pickerEdge, pickerShape)
+                                .testTag("mode-picker-opaque-surface")
                         )
-                        // Keep the capsule as a separate fixed-size layer above the expanding
-                        // shell; it remains visible and stationary throughout the downward morph.
+                        if (showPickerOptions) {
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(
+                                        start = 8.dp,
+                                        end = 8.dp,
+                                        top = capsuleHeight + 4.dp,
+                                        bottom = 4.dp
+                                    )
+                                    .fillMaxWidth()
+                                    .offset(y = ((1f - optionsReveal) * 4f).dp)
+                                    .graphicsLayer {
+                                        alpha = optionsReveal
+                                        scaleY = 0.96f + 0.04f * optionsReveal
+                                    }
+                                    .testTag("mode-picker-options")
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth()
+                                        .height(0.75.dp)
+                                        .background(pickerDivider)
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    otherModes.forEach { (mode, title) ->
+                                        val modeAccent = when (mode) {
+                                            TunnelMode.GLOBAL -> LoonOrangeLight
+                                            TunnelMode.RULE -> Color(0xFF82B9F4)
+                                            TunnelMode.DIRECT -> Color(0xFF7FD3AE)
+                                            else -> Color.White.copy(alpha = 0.75f)
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(optionHeight)
+                                                .testTag("mode-option-${mode.name.lowercase()}")
+                                                .clip(optionShape)
+                                                .background(glassPalette.panelStart.copy(alpha = 1f), optionShape)
+                                                .border(0.4.dp, pickerEdge, optionShape)
+                                                .semantics { selected = mode == currentMode }
+                                                .clickable {
+                                                    chooseModeWithHaptic(mode)
+                                                    closeModePicker()
+                                                }
+                                                .padding(horizontal = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                Modifier.size(7.dp)
+                                                    .background(modeAccent, CircleShape)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                title,
+                                                modifier = Modifier.weight(1f),
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = LoonTextPrimary,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (showPickerOptions) {
+                            val selectedShape = RoundedCornerShape(16.dp)
+                            Box(
+                                Modifier.align(Alignment.TopCenter)
+                                    .padding(horizontal = 6.dp, vertical = 5.dp)
+                                    .fillMaxWidth().height(capsuleHeight - 10.dp)
+                                    .graphicsLayer {
+                                        alpha = panelReveal
+                                        scaleX = 0.96f + 0.04f * panelReveal
+                                        scaleY = 0.94f + 0.06f * panelReveal
+                                    }
+                                    .clip(selectedShape)
+                                    .background(glassPalette.panelAccent.copy(alpha = 1f), selectedShape)
+                                    .border(0.4.dp, pickerEdge, selectedShape)
+                                    .testTag("mode-picker-selected-surface")
+                            )
+                        }
                         Row(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -717,62 +804,66 @@ fun DashboardScreen(
                                 imageVector = Icons.Default.ArrowDropDown,
                                 contentDescription = null,
                                 tint = LoonOrangeLight,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(18.dp).graphicsLayer {
+                                    rotationZ = 180f * panelReveal
+                                }
                             )
                         }
-
                     }
                 }
-
             }
-
-            // =========================================================================
-            // In-Place Quick Node Selector BottomSheet (Full 92% height, smooth expansion)
-            // =========================================================================
-            if (showQuickNodeSelector) {
-                GlassModalBottomSheet(
-                    onDismissRequest = { showQuickNodeSelector = false },
-                    sheetState = quickNodeSheetState,
-                    containerColor = LoonCard,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    dragHandle = { BottomSheetDefaults.DragHandle() }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .testTag("quick-node-selector-sheet")
-                            .fillMaxWidth()
-                            .fillMaxHeight(0.92f)
-                            .padding(horizontal = 20.dp)
-                            .padding(bottom = 24.dp)
+            // One shared morph hosts the node selector and every other shortcut action.
+            val activePanelShortcut = shortcutPanelDataId?.let { allShortcutMap[it] }
+                ?: allShortcutMap.getValue("nodes")
+            ShortcutMorphOverlay(
+                visible = activeShortcutPanelId != null,
+                sourceBounds = shortcutPanelMorphBounds,
+                liveSourceBounds = { shortcutBounds.get()[activePanelShortcut.id] },
+                sourceTitle = activePanelShortcut.title,
+                sourceSubtitle = activePanelShortcut.subtitle,
+                sourceIcon = activePanelShortcut.icon,
+                lens = glassScene,
+                panelTestTag = if (activePanelShortcut.id == "nodes") "quick-node-selector-sheet" else "shortcut-panel-${activePanelShortcut.id}-sheet",
+                contentTestTag = if (activePanelShortcut.id == "nodes") "quick-node-selector-content" else "shortcut-panel-${activePanelShortcut.id}-content",
+                panelSurfaceCategory = if (activePanelShortcut.id == "nodes")
+                    com.github.arca.android.ui.glass.GlassSurfaceCategory.LARGE_PANELS
+                else com.github.arca.android.ui.glass.GlassSurfaceCategory.SHORTCUT_CARDS,
+                onDismissRequest = {
+                    activeShortcutPanelId = null
+                },
+                onDismissed = {
+                    hiddenShortcutId = null
+                    shortcutPanelMorphBounds = null
+                    shortcutPanelDataId = null
+                }
+            ) {
+                if (activePanelShortcut.id == "nodes") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = AppStrings.get("quick_node_title", lang),
-                                    fontSize = 19.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = LoonTextPrimary
-                                )
-                                Text(
-                                    text = "策略组: ${mainGroupName.ifBlank { "默认主组" }}",
-                                    fontSize = 12.sp,
-                                    color = LoonTextSecondary
-                                )
-                            }
-
+                        Column {
+                            Text(
+                                text = AppStrings.get("quick_node_title", lang),
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = LoonTextPrimary
+                            )
+                            Text(
+                                text = "策略组: ${mainGroupName.ifBlank { "默认主组" }}",
+                                fontSize = 12.sp,
+                                color = LoonTextSecondary
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = {
                                     if (mainGroupName.isNotBlank() && !isTestingQuickSheet) {
                                         isTestingQuickSheet = true
                                         coroutineScope.launch {
                                             onHealthCheck(mainGroupName)
-                                            kotlinx.coroutines.delay(1800)
+                                            delay(1800)
                                             isTestingQuickSheet = false
                                         }
                                     }
@@ -785,143 +876,151 @@ fun DashboardScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-                        }
-
-                        // Search bar
-                        OutlinedTextField(
-                            value = quickNodeSearchQuery,
-                            onValueChange = { quickNodeSearchQuery = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            placeholder = { Text(AppStrings.get("search_nodes", lang), color = LoonTextMuted, fontSize = 13.sp) },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextSecondary, modifier = Modifier.size(17.dp)) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = LoonBg,
-                                unfocusedContainerColor = LoonBg,
-                                focusedBorderColor = LoonBlue,
-                                unfocusedBorderColor = Color.Transparent
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        val filteredNodes = remember(mainGroupProxies, quickNodeSearchQuery) {
-                            if (quickNodeSearchQuery.isBlank()) mainGroupProxies
-                            else mainGroupProxies.filter { it.name.contains(quickNodeSearchQuery, ignoreCase = true) }
-                        }
-
-                        if (filteredNodes.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(160.dp),
-                                contentAlignment = Alignment.Center
+                            IconButton(
+                                onClick = { activeShortcutPanelId = null },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Text(
-                                    text = if (mainGroupProxies.isEmpty()) AppStrings.get("no_nodes_available", lang) else AppStrings.get("no_nodes_matched", lang),
-                                    color = LoonTextSecondary,
-                                    fontSize = 13.sp
-                                )
+                                Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
                             }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                            ) {
-                                itemsIndexed(
-                                    items = filteredNodes,
-                                    key = { index, proxy -> "${proxy.name}_$index" }
-                                ) { index, proxy ->
-                                    val isSelected = proxy.name == activeNodeName
-                                    val nodeEmoji = extractLeadingEmoji(proxy.name)
-
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                onSelectProxy(mainGroupName, proxy)
-                                                showQuickNodeSelector = false
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 11.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            if (nodeEmoji != null) {
-                                                Text(
-                                                    text = nodeEmoji,
-                                                    fontSize = 17.sp,
-                                                    modifier = Modifier.padding(end = 10.dp)
-                                                )
-                                            }
-                                            Column {
-                                                Text(
-                                                    text = proxy.name,
-                                                    color = if (isSelected) LoonOrange else LoonTextPrimary,
-                                                    fontSize = 14.5.sp,
-                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                                    maxLines = 1
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = proxy.type.uppercase(),
-                                                    color = LoonTextMuted,
-                                                    fontSize = 11.sp
-                                                )
-                                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = quickNodeSearchQuery,
+                        onValueChange = { quickNodeSearchQuery = it },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        placeholder = { Text(AppStrings.get("search_nodes", lang), color = LoonTextMuted, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextSecondary, modifier = Modifier.size(17.dp)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = LoonBg,
+                            unfocusedContainerColor = LoonBg,
+                            focusedBorderColor = LoonBlue,
+                            unfocusedBorderColor = Color.Transparent
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                    val filteredNodes = remember(mainGroupProxies, quickNodeSearchQuery) {
+                        if (quickNodeSearchQuery.isBlank()) mainGroupProxies
+                        else mainGroupProxies.filter { it.name.contains(quickNodeSearchQuery, ignoreCase = true) }
+                    }
+                    if (filteredNodes.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (mainGroupProxies.isEmpty()) AppStrings.get("no_nodes_available", lang) else AppStrings.get("no_nodes_matched", lang),
+                                color = LoonTextSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            itemsIndexed(
+                                items = filteredNodes,
+                                key = { index, proxy -> "${proxy.name}_$index" }
+                            ) { index, proxy ->
+                                val isSelected = proxy.name == activeNodeName
+                                val nodeEmoji = extractLeadingEmoji(proxy.name)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            onSelectProxy(mainGroupName, proxy)
+                                            activeShortcutPanelId = null
                                         }
-
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (isTestingQuickSheet) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(13.dp),
-                                                    strokeWidth = 1.8.dp,
-                                                    color = LoonOrange
-                                                )
-                                            } else {
-                                                val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
-                                                val delayText = when {
-                                                    proxy.delay == -2 -> "超时"
-                                                    proxy.delay > 0 -> "${proxy.delay} ms"
-                                                    else -> "--"
-                                                }
-                                                Text(
-                                                    text = delayText,
-                                                    color = delayColor,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
-                                                    modifier = Modifier.padding(end = 8.dp)
-                                                )
-                                            }
-
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = LoonOrange,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
+                                        .padding(horizontal = 8.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        if (nodeEmoji != null) {
+                                            Text(nodeEmoji, fontSize = 17.sp, modifier = Modifier.padding(end = 10.dp))
+                                        }
+                                        Column {
+                                            Text(
+                                                text = proxy.name,
+                                                color = if (isSelected) LoonOrange else LoonTextPrimary,
+                                                fontSize = 14.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                maxLines = 1
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(proxy.type.uppercase(), color = LoonTextMuted, fontSize = 11.sp)
                                         }
                                     }
-
-                                    if (index < filteredNodes.size - 1) {
-                                        HorizontalDivider(
-                                            color = LoonCardBorder,
-                                            thickness = 0.5.dp,
-                                            modifier = Modifier.padding(horizontal = 8.dp)
-                                        )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isTestingQuickSheet) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(13.dp),
+                                                strokeWidth = 1.8.dp,
+                                                color = LoonOrange
+                                            )
+                                        } else {
+                                            val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
+                                            val delayText = when {
+                                                proxy.delay == -2 -> "超时"
+                                                proxy.delay > 0 -> "${proxy.delay} ms"
+                                                else -> "--"
+                                            }
+                                            Text(
+                                                text = delayText,
+                                                color = delayColor,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            )
+                                        }
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = LoonOrange,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
+                                }
+                                if (index < filteredNodes.size - 1) {
+                                    HorizontalDivider(
+                                        color = LoonCardBorder,
+                                        thickness = 0.5.dp,
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
                                 }
                             }
                         }
                     }
+                } else {
+                    DashboardShortcutActionPanel(
+                        shortcut = activePanelShortcut,
+                        vpnStatus = vpnState.status,
+                        activeProfileName = activeProfileName,
+                        profiles = profiles,
+                        selectedProfileId = selectedProfileId,
+                        onSelectProfile = { profile -> onQuickProfileSelect(profile) },
+                        onImportLocalFile = onQuickImportLocalFile,
+                        onAddSubscription = onQuickAddSubscription,
+                        rules = rules,
+                        requestMonitoringEnabled = requestMonitoringEnabled,
+                        fakeIpEnabled = fakeIpEnabled,
+                        onFakeIpEnabledChanged = onFakeIpEnabledChanged,
+                        perAppProxyMode = perAppProxyMode,
+                        selectedPackages = selectedPackages,
+                        apps = apps,
+                        isAppsLoading = isAppsLoading,
+                        onEnsureAppsLoaded = onEnsureAppsLoaded,
+                        onPerAppProxyModeChanged = onPerAppProxyModeChanged,
+                        onToggleAppPackage = onToggleAppPackage,
+                        allowLan = allowLan,
+                        onAllowLanChanged = onAllowLanChanged,
+                        trafficMetrics = trafficMetrics,
+                        coreVersion = vpnState.coreVersion,
+                        onClose = { activeShortcutPanelId = null }
+                    )
                 }
             }
-
             // =========================================================================
             // Add Hidden Shortcut BottomSheet
             // =========================================================================

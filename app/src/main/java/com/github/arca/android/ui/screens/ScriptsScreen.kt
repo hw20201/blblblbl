@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,7 +59,8 @@ private fun formatRelativeTime(timestamp: Long): String {
 @Composable
 fun ScriptsScreen(
     onBack: () -> Unit,
-    onScriptsChanged: () -> Unit = {}
+    onScriptsChanged: () -> Unit = {},
+    embeddedPanel: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -122,7 +124,8 @@ fun ScriptsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .statusBarsPadding()
+            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
+            .testTag("scripts-screen-root")
     ) {
         // Cupertino Navigation Bar
         CupertinoNavBar(
@@ -214,9 +217,15 @@ fun ScriptsScreen(
         } else {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .then(if (embeddedPanel) Modifier.weight(1f) else Modifier.fillMaxSize())
                     .bounceOverscroll()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(
+                        start = 16.dp,
+                        top = 10.dp,
+                        end = 16.dp,
+                        bottom = if (embeddedPanel) 22.dp else 10.dp
+                    )
+                    .testTag("scripts-list")
             ) {
                 item {
                     ScriptsPanelSurface(
@@ -288,7 +297,7 @@ fun ScriptsScreen(
                                             Spacer(modifier = Modifier.width(4.dp))
                                         }
 
-                                        CupertinoSwitch(
+                                        ArcaGlasmioSwitch(
                                             checked = script.enabled,
                                             onCheckedChange = { checked ->
                                                 ScriptManager.toggleScript(context, script.id, checked)

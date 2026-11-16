@@ -1,11 +1,11 @@
 package com.github.arca.android.ui.glass
+import io.github.neoruaa.glasmio.glass.NavigationGlassMaterial
 
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -13,7 +13,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -24,11 +23,6 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalDensity
-import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -61,51 +55,83 @@ val LocalGlassTokens = staticCompositionLocalOf { GlassPalettes.CREAM.toTokens()
  * The top rim is the single most important cue: a bright hairline that fades at both ends reads as
  * a lens edge, whereas a uniform 1px border reads as a plain card.
  */
-val LocalKyantBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
-
-fun Modifier.glassSurface(tokens: GlassTokens): Modifier =
-    this.drawWithContent {
-        drawContent()
+fun Modifier.glassSurface(tokens: GlassTokens, optics: GlassOptics = GlassOptics.DEFAULT): Modifier =
+    this.drawWithCache {
         val w = size.width
         val h = size.height
-        if (w <= 0f || h <= 0f) return@drawWithContent
+        if (w <= 0f || h <= 0f) {
+            onDrawWithContent { drawContent() }
+        } else {
+            val safeOptics = optics.clamped()
+            val edgeScale = safeOptics.edgeScale()
+            val edgeLight = safeOptics.edgeLightScale()
+            val topRimHeight = 1.2f * edgeScale
+            val bottomRimHeight = 1f * edgeScale
 
-        // Diagonal sheen from the upper left.
-        drawRect(
-            Brush.linearGradient(
-                0f to Color.White.copy(alpha = tokens.sheen),
-                0.40f to Color.White.copy(alpha = tokens.sheen * 0.30f),
+            // Build size- and settings-dependent gradients only when the draw cache is invalidated.
+            val sheenBrush = Brush.linearGradient(
+                0f to Color.White.copy(alpha = (tokens.sheen * edgeLight).coerceAtMost(0.08f)),
+                0.40f to Color.White.copy(alpha = (tokens.sheen * edgeLight * 0.30f).coerceAtMost(0.03f)),
                 1f to Color.Transparent,
                 start = Offset(0f, 0f),
                 end = Offset(w, h * 0.9f)
             )
-        )
-        // Top rim, dimmed in the middle.
-        drawRect(
-            Brush.horizontalGradient(
+            val topRimBrush = Brush.horizontalGradient(
                 0f to Color.Transparent,
-                0.24f to tokens.rimTop,
-                0.50f to tokens.rimTop.copy(alpha = tokens.rimTop.alpha * 0.38f),
-                0.76f to tokens.rimTop,
+                0.24f to tokens.rimTop.copy(alpha = (tokens.rimTop.alpha * edgeLight).coerceIn(0f, 1f)),
+                0.50f to tokens.rimTop.copy(alpha = (tokens.rimTop.alpha * edgeLight * 0.38f).coerceIn(0f, 1f)),
+                0.76f to tokens.rimTop.copy(alpha = (tokens.rimTop.alpha * edgeLight).coerceIn(0f, 1f)),
                 1f to Color.Transparent,
                 startX = 0f,
                 endX = w
-            ),
-            topLeft = Offset(w * 0.06f, 0f),
-            size = Size(w * 0.88f, 1.2f)
-        )
-        // Bottom bounce.
-        drawRect(
-            Brush.horizontalGradient(
+            )
+            val bottomBounceBrush = Brush.horizontalGradient(
                 0f to Color.Transparent,
-                0.5f to tokens.rimBottom,
+                0.5f to tokens.rimBottom.copy(alpha = (tokens.rimBottom.alpha * edgeLight).coerceIn(0f, 1f)),
                 1f to Color.Transparent,
                 startX = 0f,
                 endX = w
-            ),
-            topLeft = Offset(w * 0.16f, h - 1f),
-            size = Size(w * 0.68f, 1f)
-        )
+            )
+            // A restrained Arca chromatic edge remains as a finishing touch; Glasmio still owns
+            // the sampled material, blur and primary refraction.
+            val chromaAlpha = (0.018f * safeOptics.dispersionScale()).coerceIn(0f, 0.036f)
+            val chromaBrush = if (chromaAlpha > 0f) Brush.horizontalGradient(
+                listOf(
+                    Color.Transparent,
+                    Color(0xFF79BFFF).copy(alpha = chromaAlpha),
+                    Color.Transparent,
+                    Color(0xFFFF91B9).copy(alpha = chromaAlpha),
+                    Color.Transparent
+                ),
+                startX = 0f,
+                endX = w
+            ) else null
+
+            onDrawWithContent {
+                drawContent()
+                // Diagonal sheen from the upper left.
+                drawRect(sheenBrush)
+                // Top rim, dimmed in the middle.
+                drawRect(
+                    topRimBrush,
+                    topLeft = Offset(w * 0.06f, 0f),
+                    size = Size(w * 0.88f, topRimHeight)
+                )
+                // Bottom bounce.
+                drawRect(
+                    bottomBounceBrush,
+                    topLeft = Offset(w * 0.16f, h - bottomRimHeight),
+                    size = Size(w * 0.68f, bottomRimHeight)
+                )
+                if (chromaBrush != null) {
+                    drawRect(
+                        chromaBrush,
+                        topLeft = Offset(w * 0.08f, topRimHeight),
+                        size = Size(w * 0.84f, (topRimHeight * 0.32f).coerceAtLeast(0.35f))
+                    )
+                }
+            }
+        }
     }
 
 /**
@@ -124,8 +150,17 @@ fun GlassSurface(
     lens: NavigationLensState? = null,
     blurEnabled: Boolean = true,
     shortcutContactFrost: Boolean = false,
+    surfaceCategory: GlassSurfaceCategory = if (shortcutContactFrost)
+        GlassSurfaceCategory.SHORTCUT_CARDS else GlassSurfaceCategory.LARGE_PANELS,
+    surfaceAlphaScale: Float = 1f,
     shortcutDockLens: Boolean = false,
     shortcutRefraction: () -> ShortcutRefraction = { ShortcutRefraction() },
+    /**
+     * Keep [shape] exactly as given. The tuned shortcut material otherwise replaces it with its own fixed
+     * 60dp superellipse, which turns any short, wide surface into a pill; a morph that must start from a
+     * row's own corners and end at a panel's has to opt out.
+     */
+    honorShape: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
     val fill = if (accent == null) {
@@ -144,44 +179,17 @@ fun GlassSurface(
     }
 
     val tunedMaterial = shortcutContactFrost && LocalShortcutTunedMaterialEnabled.current
-    val effectiveShape = if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
+    val effectiveShape = if (honorShape) shape
+        else if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
         else if (tunedMaterial) ShortcutTunedCardShape else shape
-    // Kyant preset: sample the recorded mesh background through Kyant's liquid glass
-    // instead of the custom AGSL path below. Title capsules and bottom nav keep the
-    // custom path by design: the custom glass covers them.
-    val kyantBackdrop = LocalKyantBackdrop.current
-    // Kyant's lens SDF only accepts rounded-rectangle/corner-based shapes. Sheets use
-    // RectangleShape, so they must stay on the established fallback instead of throwing.
-    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset == GlassPreset.LIQUID &&
-        kyantBackdrop != null && effectiveShape is CornerBasedShape
+    val glasmioBackdrop = LocalArcaGlasmioBackdrop.current
+    if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
+        glasmioBackdrop != null
     ) {
-        val density = LocalDensity.current
-        val blurPx = with(density) { 2.dp.toPx() }
-        val lensHeightPx = with(density) { 12.dp.toPx() }
-        // The LIQUID preset's own sliders drive Kyant: refraction scales the lens
-        // amount (default 13.5dp maps back to the previous fixed 24dp), dispersion
-        // toggles Kyant's chromatic-aberration shader (on for any value above 0;
-        // Kyant exposes no graded amount), and edge width/light draw the rim.
-        val liquid = LocalGlassSettings.current.globalOpticsFor(GlassPreset.LIQUID)
-        val lensAmountPx = with(density) { 24.dp.toPx() } * liquid.refractionScale()
-        val rimWidth = 0.5.dp * liquid.edgeScale()
-        val rimAlpha = (0.38f * liquid.edgeLightScale()).coerceIn(0f, 1f)
-        Box(
-            modifier
-                .clip(effectiveShape)
-                // Safety net: if the Kyant layer has not recorded yet (first frame after a page
-                // returns, or a detached recorder) the panel still reads as glass, not a hole.
-                .background(fill)
-                .drawBackdrop(
-                    backdrop = kyantBackdrop,
-                    shape = { effectiveShape },
-                    effects = {
-                        blur(blurPx)
-                        lens(lensHeightPx, lensAmountPx, chromaticAberration = liquid.dispersionDp > 0f)
-                    }
-                )
-                .border(rimWidth, Color.White.copy(alpha = rimAlpha), effectiveShape),
-            content = content
+        ArcaGlasmioGlassSurface(
+            modifier = modifier, backdrop = glasmioBackdrop, shape = effectiveShape,
+            tint = accent ?: tokens.tint, material = glasmioMaterialFor(surfaceCategory),
+            surfaceCategory = surfaceCategory, surfaceAlphaScale = surfaceAlphaScale, content = content
         )
         return
     }

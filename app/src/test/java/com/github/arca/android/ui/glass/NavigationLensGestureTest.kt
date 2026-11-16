@@ -18,6 +18,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.ui.components.LoonFloatingBottomBar
+import com.github.arca.android.ui.components.LocalHapticFeedbackEnabled
+import com.github.arca.android.ui.components.LocalHapticFeedbackPerformer
 import com.github.arca.android.ui.theme.LocalAppLanguage
 import com.github.arca.android.ui.theme.MihomoTheme
 import org.junit.After
@@ -34,15 +36,21 @@ class NavigationLensGestureTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val selected = mutableIntStateOf(0)
     private val selections = mutableListOf<Int>()
+    private var hapticTicks = 0
 
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        hapticTicks = 0
     }
 
-    private fun showBar() {
+    private fun showBar(hapticsEnabled: Boolean = false) {
         compose.setContent {
-            CompositionLocalProvider(LocalAppLanguage provides "en") {
+            CompositionLocalProvider(
+                LocalAppLanguage provides "en",
+                LocalHapticFeedbackEnabled provides { hapticsEnabled },
+                LocalHapticFeedbackPerformer provides { hapticTicks++ }
+            ) {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
                 ProvideGlassTheme {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -84,7 +92,7 @@ class NavigationLensGestureTest {
     }
 
     @Test fun dragFollowsFingerAndNavigatesOnlyOnceOnRelease() {
-        showBar()
+        showBar(hapticsEnabled = true)
         val dock = compose.onNodeWithTag("navigation-dock")
         val bounds = dock.getUnclippedBoundsInRoot()
         dock.performTouchInput {
@@ -94,6 +102,7 @@ class NavigationLensGestureTest {
         compose.waitForIdle()
         assertEquals(0, selected.intValue)
         assertTrue(selections.isEmpty())
+        assertEquals("drag updates alone must not buzz", 0, hapticTicks)
         val moving = compose.onNodeWithTag("navigation-liquid-lens").getUnclippedBoundsInRoot()
         assertTrue("lens follows fractional slot, not selected tab", moving.left + moving.right > bounds.left + bounds.right)
         dock.performTouchInput {
@@ -103,6 +112,7 @@ class NavigationLensGestureTest {
         compose.waitForIdle()
         assertEquals(listOf(2), selections)
         assertEquals(2, selected.intValue)
+        assertEquals("one tick accompanies the completed snap", 1, hapticTicks)
         dock.performTouchInput {
             down(Offset(width * 5f / 6f, height / 2f))
             moveTo(Offset(width / 6f, height / 2f), 300)
@@ -110,6 +120,7 @@ class NavigationLensGestureTest {
         }
         compose.waitForIdle()
         assertEquals(listOf(2, 0), selections)
+        assertEquals("reverse selection adds one tick, not continuous ticks", 2, hapticTicks)
     }
 
     @Test fun cancellationReturnsToSelectedTabWithoutNavigation() {

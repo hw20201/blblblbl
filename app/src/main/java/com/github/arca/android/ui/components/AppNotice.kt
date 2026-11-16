@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -104,6 +105,7 @@ fun BoxScope.AppNoticeHost() {
         exit = slideOutVertically(tween(220)) { -it } + fadeOut(tween(180)),
         modifier = Modifier
             .align(Alignment.TopCenter)
+            .zIndex(1000f)
             .statusBarsPadding()
             .padding(top = 8.dp, start = 20.dp, end = 20.dp)
     ) {

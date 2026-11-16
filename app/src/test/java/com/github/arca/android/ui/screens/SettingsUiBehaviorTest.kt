@@ -3,6 +3,8 @@ package com.github.arca.android.ui.screens
 import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -10,13 +12,17 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunStack
+import com.github.arca.android.ui.components.LocalHapticFeedbackEnabled
+import com.github.arca.android.ui.components.LocalHapticFeedbackPerformer
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.GlassSettings
+import com.github.arca.android.ui.glass.NexusGlassBackground
 import com.github.arca.android.ui.glass.GlassOptics
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LensStrength
 import com.github.arca.android.ui.glass.navigationLensShaderParameters
 import com.github.arca.android.ui.glass.ProvideGlassTheme
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.theme.LocalAppLanguage
 import com.github.arca.android.ui.theme.MihomoTheme
@@ -28,9 +34,11 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SettingsUiBehaviorTest {
     @get:Rule val compose = createComposeRule()
 
@@ -58,29 +66,43 @@ class SettingsUiBehaviorTest {
     @Test fun dedicatedGlassSettingsEntryAndTuningScreenExposeLiveOverridesAndReset() {
         val scroll = ScrollState(0)
         val editorVisible = androidx.compose.runtime.mutableStateOf(false)
-        val config = androidx.compose.runtime.mutableStateOf(GlassSettings.DEFAULT)
+        val config = androidx.compose.runtime.mutableStateOf(GlassSettings(
+            glasmioFrosted = com.github.arca.android.ui.glass.GlasmioFrostedTuning(blurRadiusDp = 0f)
+        ))
+        val hapticsEnabled = mutableStateOf(true)
+        var hapticTicks = 0
         var navigated = false
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
-                CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                CompositionLocalProvider(
+                    LocalAppLanguage provides "zh",
+                    LocalHapticFeedbackEnabled provides { hapticsEnabled.value },
+                    LocalHapticFeedbackPerformer provides { hapticTicks++ }
+                ) {
                     ProvideGlassTheme {
                         if (editorVisible.value) {
-                            GlassEffectsScreen(
-                                settings = config.value,
-                                onSettingsChanged = { config.value = it },
-                                onBack = { editorVisible.value = false }
-                            )
+                            val rootBackdrop = rememberArcaGlasmioBackdrop()
+                            NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop, recordGlasmioBackdropSource = true) {
+                                GlassEffectsScreen(
+                                    settings = config.value,
+                                    onSettingsChanged = { config.value = it },
+                                    onBack = { editorVisible.value = false }
+                                )
+                            }
                         } else {
-                            SettingsScreen(
-                                scrollState = scroll, tunStack = TunStack.DEFAULT,
-                                bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
-                                onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
-                                onNavigateToConfigurationCenter = {}, onNavigateToLogs = {},
-                                onNavigateToGlassEffects = {
-                                    navigated = true
-                                    editorVisible.value = true
-                                }
-                            )
+                            val rootBackdrop = rememberArcaGlasmioBackdrop()
+                            NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop) {
+                                SettingsScreen(
+                                    scrollState = scroll, tunStack = TunStack.DEFAULT,
+                                    bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
+                                    onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                                    onNavigateToConfigurationCenter = {}, onNavigateToLogs = {},
+                                    onNavigateToGlassEffects = {
+                                        navigated = true
+                                        editorVisible.value = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -96,6 +118,56 @@ class SettingsUiBehaviorTest {
         compose.runOnIdle { assertTrue("settings row opens dedicated editor", navigated) }
 
         compose.onNodeWithTag("glass-effects-live-lens").assertExists()
+        compose.onNodeWithTag("glass-glasmio-no-blur").assertDoesNotExist()
+        compose.onNodeWithText("清透").assertDoesNotExist()
+        compose.onNodeWithText("0.0 dp").assertExists()
+
+        val blurSlider = compose.onNodeWithTag("glass-glasmio-blur").performScrollTo()
+        val ticksBeforeDisabledDrag = hapticTicks
+        compose.runOnIdle { hapticsEnabled.value = false }
+        blurSlider.performTouchInput {
+            down(Offset(width * 0.1f, height / 2f))
+            moveTo(Offset(width * 0.35f, height / 2f), 150)
+            moveTo(Offset(width * 0.62f, height / 2f), 150)
+            moveTo(Offset(width * 0.9f, height / 2f), 150)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals("disabled preference silences slider ticks", ticksBeforeDisabledDrag, hapticTicks)
+        }
+        compose.runOnIdle { hapticsEnabled.value = true }
+        val ticksBeforeEnabledDrag = hapticTicks
+        blurSlider.performTouchInput {
+            down(Offset(width * 0.9f, height / 2f))
+            moveTo(Offset(width * 0.65f, height / 2f), 150)
+            moveTo(Offset(width * 0.38f, height / 2f), 150)
+            moveTo(Offset(width * 0.1f, height / 2f), 150)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("slider movement ticks at discrete value steps", hapticTicks > ticksBeforeEnabledDrag)
+            assertTrue("slider haptics are rate-limited, not per-frame", hapticTicks - ticksBeforeEnabledDrag <= 8)
+        }
+
+        val arcaGroup = compose.onNodeWithTag("glass-arca-tuning-group")
+        arcaGroup.performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("glass-effects-scroll").performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        arcaGroup.assertIsDisplayed()
+        val collapsedGroup = compose.onNodeWithTag("glass-arca-tuning-group-panel")
+            .fetchSemanticsNode().boundsInRoot
+        val ticksBeforeGroupMorph = hapticTicks
+        arcaGroup.performClick()
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("group morph gives one tick", ticksBeforeGroupMorph + 1, hapticTicks) }
+        val expandedGroup = compose.onNodeWithTag("glass-arca-tuning-group-panel")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals("the morph keeps its horizontal origin", collapsedGroup.left, expandedGroup.left, 1f)
+        assertEquals("the morph keeps its capsule width", collapsedGroup.width, expandedGroup.width, 1f)
+        assertTrue("the settings capsule expands downward into its contents: collapsed=$collapsedGroup expanded=$expandedGroup",
+            expandedGroup.height > collapsedGroup.height + 24f)
         val global = compose.onNodeWithTag("glass-global-refraction").assertExists()
         global.performSemanticsAction(SemanticsActions.SetProgress) { setProgress ->
             assertTrue("global slider accepts direct values", setProgress(16f))
@@ -173,6 +245,7 @@ class SettingsUiBehaviorTest {
                 assertTrue("$surface override must reach preview", description.contains("折射 %.1f dp".format(java.util.Locale.ROOT, value)))
             }
         }
+        compose.onNodeWithTag("glass-motion-group").performScrollTo().performClick()
         compose.onNodeWithTag("glass-motion-max-tilt").assertExists()
         compose.onNodeWithTag("glass-motion-smoothing").assertExists()
         compose.onNodeWithTag("glass-effects-reset-all").performScrollTo().performClick()
@@ -185,12 +258,15 @@ class SettingsUiBehaviorTest {
             MihomoTheme(ThemeMode.LIGHT) {
                 CompositionLocalProvider(LocalAppLanguage provides "zh") {
                     ProvideGlassTheme {
-                        SettingsScreen(
-                            scrollState = scroll, tunStack = TunStack.DEFAULT,
-                            bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
-                            onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
-                            onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
-                        )
+                        val rootBackdrop = rememberArcaGlasmioBackdrop()
+                        NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop) {
+                            SettingsScreen(
+                                scrollState = scroll, tunStack = TunStack.DEFAULT,
+                                bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
+                                onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                                onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
+                            )
+                        }
                     }
                 }
             }
@@ -212,12 +288,15 @@ class SettingsUiBehaviorTest {
             MihomoTheme(ThemeMode.LIGHT) {
                 CompositionLocalProvider(LocalAppLanguage provides "zh") {
                     ProvideGlassTheme {
-                        SettingsScreen(
-                            scrollState = ScrollState(0), tunStack = TunStack.DEFAULT,
-                            bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
-                            onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
-                            onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
-                        )
+                        val rootBackdrop = rememberArcaGlasmioBackdrop()
+                        NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop) {
+                            SettingsScreen(
+                                scrollState = ScrollState(0), tunStack = TunStack.DEFAULT,
+                                bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
+                                onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
+                                onNavigateToConfigurationCenter = {}, onNavigateToLogs = {}
+                            )
+                        }
                     }
                 }
             }
