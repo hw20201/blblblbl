@@ -195,6 +195,13 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    // Rendering tests hold large Robolectric bitmaps; the 512m default test-worker
+    // heap OOMs mid-suite (worker dies, build fails even though every executed
+    // test passes). 2g fits CI runners and the build machine.
+    tasks.withType<Test>().configureEach {
+        maxHeapSize = "2g"
+    }
+
     lint {
         // Only the single existing TileService issue expressly authorized for this branch.
         baseline = file("lint-baseline.xml")

@@ -158,7 +158,7 @@ class BrandIconResourcesTest {
         )
         assertEquals(R.drawable.ic_zz_notification_nexus_v107, notification.smallIcon.resId)
         assertEquals(service.packageName, notification.smallIcon.resPackage)
-        assertEquals("com.github.arca.android.draftglass", service.packageName)
+        assertEquals("com.github.arca.android.glasstest.fusion", service.packageName)
         assertEquals(R.mipmap.ic_launcher, service.applicationInfo.icon)
         assertEquals("Arca", service.getString(R.string.app_name))
         assertEquals(service.getString(R.string.app_name), notification.extras.getString(Notification.EXTRA_TITLE))

@@ -52,7 +52,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
+import android.os.Build
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.LocalGlassSettings
+import com.github.arca.android.ui.glass.usesGlasmioFrosted
 import com.github.arca.android.ui.glass.GlassRadius
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
@@ -431,6 +435,10 @@ fun CupertinoDivider(
  * App-level haptic adapter for Glasmio's real switch. Track, liquid thumb, gesture,
  * state semantics and glass rendering all come from Glasmio 0.1.3; this function
  * deliberately draws no switch UI of its own.
+ *
+ * Glasmio's switch reads LocalGlassBackdrop, which is only provided on API 33+
+ * when the preset uses Glasmio frosted. Below API 33 (or without a backdrop) it
+ * would crash, so fall back to a plain Material3 switch there.
  */
 @Composable
 fun ArcaGlasmioSwitch(
@@ -440,15 +448,30 @@ fun ArcaGlasmioSwitch(
     enabled: Boolean = true
 ) {
     val haptic = rememberIosHaptic()
-    NativeGlasmioSwitch(
-        checked = checked,
-        onCheckedChange = { next ->
-            onCheckedChange(next)
-            if (next != checked) haptic.lightTick()
-        },
-        modifier = modifier,
-        enabled = enabled
-    )
+    val useGlasmio = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
+        LocalArcaGlasmioBackdrop.current != null
+    if (useGlasmio) {
+        NativeGlasmioSwitch(
+            checked = checked,
+            onCheckedChange = { next ->
+                onCheckedChange(next)
+                if (next != checked) haptic.lightTick()
+            },
+            modifier = modifier,
+            enabled = enabled
+        )
+    } else {
+        androidx.compose.material3.Switch(
+            checked = checked,
+            onCheckedChange = { next ->
+                onCheckedChange(next)
+                if (next != checked) haptic.lightTick()
+            },
+            modifier = modifier,
+            enabled = enabled
+        )
+    }
 }
 
 // =============================================================================

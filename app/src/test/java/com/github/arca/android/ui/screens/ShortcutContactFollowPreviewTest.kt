@@ -110,8 +110,17 @@ class ShortcutContactFollowPreviewTest {
             assertEquals(initial, fixture.scroll.value)
             assertEquals(0, fixture.profiles); assertEquals(0, fixture.vpn)
         }
+        // v91: tapping a shortcut opens its morph action panel instead of navigating.
         compose.onNodeWithTag("shortcut-card-Profiles").performTouchInput { click(center) }
-        compose.runOnIdle { assertEquals(1, fixture.profiles); assertEquals(0, fixture.vpn) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("shortcut-panel-profiles-sheet").assertExists()
+        compose.runOnIdle {
+            assertEquals("tap opens the action panel instead of navigating", 0, fixture.profiles)
+            assertEquals("tap does not toggle VPN", 0, fixture.vpn)
+        }
+        // Close the panel so the following scroll gesture reaches the Dashboard again.
+        compose.onNodeWithTag("shortcut-panel-close").performClick()
+        compose.waitForIdle()
 
         // Separate gesture begins inside the card and moves vertically: this must remain ordinary Dashboard scrolling.
         val beforeScroll = fixture.scroll.value
@@ -123,7 +132,7 @@ class ShortcutContactFollowPreviewTest {
         }
         compose.waitForIdle()
         compose.runOnIdle { assertTrue("vertical-origin gesture should scroll", fixture.scroll.value > beforeScroll) }
-        assertEquals("scroll gesture must not navigate or toggle VPN", 1, fixture.profiles)
+        assertEquals("scroll gesture must not navigate or toggle VPN", 0, fixture.profiles)
         assertEquals(0, fixture.vpn)
     }
 

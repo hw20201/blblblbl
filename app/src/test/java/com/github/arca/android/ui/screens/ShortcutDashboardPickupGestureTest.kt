@@ -82,10 +82,13 @@ class ShortcutDashboardPickupGestureTest {
         compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
         compose.mainClock.autoAdvance = true
         save(screenshot(), dir, "$name-release.png")
+        // v91: tapping a shortcut opens its morph action panel instead of navigating.
         card.performTouchInput { click(center) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("shortcut-panel-profiles-sheet").assertExists()
         compose.runOnIdle {
-            assertEquals("normal tap after release", 1, fixture.profilesClicks)
-            assertEquals("only profile navigation fires", 0, fixture.vpnToggles)
+            assertEquals("normal tap after release opens the panel instead of navigating", 0, fixture.profilesClicks)
+            assertEquals("tap does not toggle VPN", 0, fixture.vpnToggles)
         }
     }
 
@@ -113,9 +116,12 @@ class ShortcutDashboardPickupGestureTest {
 
     @Test fun tapOnProfilesInvokesOnlyProfilesNavigation() {
         val fixture = render()
+        // v91: tapping a shortcut opens its morph action panel instead of navigating.
         compose.onNodeWithTag("shortcut-card-Profiles").performTouchInput { click(center) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("shortcut-panel-profiles-sheet").assertExists()
         compose.runOnIdle {
-            assertEquals(1, fixture.profilesClicks); assertEquals(0, fixture.vpnToggles); assertEquals(0, fixture.scroll.value)
+            assertEquals(0, fixture.profilesClicks); assertEquals(0, fixture.vpnToggles); assertEquals(0, fixture.scroll.value)
         }
     }
 

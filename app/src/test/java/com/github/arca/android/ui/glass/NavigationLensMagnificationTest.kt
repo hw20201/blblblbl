@@ -84,14 +84,19 @@ class NavigationLensMagnificationTest {
             compose.onNodeWithText(it).getUnclippedBoundsInRoot()
         }
         val before = screenshot("light-rest")
+        // The lens tints the covered tab blue (lerp grey -> IosBlue by coverage),
+        // so during a drag the incoming icon is blue, not grey. Count both: the
+        // icon is magnified when either colour covers more pixels.
         fun greyIconPixels(image: Bitmap): Int {
             val cx = ((bounds.left.value + bounds.right.value) / 2f).toInt()
             val top = bounds.top.value.toInt()
             return (cx - 20..cx + 20).sumOf { x ->
                 (top + 7..top + 36).count { y ->
                     val pixel = image.getPixel(x, y)
-                    android.graphics.Color.red(pixel) < 170 && android.graphics.Color.green(pixel) < 170 &&
-                        android.graphics.Color.blue(pixel) < 180
+                    val r = android.graphics.Color.red(pixel)
+                    val g = android.graphics.Color.green(pixel)
+                    val b = android.graphics.Color.blue(pixel)
+                    (r < 170 && g < 170 && b < 180) || (b > 120 && b > r + 20 && r < 200)
                 }
             }
         }

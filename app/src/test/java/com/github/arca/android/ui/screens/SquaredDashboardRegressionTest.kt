@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -97,8 +98,11 @@ class SquaredDashboardRegressionTest {
             assertEquals(1, vpnToggles)
         }
 
-        // Exercise the IP sheet entry point after the VPN action.
+        // Exercise the IP entry point after the VPN action. Tapping a shortcut now
+        // opens its action panel instead of the old IP sheet.
         compose.onNodeWithText("IP 测试").performClick()
-        compose.onNodeWithText("IP 地址").assertExists()
+        compose.waitForIdle()
+        compose.onNodeWithTag("shortcut-panel-ip_test-sheet").assertExists()
+        compose.onNodeWithText("IP 测试 · 维护中").assertExists()
     }
 }

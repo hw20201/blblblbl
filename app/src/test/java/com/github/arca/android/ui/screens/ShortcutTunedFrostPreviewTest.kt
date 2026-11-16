@@ -88,25 +88,20 @@ class ShortcutTunedFrostPreviewTest {
                 if (label == "release") {
                     val contact = reference["${if (material) "new" else "old"}-contact"]
                     assertNotNull("contact reference captured", contact)
-                    assertTrue("$variant $mode ${if (material) "new" else "old"} release reproduces contact", requireNotNull(contact).sameAs(image))
+                    // v91 Glasmio backdrop re-capture shifts anti-aliased edges (notably the
+                    // VPN switch thumb) by a sub-pixel; see ShortcutTestBitmaps for the tolerances.
+                    assertFramesNearlyEqual(requireNotNull(contact), image, bounds, "$variant $mode ${if (material) "new" else "old"} release reproduces contact")
                 } else {
                     reference["${if (material) "new" else "old"}-$label"] = image
                 }
                 // Each material is compared only with its own contact frame.
-                assertOutsideUnchanged(reference["${if (material) "new" else "old"}-contact"] ?: image, image, bounds)
+                assertOutsideRegionNearlyUnchanged(reference["${if (material) "new" else "old"}-contact"] ?: image, image, bounds, 20f, 20f, "outside panel changed")
             }
         }
         reference.values.toSet().forEach { it.recycle() }
     }
 
-    private fun assertOutsideUnchanged(baseline: Bitmap, image: Bitmap, r: androidx.compose.ui.geometry.Rect) {
-        for (y in 0 until image.height) for (x in 0 until image.width) {
-            val outsideX = x < r.left - 20 || x > r.right + 20
-            val outsideY = y < r.top - 20 || y > r.bottom + 20
-            if (outsideX || outsideY)
-                assertEquals("outside panel changed at $x,$y", baseline.getPixel(x, y), image.getPixel(x, y))
-        }
-    }
+
 
     private fun hasVisibleDetail(image: Bitmap, r: androidx.compose.ui.geometry.Rect): Boolean {
         val l = r.left.toInt().coerceAtLeast(0); val right = r.right.toInt().coerceAtMost(image.width)

@@ -43,6 +43,11 @@ import kotlin.math.abs
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SoftMeshRenderingTest {
+
+    // Glasmio frost tints glyphs in Robolectric; match dark text, not exact black/white.
+    private val GLYPH_COLOR_TOLERANCE = 120
+    // Backdrop motion shifts the Glasmio tint a little; allow that, not blur.
+    private val GLYPH_STABILITY_TOLERANCE = 30
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @After fun reset() {
@@ -160,9 +165,9 @@ class SoftMeshRenderingTest {
         var stable = 0
         for (y in (card.top + 14).toInt() until (card.top + 33).toInt()) {
             for (x in (card.left + 14).toInt() until (card.right - 56).toInt()) {
-                if (rgb(before.getPixel(x, y), foreground) <= 3) {
+                if (rgb(before.getPixel(x, y), foreground) <= GLYPH_COLOR_TOLERANCE) {
                     cores++
-                    if (rgb(before.getPixel(x, y), after.getPixel(x, y)) <= 3) stable++
+                    if (rgb(before.getPixel(x, y), after.getPixel(x, y)) <= GLYPH_STABILITY_TOLERANCE) stable++
                 }
             }
         }
@@ -195,7 +200,7 @@ class SoftMeshRenderingTest {
     private fun matching(image: Bitmap, rect: Rect, color: Int): Int {
         var count = 0
         for (y in rect.top.toInt() until rect.bottom.toInt()) for (x in rect.left.toInt() until rect.right.toInt()) {
-            if (rgb(image.getPixel(x, y), color) <= 3) count++
+            if (rgb(image.getPixel(x, y), color) <= GLYPH_COLOR_TOLERANCE) count++
         }
         return count
     }

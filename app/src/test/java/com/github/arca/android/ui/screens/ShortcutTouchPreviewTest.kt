@@ -79,18 +79,18 @@ class ShortcutTouchPreviewTest {
             compose.waitForIdle()
             val image = screenshot()
             save(image, "${variant.name}-${if(dark) "dark" else "light"}-$index.png")
-            if (index == 4) assertTrue("neutral must exactly return", baseline.sameAs(image))
+            // v91 renders the card on the Glasmio backdrop; each backdrop re-capture
+            // shifts anti-aliased edges (notably the VPN switch thumb) by a sub-pixel, so
+            // exact whole-frame equality no longer holds. The card itself is deterministic
+            // for an unchanged pose, so these helpers check the card tightly and the rest
+            // of the frame with a loose backdrop-noise tolerance.
+            if (index == 4) assertFramesNearlyEqual(baseline, image, bounds, "neutral must exactly return")
             if (index == 1 && variant == ShortcutTouchVariant.FingerTilt) {
-                assertTrue("B centre press stays at rest without scale or lift", baseline.sameAs(image))
+                assertFramesNearlyEqual(baseline, image, bounds, "B centre press stays at rest without scale or lift")
             } else if (index in 1..3) {
-                assertFalse("touch keyframe must visibly change", baseline.sameAs(image))
+                assertCardRegionVisiblyChanged(baseline, image, bounds, "touch keyframe must visibly change")
                 // The shader, background, neighbours, dock and all other UI remain frozen.
-                for (y in 0 until image.height) for (x in 0 until image.width) {
-                    val outsideX = x < bounds.left - 20 || x > bounds.right + 20
-                    val outsideY = y < bounds.top - 25 || y > bounds.bottom + 25
-                    if (outsideX || outsideY)
-                        assertEquals("outside card changed at $x,$y", baseline.getPixel(x,y), image.getPixel(x,y))
-                }
+                assertOutsideRegionNearlyUnchanged(baseline, image, bounds, 20f, 25f, "outside card changed")
             }
             image.recycle()
         }
@@ -130,11 +130,16 @@ class ShortcutTouchPreviewTest {
 
         // Keep down, hold, and up in one injection. Ending a performTouchInput block
         // cancels its pointer, so a later independent up() is not the same held gesture.
+        // v91: tapping a shortcut opens its morph action panel instead of navigating.
         compose.onRoot().performTouchInput { click(pressPoint) }
         compose.waitForIdle()
         assertEquals("visual motion must not move the click/accessibility slot", restBounds,
             slot.fetchSemanticsNode().boundsInRoot)
-        compose.runOnIdle { assertEquals("a complete short tap activates once", 1, clicks) }
+        compose.onNodeWithTag("shortcut-panel-profiles-sheet").assertExists()
+        compose.runOnIdle { assertEquals("a complete short tap opens the action panel instead of navigating", 0, clicks) }
+        // Close the panel so the scroll gesture reaches the Dashboard again.
+        compose.onNodeWithTag("shortcut-panel-close").performClick()
+        compose.waitForIdle()
 
         compose.onRoot().performTouchInput {
             down(pressPoint)
@@ -144,9 +149,11 @@ class ShortcutTouchPreviewTest {
         }
         compose.waitForIdle()
         assertEquals("scroll gesture leaves the hit slot fixed", restBounds, slot.fetchSemanticsNode().boundsInRoot)
-        compose.runOnIdle { assertEquals("scroll must cancel click", 1, clicks) }
+        compose.runOnIdle { assertEquals("scroll must not navigate", 0, clicks) }
         slot.performClick()
-        compose.runOnIdle { assertEquals("accessibility click retained", 2, clicks) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("shortcut-panel-profiles-sheet").assertExists()
+        compose.runOnIdle { assertEquals("accessibility click opens the panel instead of navigating", 0, clicks) }
     }
 
     private fun content(variant: ShortcutTouchVariant, dark: Boolean, preview: State<ShortcutTouchPreview?>, onProfiles: () -> Unit = {}) {

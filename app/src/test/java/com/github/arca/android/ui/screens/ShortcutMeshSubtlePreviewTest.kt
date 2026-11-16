@@ -97,11 +97,17 @@ class ShortcutMeshSubtlePreviewTest {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         compose.mainClock.autoAdvance = true
         save(screenshot(), dir, "gesture-B-released-topdown.png")
+        // v91: tapping a shortcut opens its morph action panel instead of navigating.
         card.performTouchInput { click(center) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("shortcut-panel-profiles-sheet").assertExists()
         compose.runOnIdle {
-            assertEquals("tap works after release", 1, fixture.profilesClicks)
+            assertEquals("tap works after release by opening the panel", 0, fixture.profilesClicks)
             assertEquals("tap does not toggle VPN", 0, fixture.vpnToggles)
         }
+        // Close the panel so the following blank-origin scroll reaches the Dashboard again.
+        compose.onNodeWithTag("shortcut-panel-close").performClick()
+        compose.waitForIdle()
         // Column gap is deliberately used as the blank-origin scroll path.
         // Inner card tags collapse to the same bounds in the merged semantics tree.
         // Use the positioned dashboard slot tags for the real visible gutter.

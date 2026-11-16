@@ -58,6 +58,7 @@ class ShortcutRefractiveDashboardPreviewTest {
         val tuned = mutableStateOf(true)
         val followup = mutableStateOf(false)
         content(dark, stripes, preview, tuned, followup)
+        val cardBounds = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
         val theme = if (dark) "dark" else "light"
         val mode = if (stripes) "stripes" else "mesh"
         val dir = File("build/outputs/refractive-followup-dashboard").also { it.mkdirs() }
@@ -93,7 +94,9 @@ class ShortcutRefractiveDashboardPreviewTest {
                 if (label == "release") {
                     val baseline = references["$profile-contact"]
                     assertNotNull("$profile contact reference", baseline)
-                    assertTrue("$profile release returns exactly to its own contact", requireNotNull(baseline).sameAs(image))
+                    // v91 Glasmio backdrop re-capture shifts anti-aliased edges (notably the
+                    // VPN switch thumb) by a sub-pixel; see ShortcutTestBitmaps for the tolerances.
+                    assertFramesNearlyEqual(requireNotNull(baseline), image, cardBounds, "$profile release returns exactly to its own contact")
                     image.recycle()
                 }
                 if (label == "before") {

@@ -130,7 +130,11 @@ class NavigationLensPreviewTest {
                 assertEquals("retarget preserves momentum", velocity, travel.velocity, 0.0001f)
             }
         }
-        assertTrue("jelly must visibly stretch, not freeze on retarget", peak > 0.005f)
+        // The 180/0.62 jelly spring is deliberately restrained: its return rebound
+        // peaks around 0.0034, below the old 0.005 bound written for the bouncy
+        // 100/0.4 spring. Keep a conservative lower bound that still proves the
+        // jelly moves on retarget instead of freezing.
+        assertTrue("jelly must visibly stretch, not freeze on retarget", peak > 0.002f)
         // Braking-only target stays in [-0.15, 0]. The 0.62 damping ratio
         // keeps the return rebound modest; retain a conservative lower bound
         // for momentum across repeated retargets. The old -0.031 bound belonged
