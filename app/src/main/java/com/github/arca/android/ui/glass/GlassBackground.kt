@@ -115,11 +115,13 @@ fun NexusGlassBackground(
         }
         return
     }
-    val seconds = rememberSoftMeshTime()
+    val wallpaper = GlassDefaults.wallpaper
+    val animateBackground = backgroundUsesAnimatedTime(wallpaper) && testBackdropId == null
+    val seconds = rememberSoftMeshTime(enabled = animateBackground)
+    val wallpaperDrawCache = remember { FlutedWallpaperDrawCache() }
     val seed = LocalSoftMeshSeed.current
     val motion = remember(seed) { SoftMeshMotion(seed ?: Random.nextLong()) }
     val structured = LocalStructuredMeshEnabled.current
-    val wallpaper = GlassDefaults.wallpaper
     val custom = palette.key.startsWith("custom:")
     val baseBlobs = if (palette.isDark || palette.key.startsWith("custom:")) palette.blobs else IceLavenderMesh
     val blobs = remember(palette, structured) {
@@ -162,9 +164,10 @@ fun NexusGlassBackground(
                     Modifier.glassBackdropSource(glasmioLayerBackdrop).trackBackdropPosition(glasmioLayerBackdrop)
                 else Modifier)
                 .then(if (testBackdropId == null) Modifier.background(base).drawBehind {
-                    val time = seconds.value // draw-phase read; no foreground recomposition/layout.
+                    // Static wallpaper does not subscribe even to an injected/shared clock.
+                    val time = if (animateBackground) seconds.value else 0f
                     if (wallpaper.enabled) {
-                        drawGlassWallpaper(wallpaper, time)
+                        drawGlassWallpaper(wallpaper, time, cache = wallpaperDrawCache)
                     } else {
                         val diag = kotlin.math.hypot(size.width, size.height)
                         blobs.forEachIndexed { index, blob ->

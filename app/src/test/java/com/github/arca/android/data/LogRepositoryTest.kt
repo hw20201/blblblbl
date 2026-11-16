@@ -61,6 +61,25 @@ class LogRepositoryTest {
     }
 
     @Test
+    fun `bundled JNI envelope exposes request text to request monitoring`() {
+        RequestLogRepository.clear()
+        RequestLogRepository.setMonitoringEnabled(true)
+        val message = "[TCP] 127.0.0.1:54321 --> example.com:443 match Domain(example.com) using DIRECT"
+        LogRepository.addRawLogcat("""{"level":"DEBUG","message":"$message","time":1700000000000}""")
+        assertEquals("debug", LogRepository.logsFlow.value.single().level)
+        assertEquals(message, LogRepository.logsFlow.value.single().message)
+        assertEquals(message, RequestLogRepository.requestsFlow.value.single().message)
+        RequestLogRepository.clear()
+    }
+
+    @Test
+    fun `null native fields preserve controller payload`() {
+        LogRepository.addRawLogcat("""{"level":null,"message":null,"type":"warning","payload":"controller message"}""")
+        assertEquals("warning", LogRepository.logsFlow.value.single().level)
+        assertEquals("controller message", LogRepository.logsFlow.value.single().message)
+    }
+
+    @Test
     fun `clear removes all logs`() {
         LogRepository.addLog("info", "Test log")
         assertEquals(1, LogRepository.logsFlow.value.size)

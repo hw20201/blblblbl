@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +31,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -227,10 +227,11 @@ fun ProxiesScreen(
                         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(
+                        val tabRowKeys = proxyRowKeysOf(chunkedRows)
+                        itemsIndexed(
                             items = chunkedRows,
-                            key = { row -> row.first().name }
-                        ) { rowProxies ->
+                            key = { index, _ -> tabRowKeys[index] }
+                        ) { _, rowProxies ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -290,20 +291,21 @@ fun ProxiesScreen(
                     LazyColumn(
                         state = listModeState,
                         modifier = Modifier
+                            .testTag("policy-group-list")
                             .fillMaxSize()
                             .bounceOverscroll(allowTop = false, allowBottom = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()))
                     ) {
-                        visibleGroups.forEach { groupName ->
+                        visibleGroups.forEachIndexed { groupIndex, groupName ->
                             val group = groupMap[groupName]
                             val isExpanded = expandedGroups[groupName] ?: false
                             val proxies = group?.proxies ?: emptyList()
                             val iconUrl = groupIcons[groupName]
 
-                            item(key = "grp_item_$groupName", contentType = "group_container") {
+                            item(key = "grp_item_$groupName", contentType = "group_header") {
                                 val isGroupTesting = testingNodes.contains(groupName) || proxies.any { testingNodes.contains("$groupName:${it.name}") || (it.isGroup && testingNodes.contains(it.name)) }
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                                Box(Modifier.fillMaxWidth().animateItem()
+                                    .padding(top = if (groupIndex == 0) 0.dp else 8.dp)) {
                                     LoonGroupHeaderCard(
                                         groupName = groupName,
                                         groupType = group?.type ?: "select",
@@ -312,67 +314,56 @@ fun ProxiesScreen(
                                         showGroupIcons = showGroupIcons,
                                         isExpanded = isExpanded,
                                         isTesting = isGroupTesting,
-                                        onHealthCheck = {
-                                            onHealthCheck(groupName)
-                                        },
-                                        onToggleExpand = {
-                                            expandedGroups[groupName] = !isExpanded
-                                        }
+                                        onHealthCheck = { onHealthCheck(groupName) },
+                                        onToggleExpand = { expandedGroups[groupName] = !isExpanded }
                                     )
-
-                                    AnimatedVisibility(
-                                        visible = isExpanded,
-                                        enter = expandVertically(
-                                            expandFrom = Alignment.Top,
-                                            animationSpec = spring(
-                                                stiffness = Spring.StiffnessMediumLow,
-                                                dampingRatio = Spring.DampingRatioNoBouncy
+                                }
+                            }
+                            // Each row is a lazy item: expanding a large subscription must not
+                            // compose its off-screen cards or start hundreds of progress indicators.
+                            // Item placement/fades retain motion without measuring a full-group expansion.
+                            if (isExpanded) {
+                                val columns = nodeColumns.coerceIn(1, 3)
+                                val rowCount = (proxies.size + columns - 1) / columns
+                                // A lazy list crashes on duplicate keys, and subscriptions can
+                                // contain repeated node names; make every row key unique.
+                                val rowKeys = proxyGroupRowKeys(groupName, proxies, columns)
+                                items(
+                                    count = rowCount,
+                                    key = { rowIndex -> rowKeys[rowIndex] },
+                                    contentType = { "group_node_row_$columns" }
+                                ) { rowIndex ->
+                                    val firstIndex = rowIndex * columns
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .animateItem(
+                                                fadeInSpec = tween(150, delayMillis = 30),
+                                                placementSpec = spring(
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                                ),
+                                                fadeOutSpec = tween(120)
                                             )
-                                        ) + fadeIn(animationSpec = tween(150, delayMillis = 30)),
-                                        exit = shrinkVertically(
-                                            shrinkTowards = Alignment.Top,
-                                            animationSpec = spring(
-                                                stiffness = Spring.StiffnessMediumLow,
-                                                dampingRatio = Spring.DampingRatioNoBouncy
-                                            )
-                                        ) + fadeOut(animationSpec = tween(120)),
-                                        modifier = Modifier.clipToBounds()
+                                            .padding(top = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val chunkedRows = remember(proxies, nodeColumns) {
-                                            proxies.chunked(nodeColumns.coerceIn(1, 3))
-                                        }
-                                        val groupNow = group?.now
-
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            for (rowProxies in chunkedRows) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    for (proxy in rowProxies) {
-                                                        Box(modifier = Modifier.weight(1f)) {
-                                                            val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$groupName:${proxy.name}")
-                                                            LoonProxyItemCard(
-                                                                proxy = proxy,
-                                                                glassScene = glassScene,
-                                                                isSelected = proxy.name == groupNow,
-                                                                columns = nodeColumns,
-                                                                isTesting = isItemTesting,
-                                                                onClick = { onSelectProxy(groupName, proxy) },
-                                                                onTestSingleNode = { onTestSingleNode(groupName, proxy.name) }
-                                                            )
-                                                        }
-                                                    }
-                                                    val remainder = nodeColumns - rowProxies.size
-                                                    if (remainder > 0) {
-                                                        repeat(remainder) {
-                                                            Spacer(modifier = Modifier.weight(1f))
-                                                        }
+                                        repeat(columns) { column ->
+                                            val proxy = proxies.getOrNull(firstIndex + column)
+                                            if (proxy == null) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            } else {
+                                                key(proxy.name) {
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        val isItemTesting = testingNodes.contains(proxy.name) || testingNodes.contains("$groupName:${proxy.name}")
+                                                        LoonProxyItemCard(
+                                                            proxy = proxy,
+                                                            glassScene = glassScene,
+                                                            isSelected = proxy.name == group?.now,
+                                                            columns = columns,
+                                                            isTesting = isItemTesting,
+                                                            onClick = { onSelectProxy(groupName, proxy) },
+                                                            onTestSingleNode = { onTestSingleNode(groupName, proxy.name) }
+                                                        )
                                                     }
                                                 }
                                             }
@@ -594,6 +585,7 @@ private fun LoonGroupHeaderCard(
 ) {
     ProxyGlassCard(
         modifier = Modifier
+            .testTag("policy-group-header-$groupName")
             .fillMaxWidth()
             .defaultMinSize(minHeight = 56.dp)
             .clip(RoundedCornerShape(20.dp))
@@ -1148,5 +1140,32 @@ private fun AnimatedGlassSegmentGroup(
                 }
             }
         }
+    }
+}
+
+
+/**
+ * Unique, order-stable lazy keys for the node rows of one group. A row is keyed by its first
+ * node's name (so animations follow the node when the list reorders); when the same first name
+ * appears again, later rows get a "#n" occurrence suffix.
+ */
+internal fun proxyGroupRowKeys(groupName: String, proxies: List<Proxy>, columns: Int): List<String> {
+    val perRow = columns.coerceIn(1, 3)
+    val rowCount = (proxies.size + perRow - 1) / perRow
+    val seen = HashMap<String, Int>()
+    return List(rowCount) { rowIndex ->
+        val base = "grp_node_${groupName.length}:$groupName:${proxies[rowIndex * perRow].name}"
+        val occurrence = seen.merge(base, 1, Int::plus) ?: 1
+        if (occurrence == 1) base else "$base#$occurrence"
+    }
+}
+
+/** Same idea for pre-chunked rows: first node name, suffixed on repeats so the lazy keys stay unique. */
+internal fun proxyRowKeysOf(rows: List<List<Proxy>>): List<String> {
+    val seen = HashMap<String, Int>()
+    return rows.map { row ->
+        val base = row.first().name
+        val occurrence = seen.merge(base, 1, Int::plus) ?: 1
+        if (occurrence == 1) base else "$base#$occurrence"
     }
 }

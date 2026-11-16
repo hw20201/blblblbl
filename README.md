@@ -2,6 +2,8 @@
 
 基于 Mihomo (Clash.Meta) 内核的 Android 代理客户端。
 
+本交付为 Arca V94：性能优化、设置面板动画及 Scamalytics IP 检测说明见 [V94 改动与构建说明](docs/V94-performance-and-IP.md)。
+
 ## 特性
 
 - **协议支持**：Shadowsocks、VMess、VLESS、Trojan、Hysteria 2、TUIC、WireGuard

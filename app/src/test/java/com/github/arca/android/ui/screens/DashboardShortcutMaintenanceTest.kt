@@ -1,7 +1,6 @@
 package com.github.arca.android.ui.screens
 
 import androidx.compose.foundation.ScrollState
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -56,16 +55,19 @@ class DashboardShortcutMaintenanceTest {
     }
 
     @Test
-    fun ipShortcutIsMaintenanceOnlyAndCannotStartAScan() {
+    fun ipShortcutIsReadyWithoutCredentialsAndWaitsForManualScan() {
         render("ip_test")
         compose.onNodeWithTag("shortcut-ip_test").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("shortcut-panel-ip_test-sheet").assertExists()
         compose.onNodeWithTag("quick-ip-current-window").assertExists()
         compose.onNodeWithTag("quick-ip-details-window").assertExists()
-        compose.onNodeWithText("IP 测试 · 维护中").assertExists()
-        compose.onNodeWithTag("quick-ip-refresh").assertIsNotEnabled()
-        compose.onNodeWithText("检测当前 IP").assertDoesNotExist()
+        compose.onNodeWithText("IP 测试 · 就绪").assertExists()
+        compose.waitUntil(timeoutMillis = 5000) {
+            runCatching { compose.onNodeWithTag("quick-ip-refresh").assertIsEnabled() }.isSuccess
+        }
+        compose.onNodeWithText("检测当前 IP").assertExists()
+        compose.onNodeWithText("内置检测：无需配置凭据，手动检测可查看风险详情。").assertExists()
         compose.onNodeWithText("重新检测 IP").assertDoesNotExist()
     }
 

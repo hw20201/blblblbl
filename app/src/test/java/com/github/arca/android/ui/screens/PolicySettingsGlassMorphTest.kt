@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -135,14 +136,12 @@ class PolicySettingsGlassMorphTest {
 
         val sourceHeight = compose.onNodeWithTag("policy-more-button").fetchSemanticsNode().boundsInRoot.height
         compose.onNodeWithTag("policy-more-button").performClick()
-        compose.mainClock.advanceTimeBy(900)
-        compose.mainClock.advanceTimeByFrame()
+        advanceFrames(58)
         val openHeight = compose.onNodeWithTag("policy-options-panel").fetchSemanticsNode().boundsInRoot.height
         assertTrue(openHeight > sourceHeight * 5f)
 
         compose.onNodeWithTag("policy-options-close").performClick()
-        compose.mainClock.advanceTimeByFrame()
-        repeat(9) { compose.mainClock.advanceTimeByFrame() }
+        advanceFrames(10)
         compose.onNodeWithTag("policy-options-panel").assertExists()
         val closingHeight = compose.onNodeWithTag("policy-options-panel").fetchSemanticsNode().boundsInRoot.height
         assertTrue("closing glass should be smaller than its open panel", closingHeight < openHeight)
@@ -151,7 +150,7 @@ class PolicySettingsGlassMorphTest {
         val sourceFaceExists = runCatching { compose.onNodeWithTag("policy-more-source-face").fetchSemanticsNode() }.isSuccess
         assertTrue("source icon face should be in the closing handoff (estimated progress=$closingProgress)", sourceFaceExists)
 
-        repeat(20) { compose.mainClock.advanceTimeByFrame() }
+        advanceFrames(20)
         compose.onNodeWithTag("policy-options-panel").assertDoesNotExist()
         compose.onNodeWithTag("policy-more-button").assertExists()
     }
@@ -212,8 +211,7 @@ class PolicySettingsGlassMorphTest {
 
         val sourceHeight = compose.onNodeWithTag("settings-tun-stack-entry").fetchSemanticsNode().boundsInRoot.height
         compose.onNodeWithTag("settings-tun-stack-entry").performClick()
-        compose.mainClock.advanceTimeBy(900)
-        compose.mainClock.advanceTimeByFrame()
+        advanceFrames(58)
         val openHeight = compose.onNodeWithTag("settings-detail-page").fetchSemanticsNode().boundsInRoot.height
         assertTrue(openHeight > sourceHeight * 6f)
         val rootHeight = compose.onRoot().fetchSemanticsNode().boundsInRoot.height
@@ -221,8 +219,7 @@ class PolicySettingsGlassMorphTest {
 
         val closeBounds = compose.onNodeWithTag("settings-detail-back").fetchSemanticsNode().boundsInRoot
         compose.onRoot().performTouchInput { click(Offset(closeBounds.center.x, closeBounds.center.y)) }
-        compose.mainClock.advanceTimeByFrame()
-        repeat(8) { compose.mainClock.advanceTimeByFrame() }
+        advanceFrames(9)
         compose.onNodeWithTag("settings-detail-page").assertExists()
         val closingHeight = compose.onNodeWithTag("settings-detail-page").fetchSemanticsNode().boundsInRoot.height
         assertTrue("closing settings glass should be smaller than the open page", closingHeight < openHeight)
@@ -231,12 +228,12 @@ class PolicySettingsGlassMorphTest {
         val sourceFaceExists = runCatching { compose.onNodeWithTag("settings-detail-source-face").fetchSemanticsNode() }.isSuccess
         assertTrue("source settings row should be in the closing handoff (estimated progress=$closingProgress)", sourceFaceExists)
 
-        repeat(3) { compose.mainClock.advanceTimeByFrame() }
+        advanceFrames(3)
         val settledHeight = compose.onNodeWithTag("settings-detail-page").fetchSemanticsNode().boundsInRoot.height
         assertTrue("the final morph segment continues shrinking instead of snapping", settledHeight < closingHeight)
         assertTrue("the panel stays attached to its source through the final settle", settledHeight > sourceHeight)
 
-        repeat(12) { compose.mainClock.advanceTimeByFrame() }
+        advanceFrames(12)
         compose.onNodeWithTag("settings-detail-page").assertDoesNotExist()
     }
 
@@ -625,6 +622,14 @@ class PolicySettingsGlassMorphTest {
                     }
                 }
             }
+        }
+    }
+
+    private fun advanceFrames(count: Int) {
+        repeat(count) {
+            compose.runOnUiThread { Snapshot.sendApplyNotifications() }
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
         }
     }
 

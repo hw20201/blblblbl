@@ -103,6 +103,6 @@ class SquaredDashboardRegressionTest {
         compose.onNodeWithText("IP 测试").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("shortcut-panel-ip_test-sheet").assertExists()
-        compose.onNodeWithText("IP 测试 · 维护中").assertExists()
+        compose.onNodeWithText("IP 测试 · 就绪").assertExists()
     }
 }

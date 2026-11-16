@@ -1046,16 +1046,17 @@ internal fun ProfileAddSheet(
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp)
+                .padding(bottom = 16.dp)
         ) {
             Text(
                 text = "添加配置",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = LoonTextPrimary
+                color = LoonTextPrimary,
+                modifier = Modifier.padding(top = 4.dp)
             )
             Text(
-                text = "支持通过远程订阅 URL 下载或导入本地 YAML 文件",
+                text = "粘贴订阅链接，或导入本地 YAML 文件",
                 fontSize = 12.5.sp,
                 color = LoonTextSecondary,
                 modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
@@ -1130,74 +1131,58 @@ internal fun ProfileAddSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Grouped Input Fields
-            ProfilesPanelSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp)
+            // Input fields: light outlined fields on the glass, no dark slabs.
+            val fieldColors = TextFieldDefaults.colors(
+                focusedContainerColor = LoonTextPrimary.copy(alpha = 0.07f),
+                unfocusedContainerColor = LoonTextPrimary.copy(alpha = 0.05f),
+                focusedIndicatorColor = IosBlue.copy(alpha = 0.8f),
+                unfocusedIndicatorColor = Color.Transparent,
+                focusedTextColor = LoonTextPrimary,
+                unfocusedTextColor = LoonTextPrimary,
+                cursorColor = IosBlue
+            )
+            TextField(
+                value = subUrl,
+                onValueChange = { subUrl = it },
+                modifier = Modifier.fillMaxWidth().testTag("profile-add-url"),
+                label = { Text("订阅链接", fontSize = 12.sp) },
+                placeholder = { Text("https://…", fontSize = 13.5.sp, color = LoonTextMuted) },
+                colors = fieldColors,
+                shape = RoundedCornerShape(14.dp),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            TextField(
+                value = subName,
+                onValueChange = { subName = it },
+                modifier = Modifier.fillMaxWidth().testTag("profile-add-name"),
+                label = { Text("备注名称（选填）", fontSize = 12.sp) },
+                colors = fieldColors,
+                shape = RoundedCornerShape(14.dp),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Button(
+                onClick = {
+                    haptic.impact()
+                    onAddSubscription(subName.trim(), subUrl.trim())
+                    onDismissRequest()
+                },
+                enabled = subUrl.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("profile-add-submit"),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = IosBlue,
+                    contentColor = Color.White,
+                    disabledContainerColor = IosBlue.copy(alpha = 0.28f),
+                    disabledContentColor = Color.White.copy(alpha = 0.55f)
+                )
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextField(
-                        value = subName,
-                        onValueChange = { subName = it },
-                        modifier = Modifier.fillMaxWidth().testTag("profile-add-name"),
-                        placeholder = { Text("订阅备注名称（选填）", fontSize = 13.5.sp, color = LoonTextMuted) },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = LoonBg.copy(alpha = 0.72f),
-                            unfocusedContainerColor = LoonBg.copy(alpha = 0.58f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            focusedTextColor = LoonTextPrimary,
-                            unfocusedTextColor = LoonTextPrimary
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-
-                    TextField(
-                        value = subUrl,
-                        onValueChange = { subUrl = it },
-                        modifier = Modifier.fillMaxWidth().testTag("profile-add-url"),
-                        placeholder = { Text("订阅链接 URL (https://...)", fontSize = 13.5.sp, color = LoonTextMuted) },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = LoonBg.copy(alpha = 0.72f),
-                            unfocusedContainerColor = LoonBg.copy(alpha = 0.58f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            focusedTextColor = LoonTextPrimary,
-                            unfocusedTextColor = LoonTextPrimary
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-                }
+                Text("下载并保存配置", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Primary Download & Save Button
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (subUrl.isNotBlank()) IosBlue else LoonTextMuted)
-                    .testTag("profile-add-submit")
-                    .clickable(enabled = subUrl.isNotBlank()) {
-                        haptic.impact()
-                        onAddSubscription(subName.trim(), subUrl.trim())
-                        onDismissRequest()
-                    },
-                color = if (subUrl.isNotBlank()) IosBlue else LoonTextMuted
-            ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "下载并保存配置",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.navigationBarsPadding())
         }
     }
 }

@@ -41,7 +41,8 @@ internal fun ProvideSoftMeshMotion(paused: () -> Boolean = { false }, content: @
         content()
         return
     }
-    val time = rememberSoftMeshTime(paused)
+    val wallpaper = GlassDefaults.wallpaper
+    val time = rememberSoftMeshTime(paused, enabled = backgroundUsesAnimatedTime(wallpaper))
     val seed = remember { kotlin.random.Random.nextLong() }
     CompositionLocalProvider(LocalSoftMeshTime provides time, LocalSoftMeshSeed provides seed, LocalSoftMeshPaused provides paused, content = content)
 }
@@ -67,19 +68,31 @@ internal class MeshActiveTime {
 internal fun meshMayAnimate(resumed: Boolean, focused: Boolean, shown: Boolean, animations: Boolean) =
     resumed && focused && shown && animations
 
+/** The fallback blob field moves even when the fluted wallpaper is disabled. */
+internal fun backgroundUsesAnimatedTime(wallpaper: GlassWallpaperSettings): Boolean =
+    !wallpaper.enabled || wallpaperUsesAnimatedFlow(wallpaper)
+
 /** State is read ONLY in drawBehind. No per-frame recomposition of the foreground or layout. */
 @Composable
-internal fun rememberSoftMeshTime(paused: () -> Boolean = LocalSoftMeshPaused.current): State<Float> {
+internal fun rememberSoftMeshTime(
+    paused: () -> Boolean = LocalSoftMeshPaused.current,
+    enabled: Boolean = true
+): State<Float> {
     LocalSoftMeshTime.current?.let { return it }
     val elapsed = remember { mutableFloatStateOf(0f) }
-    if (LocalInspectionMode.current) return elapsed
+    val activeTime = remember { MeshActiveTime() }
+    // Do not install observers or launch a frame loop for a static wallpaper. Keep elapsed
+    // remembered at this call site so a later colour/flow change resumes without a jump.
+    if (!enabled || LocalInspectionMode.current) {
+        activeTime.pause()
+        return elapsed
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val view = LocalView.current
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var focused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
     var shown by remember(view) { mutableStateOf(view.isShown && view.windowVisibility == View.VISIBLE) }
     var animations by remember { mutableStateOf(ValueAnimator.areAnimatorsEnabled()) }
-    val activeTime = remember { MeshActiveTime() }
     val pause by rememberUpdatedState(paused)
 
     DisposableEffect(lifecycle, view) {

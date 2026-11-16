@@ -31,6 +31,8 @@ import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
+import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -298,17 +300,19 @@ fun RulesScreen(
 
                 Text("规则表达式", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LoonTextSecondary)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = fullRuleText,
-                    fontSize = 12.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = LoonTextPrimary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(LoonBg)
-                        .padding(12.dp)
-                )
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                ) {
+                    Text(
+                        text = fullRuleText,
+                        fontSize = 12.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = LoonTextPrimary,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 

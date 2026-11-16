@@ -36,7 +36,7 @@ class RemoteNetworkPolicyTest {
     }
 
     @Test
-    fun `network security XML denies global cleartext and permits only exact loopback hosts`() {
+    fun `network security XML denies global cleartext and permits only exact loopback hosts and the ip-api host`() {
         val file = listOf(File("src/main/res/xml/network_security_config.xml"),
             File("app/src/main/res/xml/network_security_config.xml")).first { it.isFile }
         val xml = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
@@ -48,7 +48,7 @@ class RemoteNetworkPolicyTest {
             assertEquals("false", domain.getAttribute("includeSubdomains"))
             domain.textContent.trim()
         }.toSet()
-        assertEquals(setOf("127.0.0.1", "localhost"), names)
+        assertEquals(setOf("127.0.0.1", "localhost", "ip-api.com"), names)
     }
 
     private class RecordingChain(url: String) : Interceptor.Chain {

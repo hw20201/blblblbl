@@ -1,7 +1,6 @@
 package com.github.arca.android.ui.screens
 
 import android.os.Build
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,7 +20,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,7 +49,8 @@ import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.data.RequestLogRepository
 import com.github.arca.android.service.TrafficMetrics
 import com.github.arca.android.service.VpnState
-import com.github.arca.android.ui.glass.glassPalette
+import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.components.ArcaGlasmioSwitch
 import com.github.arca.android.ui.theme.IosBlue
 import com.github.arca.android.ui.theme.LoonBlue
@@ -119,12 +118,13 @@ internal fun DashboardShortcutActionPanel(
     coreVersion: String,
     onClose: () -> Unit,
     onImportLocalFile: (() -> Unit)? = null,
-    onAddSubscription: (String, String) -> Unit = { _, _ -> }
+    onAddSubscription: (String, String) -> Unit = { _, _ -> },
+    isPanelActive: Boolean = true,
+    /** Hoisted so the morph overlay can pin the API entry outside this panel's animated body. */
+    ipConfigEntry: IpConfigEntryState = remember { IpConfigEntryState() }
 ) {
     val scope = rememberCoroutineScope()
-    val logEntries by LogRepository.logsFlow.collectAsState()
-    val requestEntries by RequestLogRepository.requestsFlow.collectAsState()
-    val traffic by trafficMetrics.collectAsState()
+    val ipLookupState = remember { OutboundIpLookupState() }
     var filter by remember(shortcut.id) { mutableStateOf("") }
     var showAddProfileSheet by remember { mutableStateOf(false) }
     var dnsQuery by remember { mutableStateOf("") }
@@ -135,26 +135,38 @@ internal fun DashboardShortcutActionPanel(
     LaunchedEffect(shortcut.id) {
         if (shortcut.id == "routing") onEnsureAppsLoaded()
     }
+    LaunchedEffect(isPanelActive) {
+        if (!isPanelActive) ipLookupState.cancel()
+    }
 
-    Column(Modifier.fillMaxSize().testTag("shortcut-panel-${shortcut.id}-content")) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(shortcut.title, fontSize = 19.sp, fontWeight = FontWeight.Bold,
-                    color = LoonTextPrimary, maxLines = 1)
-                Text(shortcut.subtitle, fontSize = 12.sp, color = LoonTextSecondary, maxLines = 1)
-            }
-            IconButton(onClick = onClose, modifier = Modifier.size(36.dp).testTag("shortcut-panel-close")) {
-                Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
+    // Same scroll-edge container as Settings > Glass effects: the title stays pinned and sharp,
+    // rows passing under it dissolve into a progressive blur, and the last row can scroll clear
+    // of the rounded bottom edge. Short panels simply do not scroll.
+    val scrollState = remember(shortcut.id) { ScrollState(0) }
+    SettingsDetailEdgeViewport(
+        modifier = Modifier.fillMaxSize().testTag("shortcut-panel-${shortcut.id}-content"),
+        header = {
+            Row(
+                modifier = Modifier.fillMaxWidth().testTag("shortcut-panel-header"),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(shortcut.title, fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                        color = LoonTextPrimary, maxLines = 1)
+                    Text(shortcut.subtitle, fontSize = 12.sp, color = LoonTextSecondary, maxLines = 1)
+                }
+                IconButton(onClick = { ipLookupState.cancel(); onClose() }, modifier = Modifier.size(36.dp).testTag("shortcut-panel-close")) {
+                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
+                }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        HorizontalDivider(color = LoonTextSecondary.copy(alpha = 0.16f), thickness = 0.6.dp)
+    ) {
+        val edgeInsets = LocalSettingsDetailEdgeInsets.current
+        ReportSettingsDetailScrollOffset { scrollState.value }
         Column(
-            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxSize().verticalScroll(scrollState)
+                .padding(top = edgeInsets?.top ?: 8.dp, bottom = edgeInsets?.bottom ?: 24.dp)
                 .testTag("shortcut-panel-quick-actions"),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -168,33 +180,12 @@ internal fun DashboardShortcutActionPanel(
                         else -> "VPN 尚未连接。点击首页快捷卡片即可直接启动，不会打开额外窗口。"
                     }, color = LoonTextPrimary, fontSize = 14.sp, lineHeight = 20.sp)
                 }
-                "ip_test" -> {
-                    Text("IP 测试功能目前维护中。维护期间不会发起 IP 查询或后台请求。", color = LoonTextSecondary, fontSize = 13.sp)
-                    Column(Modifier.fillMaxWidth().testTag("quick-ip-current-window")) {
-                        QuickInfoCard {
-                            Text("IP 测试 · 维护中", color = LoonTextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                            Text("等待账号凭据通过安全表单提交后再恢复检测。", color = LoonTextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
-                            Button(
-                                onClick = {},
-                                enabled = false,
-                                modifier = Modifier.fillMaxWidth().testTag("quick-ip-refresh"),
-                                colors = ButtonDefaults.buttonColors(containerColor = LoonBlue)
-                            ) { Text("维护中") }
-                        }
-                    }
-                    Column(Modifier.fillMaxWidth().testTag("quick-ip-details-window")) {
-                        QuickInfoCard {
-                            Text("代理 / Hosting", color = LoonTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            QuickHint("维护中，暂无本次检测数据。恢复后只显示来源实际返回的字段，不推测托管或代理状态。")
-                            HorizontalDivider(color = LoonTextSecondary.copy(alpha = 0.16f), thickness = 0.6.dp)
-                            Text("黑名单标记", color = LoonTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            QuickHint("维护中；当前没有黑名单查询或缓存结果。")
-                            HorizontalDivider(color = LoonTextSecondary.copy(alpha = 0.16f), thickness = 0.6.dp)
-                            Text("代理类型", color = LoonTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            QuickHint("维护中；凭据提交后再恢复相关检测。")
-                        }
-                    }
-                }
+                "ip_test" -> OutboundIpPanel(
+                    isVpnRunning = vpnStatus == VpnState.Status.RUNNING,
+                    state = ipLookupState,
+                    settingsOpenState = ipConfigEntry.settingsOpen,
+                    onConfigLinkAvailabilityChanged = { ipConfigEntry.linkEnabled = it }
+                )
                 "profiles" -> {
                     Text("当前配置：$activeProfileName。选择一项即可在此切换，不会跳到配置管理页。", color = LoonTextSecondary, fontSize = 13.sp)
                     Button(
@@ -215,6 +206,7 @@ internal fun DashboardShortcutActionPanel(
                     }
                 }
                 "request_logs" -> {
+                    val requestEntries by RequestLogRepository.requestsFlow.collectAsState()
                     val requests = remember(requestEntries) { requestEntries.asReversed().take(12).map(::parseRequestLog) }
                     val filteredRequests = remember(requests, filter) {
                         if (filter.isBlank()) requests else requests.filter {
@@ -241,6 +233,7 @@ internal fun DashboardShortcutActionPanel(
                     TextButtonLike("清空请求记录", onClick = RequestLogRepository::clear)
                 }
                 "dns" -> {
+                    val logEntries by LogRepository.logsFlow.collectAsState()
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Fake-IP 模式", color = LoonTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -339,6 +332,7 @@ internal fun DashboardShortcutActionPanel(
                     }
                 }
                 "core_logs" -> {
+                    val logEntries by LogRepository.logsFlow.collectAsState()
                     Text(if (vpnStatus == VpnState.Status.RUNNING) "核心运行中 · 最近日志" else "最近核心日志", color = LoonTextSecondary, fontSize = 13.sp)
                     val latest = remember(logEntries) { logEntries.takeLast(12).asReversed() }
                     if (latest.isEmpty()) QuickHint("暂无核心日志")
@@ -356,6 +350,7 @@ internal fun DashboardShortcutActionPanel(
                     }
                 }
                 "traffic" -> {
+                    val traffic by trafficMetrics.collectAsState()
                     Text("实时速率", color = LoonTextSecondary, fontSize = 13.sp)
                     QuickInfoCard {
                         QuickInfoRow("上传", if (vpnStatus == VpnState.Status.RUNNING) traffic.upSpeed else "--")
@@ -385,12 +380,17 @@ internal fun DashboardShortcutActionPanel(
 
 @Composable
 private fun QuickInfoCard(content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(glassPalette.panelStart.copy(alpha = 0.48f)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
-        content = { content() }
-    )
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+            content = { content() }
+        )
+    }
 }
 
 @Composable
@@ -403,8 +403,14 @@ private fun QuickInfoRow(label: String, value: String) {
 
 @Composable
 private fun QuickHint(text: String) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(glassPalette.panelStart.copy(alpha = 0.36f)).padding(12.dp)) {
-        Text(text, color = LoonTextMuted, fontSize = 12.sp)
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+    ) {
+        Box(Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(text, color = LoonTextMuted, fontSize = 12.sp)
+        }
     }
 }
 
@@ -416,33 +422,43 @@ private fun QuickRow(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(if (selected) IosBlue.copy(alpha = 0.14f) else glassPalette.panelStart.copy(alpha = 0.34f))
-            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        accent = if (selected) IosBlue else null,
+        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = LoonTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-            if (subtitle.isNotBlank()) Text(subtitle, color = LoonTextSecondary, fontSize = 10.5.sp, maxLines = 2)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = LoonTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                if (subtitle.isNotBlank()) Text(subtitle, color = LoonTextSecondary, fontSize = 10.5.sp, maxLines = 2)
+            }
+            if (trailing.isNotBlank()) Text(trailing, color = if (selected) IosBlue else LoonTextSecondary, fontSize = 10.sp)
         }
-        if (trailing.isNotBlank()) Text(trailing, color = if (selected) IosBlue else LoonTextSecondary, fontSize = 10.sp)
     }
 }
 
 @Composable
 private fun QuickAppRow(app: InstalledApp, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(glassPalette.panelStart.copy(alpha = 0.34f)).clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        accent = if (selected) IosBlue else null,
+        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(app.label, color = LoonTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-            Text(app.packageName, color = LoonTextMuted, fontSize = 9.5.sp, maxLines = 1)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(app.label, color = LoonTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                Text(app.packageName, color = LoonTextMuted, fontSize = 9.5.sp, maxLines = 1)
+            }
+            ArcaGlasmioSwitch(checked = selected, onCheckedChange = { onClick() })
         }
-        ArcaGlasmioSwitch(checked = selected, onCheckedChange = { onClick() })
     }
 }
 

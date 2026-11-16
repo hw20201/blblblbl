@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.util.concurrent.atomic.AtomicLong
 
 data class LogEntry(
@@ -29,8 +30,10 @@ object LogRepository {
         try {
             val element = json.parseToJsonElement(payload)
             val obj = element.jsonObject
-            val type = obj["type"]?.jsonPrimitive?.content ?: "info"
-            val msg = obj["payload"]?.jsonPrimitive?.content ?: payload
+            // Bundled JNI emits level/message/time; controller streams use type/payload.
+            fun text(key: String) = (obj[key] as? JsonPrimitive)?.contentOrNull
+            val type = text("level") ?: text("type") ?: "info"
+            val msg = text("message") ?: text("payload") ?: payload
             addLog(type, msg)
         } catch (_: Exception) {
             addLog("info", payload)

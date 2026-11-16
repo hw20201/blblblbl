@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -64,6 +65,8 @@ import kotlinx.coroutines.flow.StateFlow
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
+import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
 import com.github.arca.android.ui.glass.GlassDefaults
@@ -95,6 +98,33 @@ private fun DashboardTrafficSummary(
         uploadSpeed = if (isRunning) metrics.upSpeed else "--",
         downloadTitle = AppStrings.get("traffic_down", lang),
         downloadSpeed = if (isRunning) metrics.downSpeed else "--",
+    )
+}
+
+/** Read the moving dock bounds only in the DNS card's restart scope. */
+@Composable
+private fun DashboardShortcutCard(
+    modifier: Modifier,
+    item: ShortcutDef,
+    isEditing: Boolean,
+    lens: NavigationLensState?,
+    navigationLensBoundsState: State<NavigationLensGlobalBounds?>?,
+    onPickupChanged: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+    onClick: () -> Unit
+) {
+    LoonShortcutCard(
+        modifier = modifier,
+        title = item.title,
+        subtitle = item.subtitle,
+        icon = item.icon,
+        isEditing = isEditing,
+        lens = lens,
+        lensBounds = navigationLensBoundsState?.value,
+        lensTintTarget = if (item.id == "dns") Color(0xFF22C55E) else null,
+        onPickupChanged = onPickupChanged,
+        onDelete = onDelete,
+        onClick = onClick
     )
 }
 
@@ -150,7 +180,6 @@ fun DashboardScreen(
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
-    val selectedNavigationLensBounds = navigationLensBoundsState?.value
     val coroutineScope = rememberCoroutineScope()
     var modePickerOpen by remember { mutableStateOf(false) }
     val modePickerProgress = remember { Animatable(0f) }
@@ -184,6 +213,7 @@ fun DashboardScreen(
     // Every shortcut can morph from its own card into the shared glass panel.
     // Keep geometry outside Compose state so scrolling only updates the tiny bounds map.
     var activeShortcutPanelId by remember { mutableStateOf<String?>(null) }
+    val ipConfigEntry = remember { IpConfigEntryState() }
     var shortcutPanelDataId by remember { mutableStateOf<String?>(null) }
     var hiddenShortcutId by remember { mutableStateOf<String?>(null) }
     var shortcutPanelMorphBounds by remember { mutableStateOf<Rect?>(null) }
@@ -548,15 +578,12 @@ fun DashboardScreen(
                                     }
                                 }
 
-                            LoonShortcutCard(
+                            DashboardShortcutCard(
                                 modifier = itemModifier,
-                                title = item.title,
-                                subtitle = item.subtitle,
-                                icon = item.icon,
+                                item = item,
                                 isEditing = isEditingShortcuts,
                                 lens = glassScene,
-                                lensBounds = if (item.id == "dns") selectedNavigationLensBounds else null,
-                                lensTintTarget = if (item.id == "dns") Color(0xFF22C55E) else null,
+                                navigationLensBoundsState = if (item.id == "dns") navigationLensBoundsState else null,
                                 onPickupChanged = { picked ->
                                     if (picked) pickedUpShortcutId = item.id
                                     else if (pickedUpShortcutId == item.id) pickedUpShortcutId = null
@@ -679,20 +706,15 @@ fun DashboardScreen(
                         val pickerDivider = glassPalette.edge.copy(
                             alpha = (glassPalette.edge.alpha * 0.18f).coerceIn(0f, 0.06f)
                         )
-                        Box(
-                            Modifier.matchParentSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            glassPalette.panelStart.copy(alpha = 1f),
-                                            glassPalette.panelEnd.copy(alpha = 1f)
-                                        )
-                                    ),
-                                    pickerShape
-                                )
+                        // The picker shell is the same Glasmio glass as every other
+                        // panel; the fully opaque gradient it used to paint is gone.
+                        GlassSurface(
+                            modifier = Modifier.matchParentSize()
                                 .border(0.45.dp, pickerEdge, pickerShape)
-                                .testTag("mode-picker-opaque-surface")
-                        )
+                                .testTag("mode-picker-glass-surface"),
+                            shape = pickerShape,
+                            surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                        ) { }
                         if (showPickerOptions) {
                             Column(
                                 modifier = Modifier
@@ -725,36 +747,39 @@ fun DashboardScreen(
                                             TunnelMode.DIRECT -> Color(0xFF7FD3AE)
                                             else -> Color.White.copy(alpha = 0.75f)
                                         }
-                                        Row(
+                                        GlassSurface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .height(optionHeight)
                                                 .testTag("mode-option-${mode.name.lowercase()}")
-                                                .clip(optionShape)
-                                                .background(glassPalette.panelStart.copy(alpha = 1f), optionShape)
                                                 .border(0.4.dp, pickerEdge, optionShape)
                                                 .semantics { selected = mode == currentMode }
                                                 .clickable {
                                                     chooseModeWithHaptic(mode)
                                                     closeModePicker()
-                                                }
-                                                .padding(horizontal = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                                },
+                                            shape = optionShape,
+                                            surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
                                         ) {
-                                            Box(
-                                                Modifier.size(7.dp)
-                                                    .background(modeAccent, CircleShape)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                title,
-                                                modifier = Modifier.weight(1f),
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = LoonTextPrimary,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    Modifier.size(7.dp)
+                                                        .background(modeAccent, CircleShape)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    title,
+                                                    modifier = Modifier.weight(1f),
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = LoonTextPrimary,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -762,8 +787,8 @@ fun DashboardScreen(
                         }
                         if (showPickerOptions) {
                             val selectedShape = RoundedCornerShape(16.dp)
-                            Box(
-                                Modifier.align(Alignment.TopCenter)
+                            GlassSurface(
+                                modifier = Modifier.align(Alignment.TopCenter)
                                     .padding(horizontal = 6.dp, vertical = 5.dp)
                                     .fillMaxWidth().height(capsuleHeight - 10.dp)
                                     .graphicsLayer {
@@ -771,11 +796,12 @@ fun DashboardScreen(
                                         scaleX = 0.96f + 0.04f * panelReveal
                                         scaleY = 0.94f + 0.06f * panelReveal
                                     }
-                                    .clip(selectedShape)
-                                    .background(glassPalette.panelAccent.copy(alpha = 1f), selectedShape)
                                     .border(0.4.dp, pickerEdge, selectedShape)
-                                    .testTag("mode-picker-selected-surface")
-                            )
+                                    .testTag("mode-picker-selected-surface"),
+                                shape = selectedShape,
+                                accent = glassPalette.panelAccent,
+                                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                            ) { }
                         }
                         Row(
                             modifier = Modifier
@@ -835,159 +861,193 @@ fun DashboardScreen(
                     hiddenShortcutId = null
                     shortcutPanelMorphBounds = null
                     shortcutPanelDataId = null
-                }
+                    ipConfigEntry.reset()
+                },
+                pinnedOverlay = if (activePanelShortcut.id == "ip_test") ({
+                    // Fixed in the panel's bottom-right corner, outside the scrolling body and its
+                    // enter/exit animation. The body keeps 54dp of clear space under its last row.
+                    ScamalyticsConfigLink(
+                        onClick = { ipConfigEntry.settingsOpen.value = true },
+                        enabled = ipConfigEntry.linkEnabled,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 8.dp)
+                    )
+                }) else null
             ) {
                 if (activePanelShortcut.id == "nodes") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = AppStrings.get("quick_node_title", lang),
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = LoonTextPrimary
-                            )
-                            Text(
-                                text = "策略组: ${mainGroupName.ifBlank { "默认主组" }}",
-                                fontSize = 12.sp,
-                                color = LoonTextSecondary
-                            )
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    if (mainGroupName.isNotBlank() && !isTestingQuickSheet) {
-                                        isTestingQuickSheet = true
-                                        coroutineScope.launch {
-                                            onHealthCheck(mainGroupName)
-                                            delay(1800)
-                                            isTestingQuickSheet = false
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                AnimatedSpeedTestIcon(
-                                    isTesting = isTestingQuickSheet,
-                                    tint = LoonTextPrimary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = { activeShortcutPanelId = null },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
-                            }
-                        }
-                    }
-                    OutlinedTextField(
-                        value = quickNodeSearchQuery,
-                        onValueChange = { quickNodeSearchQuery = it },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                        placeholder = { Text(AppStrings.get("search_nodes", lang), color = LoonTextMuted, fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextSecondary, modifier = Modifier.size(17.dp)) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = LoonBg,
-                            unfocusedContainerColor = LoonBg,
-                            focusedBorderColor = LoonBlue,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
                     val filteredNodes = remember(mainGroupProxies, quickNodeSearchQuery) {
                         if (quickNodeSearchQuery.isBlank()) mainGroupProxies
                         else mainGroupProxies.filter { it.name.contains(quickNodeSearchQuery, ignoreCase = true) }
                     }
-                    if (filteredNodes.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().height(160.dp),
-                            contentAlignment = Alignment.Center
+                    val nodeListState = rememberLazyListState()
+                    // Same scroll-edge container as Settings > Glass effects; the search field is
+                    // part of the pinned header, the node list stays a lazy list underneath.
+                    SettingsDetailEdgeViewport(
+                        modifier = Modifier.fillMaxSize().testTag("quick-node-edge-viewport"),
+                        header = {
+                            Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = if (mainGroupProxies.isEmpty()) AppStrings.get("no_nodes_available", lang) else AppStrings.get("no_nodes_matched", lang),
-                                color = LoonTextSecondary,
-                                fontSize = 13.sp
-                            )
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                            itemsIndexed(
-                                items = filteredNodes,
-                                key = { index, proxy -> "${proxy.name}_$index" }
-                            ) { index, proxy ->
-                                val isSelected = proxy.name == activeNodeName
-                                val nodeEmoji = extractLeadingEmoji(proxy.name)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            onSelectProxy(mainGroupName, proxy)
-                                            activeShortcutPanelId = null
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 11.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                        if (nodeEmoji != null) {
-                                            Text(nodeEmoji, fontSize = 17.sp, modifier = Modifier.padding(end = 10.dp))
-                                        }
-                                        Column {
-                                            Text(
-                                                text = proxy.name,
-                                                color = if (isSelected) LoonOrange else LoonTextPrimary,
-                                                fontSize = 14.5.sp,
-                                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                                maxLines = 1
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(proxy.type.uppercase(), color = LoonTextMuted, fontSize = 11.sp)
-                                        }
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (isTestingQuickSheet) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(13.dp),
-                                                strokeWidth = 1.8.dp,
-                                                color = LoonOrange
-                                            )
-                                        } else {
-                                            val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
-                                            val delayText = when {
-                                                proxy.delay == -2 -> "超时"
-                                                proxy.delay > 0 -> "${proxy.delay} ms"
-                                                else -> "--"
+                            Column {
+                                Text(
+                                    text = AppStrings.get("quick_node_title", lang),
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = LoonTextPrimary
+                                )
+                                Text(
+                                    text = "策略组: ${mainGroupName.ifBlank { "默认主组" }}",
+                                    fontSize = 12.sp,
+                                    color = LoonTextSecondary
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        if (mainGroupName.isNotBlank() && !isTestingQuickSheet) {
+                                            isTestingQuickSheet = true
+                                            coroutineScope.launch {
+                                                onHealthCheck(mainGroupName)
+                                                delay(1800)
+                                                isTestingQuickSheet = false
                                             }
-                                            Text(
-                                                text = delayText,
-                                                color = delayColor,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
-                                                modifier = Modifier.padding(end = 8.dp)
-                                            )
                                         }
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = LoonOrange,
-                                                modifier = Modifier.size(18.dp)
-                                            )
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    AnimatedSpeedTestIcon(
+                                        isTesting = isTestingQuickSheet,
+                                        tint = LoonTextPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { activeShortcutPanelId = null },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = quickNodeSearchQuery,
+                            onValueChange = { quickNodeSearchQuery = it },
+                            modifier = Modifier.fillMaxWidth().testTag("quick-node-search"),
+                            placeholder = { Text(AppStrings.get("search_nodes", lang), color = LoonTextMuted, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextSecondary, modifier = Modifier.size(17.dp)) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = LoonBg,
+                                unfocusedContainerColor = LoonBg,
+                                focusedBorderColor = LoonBlue,
+                                unfocusedBorderColor = Color.Transparent
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                            }
+                        }
+                    ) {
+                        val nodeEdgeInsets = LocalSettingsDetailEdgeInsets.current
+                        ReportSettingsDetailScrollOffset {
+                            if (nodeListState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2
+                            else nodeListState.firstVisibleItemScrollOffset
+                        }
+                        if (filteredNodes.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(160.dp)
+                                    .padding(top = nodeEdgeInsets?.top ?: 0.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (mainGroupProxies.isEmpty()) AppStrings.get("no_nodes_available", lang) else AppStrings.get("no_nodes_matched", lang),
+                                    color = LoonTextSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                state = nodeListState,
+                                modifier = Modifier.fillMaxSize().testTag("quick-node-list"),
+                                contentPadding = PaddingValues(
+                                    top = nodeEdgeInsets?.top ?: 0.dp,
+                                    bottom = nodeEdgeInsets?.bottom ?: 0.dp
+                                )
+                            ) {
+                                itemsIndexed(
+                                    items = filteredNodes,
+                                    key = { index, proxy -> "${proxy.name}_$index" }
+                                ) { index, proxy ->
+                                    val isSelected = proxy.name == activeNodeName
+                                    val nodeEmoji = extractLeadingEmoji(proxy.name)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                onSelectProxy(mainGroupName, proxy)
+                                                activeShortcutPanelId = null
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 11.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                            if (nodeEmoji != null) {
+                                                Text(nodeEmoji, fontSize = 17.sp, modifier = Modifier.padding(end = 10.dp))
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = proxy.name,
+                                                    color = if (isSelected) LoonOrange else LoonTextPrimary,
+                                                    fontSize = 14.5.sp,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    maxLines = 1
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(proxy.type.uppercase(), color = LoonTextMuted, fontSize = 11.sp)
+                                            }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (isTestingQuickSheet) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(13.dp),
+                                                    strokeWidth = 1.8.dp,
+                                                    color = LoonOrange
+                                                )
+                                            } else {
+                                                val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
+                                                val delayText = when {
+                                                    proxy.delay == -2 -> "超时"
+                                                    proxy.delay > 0 -> "${proxy.delay} ms"
+                                                    else -> "--"
+                                                }
+                                                Text(
+                                                    text = delayText,
+                                                    color = delayColor,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
+                                                    modifier = Modifier.padding(end = 8.dp)
+                                                )
+                                            }
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = LoonOrange,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                if (index < filteredNodes.size - 1) {
-                                    HorizontalDivider(
-                                        color = LoonCardBorder,
-                                        thickness = 0.5.dp,
-                                        modifier = Modifier.padding(horizontal = 8.dp)
-                                    )
+                                    if (index < filteredNodes.size - 1) {
+                                        HorizontalDivider(
+                                            color = LoonCardBorder,
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1017,6 +1077,8 @@ fun DashboardScreen(
                         onAllowLanChanged = onAllowLanChanged,
                         trafficMetrics = trafficMetrics,
                         coreVersion = vpnState.coreVersion,
+                        isPanelActive = activeShortcutPanelId != null,
+                        ipConfigEntry = ipConfigEntry,
                         onClose = { activeShortcutPanelId = null }
                     )
                 }
@@ -1078,15 +1140,15 @@ fun DashboardScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 itemsIndexed(hiddenShortcuts) { _, item ->
-                                    Surface(
+                                    GlassSurface(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
                                             .border(1.dp, LoonCardBorder, RoundedCornerShape(12.dp))
                                             .clickable {
                                                 onUpdateVisibleShortcuts(visibleShortcuts + item.id)
                                             },
-                                        color = LoonCard
+                                        shape = RoundedCornerShape(12.dp),
+                                        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
                                     ) {
                                         Row(
                                             modifier = Modifier

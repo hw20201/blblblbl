@@ -15,6 +15,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -99,7 +100,11 @@ internal fun SettingsDetailEdgeViewport(
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val bleedPx = with(density) { bleed.roundToPx() }
     val headerHeight = with(density) { headerHeightPx.toDp() } + bleed
-    val reveal = (edge.offsetPx / with(density) { EdgeRevealDistance.toPx() }).coerceIn(0f, 1f)
+    val revealDistancePx = with(density) { EdgeRevealDistance.toPx() }
+    // After the first 24dp the mask is constant; later scroll pixels must not recompose this viewport.
+    val reveal by remember(edge, revealDistancePx) {
+        derivedStateOf { (edge.offsetPx / revealDistancePx).coerceIn(0f, 1f) }
+    }
     val insets = remember(headerHeight) {
         SettingsDetailEdgeInsets(top = headerHeight + 10.dp, bottom = SettingsDetailEdgeBottomInset + bleed)
     }

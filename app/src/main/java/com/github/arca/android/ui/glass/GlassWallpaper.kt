@@ -70,13 +70,112 @@ internal fun wallpaperGradientStops(settings: GlassWallpaperSettings, phase: Flo
     return listOf(0f to settings.colorAt(0), middle to settings.colorAt(1), 1f to settings.colorAt(2))
 }
 
+/** Whether the wallpaper's colour boundary can visibly move. */
+internal fun wallpaperUsesAnimatedFlow(settings: GlassWallpaperSettings): Boolean =
+    settings.colorFlow && !(settings.colorA == settings.colorB && settings.colorB == settings.colorC)
+
+/** A single-size cache for geometry that is independent of animated colour stops. */
+internal class FlutedWallpaperDrawCache {
+    private data class Key(
+        val width: Float,
+        val height: Float,
+        val logicalHeight: Float,
+        val angleDegrees: Float
+    )
+
+    internal data class Rib(val path: Path, val ramp: Brush)
+    internal data class Geometry(val tone: Brush, val ribs: List<Rib>)
+
+    private var key: Key? = null
+    private var cached: Geometry? = null
+    internal var geometryBuildCount: Int = 0
+        private set
+
+    internal fun getOrBuild(
+        width: Float,
+        height: Float,
+        logicalHeight: Float,
+        angleDegrees: Float
+    ): Geometry {
+        val safeWidth = width.coerceAtLeast(1f)
+        val safeHeight = height.coerceAtLeast(1f)
+        val safeLogicalHeight = logicalHeight.coerceAtLeast(1f)
+        val safeAngle = angleDegrees.coerceIn(
+            GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES,
+            GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES
+        )
+        val nextKey = Key(safeWidth, safeHeight, safeLogicalHeight, safeAngle)
+        if (key == nextKey) cached?.let { return it }
+
+        val next = buildGeometry(safeWidth, safeHeight, safeLogicalHeight, safeAngle)
+        key = nextKey
+        cached = next
+        geometryBuildCount++
+        return next
+    }
+
+    private fun buildGeometry(
+        width: Float,
+        height: Float,
+        logicalHeight: Float,
+        angleDegrees: Float
+    ): Geometry {
+        val tone = Brush.verticalGradient(
+            0f to Color.Black.copy(alpha = .035f),
+            .75f to Color.White.copy(alpha = .105f),
+            1f to Color.Black.copy(alpha = .055f),
+            startY = 0f,
+            endY = logicalHeight
+        )
+        val spacing = width / FLUTED_RIB_COUNT.toFloat()
+        val slope = kotlin.math.tan(Math.toRadians(angleDegrees.toDouble())).toFloat()
+        val widthNorm = sqrt(1f + slope * slope)
+        val widthDirX = 1f / widthNorm
+        val widthDirY = slope / widthNorm
+        val extraRibs = kotlin.math.ceil((height * kotlin.math.abs(slope) * .5f) / spacing.coerceAtLeast(1f)).toInt() + 1
+        val safeHeight = height.coerceAtLeast(1f)
+        val ribs = ArrayList<Rib>(FLUTED_RIB_COUNT + extraRibs * 2)
+        for (index in -extraRibs..(FLUTED_RIB_COUNT - 1 + extraRibs)) {
+            val centerX = flutedRibXAtY(index, width, safeHeight, safeHeight / 2f, angleDegrees)
+            val centerY = safeHeight / 2f
+            val half = spacing / 2f
+            val topX = flutedRibXAtY(index, width, safeHeight, 0f, angleDegrees)
+            val bottomX = flutedRibXAtY(index, width, safeHeight, safeHeight, angleDegrees)
+            val rib = Path().apply {
+                moveTo(topX - half, 0f)
+                lineTo(topX + half, 0f)
+                lineTo(bottomX + half, safeHeight)
+                lineTo(bottomX - half, safeHeight)
+                close()
+            }
+            val ramp = Brush.linearGradient(
+                colorStops = arrayOf(
+                    0f to Color.Black.copy(alpha = FLUTED_RIB_DARK_ALPHA),
+                    .25f to Color.White.copy(alpha = .05f),
+                    .5f to Color.White.copy(alpha = .16f),
+                    .75f to Color.White.copy(alpha = .22f),
+                    1f to Color.White.copy(alpha = FLUTED_RIB_BRIGHT_ALPHA)
+                ),
+                start = Offset(centerX - widthDirX * half, centerY - widthDirY * half),
+                end = Offset(centerX + widthDirX * half, centerY + widthDirY * half)
+            )
+            ribs += Rib(rib, ramp)
+        }
+        return Geometry(tone, ribs)
+    }
+}
+
+/** Legacy preview callers share one bounded fallback cache; screen backgrounds pass their own. */
+private val defaultFlutedWallpaperDrawCache = FlutedWallpaperDrawCache()
+
 /** Draws the generated wallpaper below the existing shared glass recorder/lens pipeline. */
 internal fun DrawScope.drawGlassWallpaper(
     settings: GlassWallpaperSettings,
     seconds: Float,
-    logicalHeight: Float = size.height
+    logicalHeight: Float = size.height,
+    cache: FlutedWallpaperDrawCache? = defaultFlutedWallpaperDrawCache
 ) {
-    val phase = wallpaperFlowOffset(seconds, settings.colorFlow)
+    val phase = wallpaperFlowOffset(seconds, wallpaperUsesAnimatedFlow(settings))
     val stops = wallpaperGradientStops(settings, phase)
     val colors = stops.map { it.second }
     val middle = stops[1].first
@@ -91,21 +190,14 @@ internal fun DrawScope.drawGlassWallpaper(
         end = Offset(xWeight / denominator, yWeight / denominator)
     )
     drawRect(gradient)
-    drawFlutedToneProfile(logicalHeight)
-    drawFlutedRibs(settings.ribAngleDegrees.coerceIn(GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES, GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES))
-}
-
-/** Script's subdued dark-to-bright-to-dark value profile, with its gentle peak near 75% height. */
-private fun DrawScope.drawFlutedToneProfile(logicalHeight: Float) {
-    drawRect(
-        Brush.verticalGradient(
-            0f to Color.Black.copy(alpha = .035f),
-            .75f to Color.White.copy(alpha = .105f),
-            1f to Color.Black.copy(alpha = .055f),
-            startY = 0f,
-            endY = logicalHeight.coerceAtLeast(1f)
-        )
+    val geometry = (cache ?: FlutedWallpaperDrawCache()).getOrBuild(
+        width = size.width,
+        height = size.height,
+        logicalHeight = logicalHeight,
+        angleDegrees = settings.ribAngleDegrees
     )
+    drawRect(geometry.tone)
+    geometry.ribs.forEach { drawPath(it.path, it.ramp) }
 }
 
 /** 29 evenly spaced fluted ribs, tilted by the wallpaper angle setting
@@ -136,44 +228,3 @@ internal fun flutedRibXAtY(index: Int, width: Float, height: Float, y: Float, an
     return flutedRibX(index, width) - (y / safeHeight - .5f) * safeHeight * slope
 }
 
-private fun DrawScope.drawFlutedRibs(angleDegrees: Float = FLUTED_RIDGE_ANGLE_DEGREES) {
-    val safeHeight = size.height.coerceAtLeast(1f)
-    val spacing = size.width / FLUTED_RIB_COUNT.toFloat()
-    val slope = kotlin.math.tan(Math.toRadians(angleDegrees.toDouble())).toFloat()
-    // Rib direction is (-slope, 1); width direction is its perpendicular (1, slope),
-    // normalized. A gradient along the width direction is constant along a rib
-    // and varies only across it, so the ramp follows the rib slant at every height.
-    val widthNorm = sqrt(1f + slope * slope)
-    val widthDirX = 1f / widthNorm
-    val widthDirY = slope / widthNorm
-    val extraRibs = kotlin.math.ceil((safeHeight * kotlin.math.abs(slope) * .5f) / spacing.coerceAtLeast(1f)).toInt() + 1
-    for (index in -extraRibs..(FLUTED_RIB_COUNT - 1 + extraRibs)) {
-        val centerX = flutedRibXAtY(index, size.width, safeHeight, safeHeight / 2f, angleDegrees)
-        val centerY = safeHeight / 2f
-        val half = spacing / 2f
-        val topX = flutedRibXAtY(index, size.width, safeHeight, 0f, angleDegrees)
-        val bottomX = flutedRibXAtY(index, size.width, safeHeight, safeHeight, angleDegrees)
-        val rib = Path().apply {
-            moveTo(topX - half, 0f)
-            lineTo(topX + half, 0f)
-            lineTo(bottomX + half, safeHeight)
-            lineTo(bottomX - half, safeHeight)
-            close()
-        }
-        // Sin-like ramp, matching the Python hl2 model: fast rise, flat bright top.
-        // 0.0 -> dark left edge, 0.5 -> ~70% bright, 1.0 -> full bright right edge.
-        // The next rib restarts at its dark edge, giving the sharp rib separation.
-        val ramp = Brush.linearGradient(
-            colorStops = arrayOf(
-                0f to Color.Black.copy(alpha = FLUTED_RIB_DARK_ALPHA),
-                .25f to Color.White.copy(alpha = .05f),
-                .5f to Color.White.copy(alpha = .16f),
-                .75f to Color.White.copy(alpha = .22f),
-                1f to Color.White.copy(alpha = FLUTED_RIB_BRIGHT_ALPHA)
-            ),
-            start = Offset(centerX - widthDirX * half, centerY - widthDirY * half),
-            end = Offset(centerX + widthDirX * half, centerY + widthDirY * half)
-        )
-        drawPath(rib, ramp)
-    }
-}

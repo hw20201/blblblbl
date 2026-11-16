@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.layout
 import androidx.compose.runtime.withFrameNanos
@@ -265,6 +266,11 @@ internal fun ShortcutMorphOverlay(
     sourceCorners: ShortcutMorphCorners? = null,
     panelSurfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
     sourceContent: (@Composable () -> Unit)? = null,
+    /**
+     * Drawn above the body in the panel's own layer: never scrolled, faded, blurred or scaled with
+     * the body. Appears only once the panel has fully opened and is removed the moment it starts closing.
+     */
+    pinnedOverlay: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val progress = remember { Animatable(0f) }
@@ -515,6 +521,11 @@ internal fun ShortcutMorphOverlay(
                             ) {
                                 content()
                             }
+                        }
+                    }
+                    if (pinnedOverlay != null && visible && !closing && fraction >= 0.999f) {
+                        Box(Modifier.matchParentSize().testTag("$panelTestTag-pinned-overlay")) {
+                            pinnedOverlay()
                         }
                     }
                 }

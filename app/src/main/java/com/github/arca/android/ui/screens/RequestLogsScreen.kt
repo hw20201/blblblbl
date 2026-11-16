@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -25,11 +26,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.LogEntry
 import com.github.arca.android.data.RequestLogRepository
+import com.github.arca.android.service.MihomoVpnService
+import com.github.arca.android.service.TrafficMetrics
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.ui.components.*
+import kotlinx.coroutines.flow.StateFlow
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -90,6 +95,18 @@ internal fun parseRequestLog(entry: LogEntry): StructuredRequest {
     )
 }
 
+@Composable
+internal fun RequestTrafficRates(
+    isRunning: Boolean,
+    trafficMetrics: StateFlow<TrafficMetrics> = MihomoVpnService.trafficMetrics
+) {
+    val metrics by trafficMetrics.collectAsState()
+    Text(
+        text = if (isRunning) "${metrics.upSpeed}  /  ${metrics.downSpeed}" else "0 B/s  /  0 B/s",
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = IosBlue, maxLines = 1
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RequestLogsScreen(
@@ -100,28 +117,19 @@ fun RequestLogsScreen(
     val lang = LocalAppLanguage.current
     val haptic = rememberIosHaptic()
 
-    val rawLogs by RequestLogRepository.requestsFlow.collectAsState()
     val monitoringEnabled by RequestLogRepository.monitoringEnabled.collectAsState()
     val isPaused = !monitoringEnabled
     var searchQuery by remember { mutableStateOf("") }
     var selectedProtocol by remember { mutableStateOf("ALL") }
     var inspectedRequest by remember { mutableStateOf<StructuredRequest?>(null) }
-
-    val requests = remember(rawLogs) {
-        rawLogs.map { parseRequestLog(it) }.reversed()
-    }
-
-    val filteredRequests = remember(requests, searchQuery, selectedProtocol) {
-        requests.filter { req ->
-            val matchProto = selectedProtocol == "ALL" || req.protocol.equals(selectedProtocol, ignoreCase = true)
-            val matchQuery = searchQuery.isBlank() ||
-                req.destination.contains(searchQuery, ignoreCase = true) ||
-                req.rule.contains(searchQuery, ignoreCase = true) ||
-                req.outbound.contains(searchQuery, ignoreCase = true) ||
-                req.rawMessage.contains(searchQuery, ignoreCase = true)
-            matchProto && matchQuery
-        }
-    }
+    val presentation = rememberRequestLogPresentation(
+        lifecycle = LocalLifecycleOwner.current.lifecycle,
+        rawLogs = RequestLogRepository.requestsFlow,
+        searchQuery = searchQuery,
+        selectedProtocol = selectedProtocol
+    )
+    val requests = presentation.requests
+    val filteredRequests = presentation.filteredRequests
 
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val isRunning = vpnState.status == VpnState.Status.RUNNING
@@ -197,10 +205,7 @@ fun RequestLogsScreen(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("↑ 上传  /  ↓ 下载", fontSize = 10.sp, color = LoonTextMuted)
-                            Text(
-                                text = "${vpnState.upSpeed.ifBlank { "0 B/s" }}  /  ${vpnState.downSpeed.ifBlank { "0 B/s" }}",
-                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = IosBlue, maxLines = 1
-                            )
+                            RequestTrafficRates(isRunning = isRunning)
                         }
                         Box(Modifier.width(1.dp).height(34.dp).background(LoonCardBorder.copy(alpha = .7f)))
                         Spacer(Modifier.width(14.dp))
@@ -499,18 +504,20 @@ fun RequestLogsScreen(
 
                 Text("原始链路日志", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LoonTextSecondary)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = req.rawMessage,
-                    fontSize = 11.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = LoonTextPrimary,
-                    lineHeight = 16.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(LoonBg)
-                        .padding(12.dp)
-                )
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                ) {
+                    Text(
+                        text = req.rawMessage,
+                        fontSize = 11.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = LoonTextPrimary,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 

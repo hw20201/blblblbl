@@ -56,11 +56,10 @@ class GlasmioModalRegressionTest {
         }
 
         compose.waitForIdle()
-        // v91 puts the sheet into maintenance mode: the onRefresh callback is
-        // deliberately never invoked, so no IP is shown. Assert the maintenance
-        // UI instead of the old "IP 地址" / address text.
-        compose.onNodeWithText("出站 IP · 维护中").assertExists()
-        compose.onNodeWithTag("outbound-ip-maintenance-action").assertExists()
+        // Restored detection stays idle until a manual tap and keeps the glass host.
+        compose.onNodeWithText("出站 IP").assertExists()
+        compose.onNodeWithText("IP 测试 · 就绪").assertExists()
+        compose.onNodeWithTag("quick-ip-refresh").assertExists()
     }
 
     @Test

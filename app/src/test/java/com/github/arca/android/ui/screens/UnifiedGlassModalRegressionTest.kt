@@ -52,15 +52,15 @@ class UnifiedGlassModalRegressionTest {
     }
 
     @Test
-    fun ipMaintenanceModeRendersUnderUnifiedGlasmioGlass() {
+    fun ipReadyStateRendersUnderUnifiedGlasmioGlass() {
         setUnifiedContent {
             OutboundIpSheet(onRefresh = { OutboundIpInfo("203.0.113.9", source = "fixture") })
         }
 
         compose.waitForIdle()
-        compose.onNodeWithText("出站 IP · 维护中").assertExists()
+        compose.onNodeWithText("出站 IP").assertExists()
         compose.onNodeWithText("检测详情").assertExists()
-        compose.onNodeWithText("维护期间不进行自动检测、重新检测或后台轮询。").assertExists()
+        compose.onNodeWithText("手动检测当前出口；打开面板和保存凭据不会发起查询。").assertExists()
     }
 
     @Test

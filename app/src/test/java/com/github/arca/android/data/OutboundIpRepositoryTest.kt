@@ -29,58 +29,63 @@ class OutboundIpRepositoryTest {
         }.build()
     )
 
-    @Test fun identMeDeclaredResidentialAndBusinessAreLocallyRated() = runBlocking {
-        val residential = repository { url ->
-            assertEquals("https://ident.me/json", url)
-            200 to """{"ip":"203.0.113.5","type":"isp","aso":"Example ISP","asn":64500}"""
-        }.lookup()
-        assertEquals("Residential", residential.type)
-        assertEquals("优良", residential.level)
-        assertEquals("Example ISP", residential.organization)
-        assertEquals("AS64500", residential.asn)
-        assertNull(residential.flags)
-        val business = repository { 200 to """{"ip":"2001:db8::1","type":"government"}""" }.lookup()
-        assertEquals("Business", business.type)
-        assertEquals("优良", business.level)
-        assertEquals("2001:db8::1", business.ipAddress)
+    private val ipApiJson =
+        """{"status":"success","country":"美国","countryCode":"US","regionName":"伊利诺伊州","city":"芝加哥","isp":"Cloudflare, Inc.","org":"Cloudflare WARP","as":"AS13335 Cloudflare, Inc.","query":"203.0.113.5"}"""
+    private val geojsJson =
+        """{"ip":"198.51.100.2","country":"United States","country_code":"US","city":"Morgan Hill","organization":"AS13335 Cloudflare, Inc.","organization_name":"Cloudflare, Inc.","asn":13335,"region":"California"}"""
+
+    @Test fun ipApiPrimaryReturnsCountryCityOrgAndAsn() = runBlocking {
+        val info = repository { 200 to ipApiJson }.lookup()
+        assertEquals("203.0.113.5", info.ipAddress)
+        assertEquals("美国", info.country)
+        assertEquals("芝加哥", info.city)
+        assertEquals("Cloudflare WARP", info.organization)
+        assertEquals("AS13335", info.asn)
+        assertEquals("ip-api.com", info.source)
+        assertNull(info.type)
     }
 
-    @Test fun unknownIdentTypeAndMalformedIpFallBackOnceToIpquery() = runBlocking {
-        val seen = mutableListOf<String>()
+    @Test fun geojsBackupStripsAsPrefixFromOrganization() = runBlocking {
+        val info = repository { url ->
+            if (url.contains("ip-api.com")) 500 to "" else 200 to geojsJson
+        }.lookup()
+        assertEquals("198.51.100.2", info.ipAddress)
+        assertEquals("United States", info.country)
+        assertEquals("Morgan Hill", info.city)
+        assertEquals("Cloudflare, Inc.", info.organization)
+        assertEquals("AS13335", info.asn)
+        assertEquals("geojs.io", info.source)
+    }
+
+    @Test fun slowPrimaryLosesRaceToFastBackup() = runBlocking {
+        val info = repository { url ->
+            if (url.contains("ip-api.com")) {
+                Thread.sleep(600)
+                200 to ipApiJson
+            } else 200 to geojsJson
+        }.lookup()
+        assertEquals("geojs.io", info.source)
+        assertEquals("198.51.100.2", info.ipAddress)
+    }
+
+    @Test fun failingPrimaryFallsBackToBackup() = runBlocking {
+        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
         val info = repository { url ->
             seen += url
-            if (url == "https://ident.me/json") 200 to """{"ip":"not-an-ip","type":"residential"}"""
-            else 200 to """{"ip":"198.51.100.2","isp":{"org":"Sample"},"risk":{"is_proxy":false,"is_vpn":false,"is_tor":false,"is_abuser":false}}"""
+            if (url.contains("ip-api.com")) 503 to "" else 200 to geojsJson
         }.lookup()
-        assertEquals(listOf("https://ident.me/json", "https://api.ipquery.io/?format=json"), seen)
         assertEquals("198.51.100.2", info.ipAddress)
-        assertNull(info.type)
-        assertNull(info.level)
-        assertEquals(emptyList<String>(), info.flags)
-        assertEquals("ipquery.io", info.source)
+        assertEquals("geojs.io", info.source)
+        assertEquals(2, seen.size)
     }
 
-    @Test fun ipqueryOnlyRatesExplicitTypeAndLeavesUnspecifiedRiskUnknown() = runBlocking {
-        val info = repository { url ->
-            if (url.contains("ident.me")) 503 to ""
-            else 200 to """{"ip":"2001:db8::2","isp":{"isp":"ISP"},"risk":{"is_datacenter":true,"is_mobile":false,"is_tor":true}}"""
-        }.lookup()
-        assertEquals("Hosting", info.type)
-        assertEquals("风险", info.level)
-        assertEquals(listOf("Tor"), info.flags)
-    }
-
-    @Test fun bothSourcesFailAndMalformedFallbackFails() = runBlocking {
-        val calls = mutableListOf<String>()
+    @Test fun bothSourcesFail() = runBlocking {
+        val calls = java.util.Collections.synchronizedList(mutableListOf<String>())
         try {
-            repository { url -> calls += url; if (url.contains("ident.me")) 500 to "" else 200 to """{"ip":"example.com"}""" }.lookup()
+            repository { url -> calls += url; 502 to "" }.lookup()
             fail("Expected lookup to fail")
         } catch (_: Exception) { }
         assertEquals(2, calls.size)
-        try {
-            repository { 502 to "" }.lookup()
-            fail("Expected both source failures")
-        } catch (_: Exception) { }
     }
 
     @Test fun cancellationCancelsUnderlyingCall() = runBlocking {
@@ -99,24 +104,6 @@ class OutboundIpRepositoryTest {
         pending.cancel()
         try { pending.await() } catch (_: CancellationException) { }
         assertTrue(canceled.get())
-    }
-
-    @Test fun identHostingIsNormalAndUnknownFlagsStayUnknown() = runBlocking {
-        val info = repository { 200 to """{"ip":"203.0.113.10","type":"hosting","aso":"Example DC","asn":"AS64501"}""" }.lookup()
-        assertEquals("普通", info.level)
-        assertEquals("Hosting", info.type)
-        assertEquals("ident.me", info.source)
-        assertEquals("AS64501", info.asn)
-        assertNull(info.flags)
-    }
-
-    @Test fun partialFalseRiskDoesNotClaimNoHits() = runBlocking {
-        val info = repository { url ->
-            if (url.contains("ident.me")) 503 to ""
-            else 200 to """{"ip":"203.0.113.11","risk":{"is_proxy":false}}"""
-        }.lookup()
-        assertNull(info.flags)
-        assertNull(info.level)
     }
 
     @Test fun defaultClientsUseExplicitVpnProxyAndBoundedRequests() {

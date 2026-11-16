@@ -842,6 +842,8 @@ class MainActivity : ComponentActivity() {
         ProvideGlassTheme {
         ProvideSoftMeshMotion(paused = {
             pagerState.isScrollInProgress || dashboardScrollState.isScrollInProgress ||
+                settingsScrollState.isScrollInProgress || appearanceListState.isScrollInProgress ||
+                glassEffectsScrollState.isScrollInProgress ||
                 proxiesTabsListState.isScrollInProgress || proxiesListModeState.isScrollInProgress ||
                 proxiesGroupRowState.isScrollInProgress || proxiesPerGroupTabStates.values.any { it.isScrollInProgress } ||
                 currentSubScreen != null

@@ -48,20 +48,29 @@ fun GlassModalBottomSheet(
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val glass = GlassDefaults.enabled
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         sheetState = sheetState,
         shape = shape,
-        containerColor = if (GlassDefaults.enabled) Color.Transparent else containerColor,
+        containerColor = if (glass) Color.Transparent else containerColor,
         contentColor = contentColor,
         tonalElevation = tonalElevation,
         scrimColor = scrimColor,
-        dragHandle = dragHandle
+        // With glass the handle is drawn inside the glass surface; otherwise it would float
+        // above the sheet on the bare scrim while the glass starts below it.
+        dragHandle = if (glass) null else dragHandle
     ) {
-        if (GlassDefaults.enabled) {
-            GlassSurface(modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
-                Column(Modifier.fillMaxWidth()) { content() }
+        if (glass) {
+            // The glass follows the sheet's own rounded top corners instead of a hard rectangle.
+            GlassSurface(modifier = Modifier.fillMaxWidth(), shape = shape) {
+                Column(Modifier.fillMaxWidth()) {
+                    dragHandle?.let { handle ->
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { handle() }
+                    }
+                    content()
+                }
             }
         } else {
             content()

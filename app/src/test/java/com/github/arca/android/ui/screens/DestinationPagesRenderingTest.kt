@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.data.LogRepository
+import com.github.arca.android.data.RequestLogRepository
 import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.data.ThemeMode
@@ -75,13 +77,28 @@ class DestinationPagesRenderingTest {
         compose.onNodeWithText("example.com").assertIsDisplayed()
         capture("rules-light")
 
+        val wasMonitoring = RequestLogRepository.monitoringEnabled.value
+        RequestLogRepository.clear()
+        RequestLogRepository.setMonitoringEnabled(true)
         LogRepository.clear()
-        LogRepository.addLog("info", "[TCP] 192.168.1.12:52643 --> api.example.com:443 match DomainSuffix using Proxy")
-        LogRepository.addLog("info", "[DNS] 192.168.1.12:52644 --> resolver.example:53 match Domain using DIRECT")
-        show { RequestLogsScreen(VpnState(status = VpnState.Status.RUNNING), onBack = {}) }
-        compose.onNodeWithText("api.example.com:443").assertIsDisplayed()
-        capture("requests-light")
-        LogRepository.clear()
+        try {
+            LogRepository.addLog("info", "[TCP] 192.168.1.12:52643 --> api.example.com:443 match DomainSuffix using Proxy")
+            LogRepository.addLog("info", "[DNS] 192.168.1.12:52644 --> resolver.example:53 match Domain using DIRECT")
+            org.junit.Assert.assertEquals("fixture must reach the request repository", 2,
+                RequestLogRepository.requestsFlow.value.size)
+            show { RequestLogsScreen(VpnState(status = VpnState.Status.RUNNING), onBack = {}) }
+            // Default-dispatcher parsing is not a Compose idling resource. Wait for this exact
+            // fixture rather than assuming waitForIdle also joins worker parsing.
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("api.example.com:443").fetchSemanticsNodes().size == 1
+            }
+            compose.onNodeWithText("api.example.com:443").assertIsDisplayed()
+            capture("requests-light")
+        } finally {
+            RequestLogRepository.clear()
+            RequestLogRepository.setMonitoringEnabled(wasMonitoring)
+            LogRepository.clear()
+        }
     }
 
     private fun show(page: @Composable () -> Unit) {
