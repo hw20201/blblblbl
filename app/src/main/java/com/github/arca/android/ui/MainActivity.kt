@@ -37,6 +37,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.arca.android.core.ClashCore
+import com.github.arca.android.core.SingleFlightRefresh
 import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.data.*
 import com.github.arca.android.service.MihomoVpnService
@@ -71,6 +72,7 @@ import com.github.arca.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.arca.android.ui.components.LocalShortcutTouchVariant
 import com.github.arca.android.ui.components.ShortcutTouchVariant
 import com.github.arca.android.ui.components.LocalShortcutMotionEnabled
+import com.github.arca.android.ui.components.LocalPanelAnimationSpeed
 import com.github.arca.android.ui.components.rememberShortcutAnimationsEnabled
 import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
 import com.github.arca.android.ui.screens.*
@@ -302,6 +304,7 @@ class MainActivity : ComponentActivity() {
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
+        var panelAnimationSpeed by remember { mutableStateOf(settingsManager.panelAnimationSpeed) }
         var glassSettings by remember { mutableStateOf(settingsManager.glassSettings) }
         var ipv6Enabled by remember { mutableStateOf(settingsManager.ipv6Enabled) }
         var unifiedDelayEnabled by remember { mutableStateOf(settingsManager.unifiedDelayEnabled) }
@@ -457,53 +460,53 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun refreshProxiesOnline() {
-            // Skip refresh while speed tests are running to avoid clobbering results
-            if (testingNodes.isNotEmpty()) return
-
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val allGroups = ClashCore.queryGroupNames()
-                    val groups = allGroups.filter { gName ->
-                        val grp = ClashCore.queryGroup(gName)
-                        grp?.hidden != true
-                    }
-                    if (groups.isNotEmpty()) {
-                        val groupDataMap = mutableMapOf<String, ProxyGroup>()
-                        for (gName in groups) {
-                            val gData = ClashCore.queryGroup(gName)
-                            if (gData != null) {
-                                val mergedProxies = gData.proxies.map { p ->
-                                    val cachedDelay = delayCache[p.name] ?: delayCache["$gName:${p.name}"]
-                                    if (cachedDelay != null) {
-                                        p.copy(delay = cachedDelay)
-                                    } else if (p.delay >= 65535 || p.delay <= 0) {
-                                        p.copy(delay = -1) // not tested -> show "--"
-                                    } else p
+        val proxyRefresh = remember { SingleFlightRefresh() }
+        suspend fun refreshProxiesOnline() = withContext(Dispatchers.Main.immediate) {
+            fun canRefresh() = testingNodes.isEmpty() &&
+                MihomoVpnService.vpnState.value.status == VpnState.Status.RUNNING &&
+                lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+            if (!canRefresh()) return@withContext
+            try {
+                val delays = delayCache.toMap()
+                proxyRefresh.run(
+                    currentKey = { settingsManager.selectedProfileId to MihomoVpnService.vpnState.value },
+                    load = {
+                        withContext(Dispatchers.IO) {
+                            // The native group-name query already excludes hidden groups.
+                            // Query each group's full JSON only once instead of twice.
+                            val groups = ClashCore.queryGroupNames()
+                            val data = groups.mapNotNull { name ->
+                                ClashCore.queryGroup(name)?.let { group ->
+                                    name to group.copy(proxies = group.proxies.map { proxy ->
+                                        val cached = delays[proxy.name] ?: delays["$name:${proxy.name}"]
+                                        when {
+                                            cached != null -> proxy.copy(delay = cached)
+                                            proxy.delay >= 65535 || proxy.delay <= 0 -> proxy.copy(delay = -1)
+                                            else -> proxy
+                                        }
+                                    })
                                 }
-                                groupDataMap[gName] = gData.copy(proxies = mergedProxies)
-                            }
+                            }.toMap()
+                            groups to data
                         }
-                        withContext(Dispatchers.Main) {
+                    },
+                    canPublish = { canRefresh() },
+                    publish = { (groups, data) ->
+                        if (groups.isNotEmpty()) {
                             proxyGroups = groups
-                            liveGroupMap = groupDataMap
-                            if (selectedGroupName.isBlank() || !groups.contains(selectedGroupName)) {
-                                selectedGroupName = groups.firstOrNull() ?: ""
+                            liveGroupMap = data
+                            if (selectedGroupName.isBlank() || selectedGroupName !in groups) {
+                                selectedGroupName = groups.firstOrNull().orEmpty()
                             }
-                            if (selectedGroupName.isNotBlank()) {
-                                val cur = groupDataMap[selectedGroupName]
-                                if (cur != null) {
-                                    currentGroupData = cur
-                                }
-                            }
-                            val mainCur = groupDataMap[mainProxyGroupName]
-                            if (mainCur != null && mainCur.now.isNotBlank()) {
-                                activeNodeName = mainCur.now
-                            }
+                            data[selectedGroupName]?.let { currentGroupData = it }
+                            data[mainProxyGroupName]?.now?.takeIf { it.isNotBlank() }?.let { activeNodeName = it }
                         }
                     }
-                } catch (_: Throwable) {
-                }
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("MainActivity", "Proxy refresh failed", error)
             }
         }
 
@@ -832,6 +835,7 @@ class MainActivity : ComponentActivity() {
             // Read the persisted preference at action time so changes apply immediately.
             LocalHapticFeedbackEnabled provides { settingsManager.hapticEnabled },
             LocalShortcutTouchVariant provides shortcutTouchVariant,
+            LocalPanelAnimationSpeed provides panelAnimationSpeed,
             LocalGlassSettings provides glassSettings,
             LocalShortcutMotionEnabled provides rememberShortcutAnimationsEnabled()
         ) {
@@ -1088,6 +1092,11 @@ class MainActivity : ComponentActivity() {
                             onShortcutTouchVariantChanged = { variant ->
                                 shortcutTouchVariant = variant
                                 settingsManager.shortcutTouchVariant = variant
+                            },
+                            panelAnimationSpeed = panelAnimationSpeed,
+                            onPanelAnimationSpeedChanged = { speed ->
+                                panelAnimationSpeed = speed
+                                settingsManager.panelAnimationSpeed = speed
                             },
                             ipv6Enabled = ipv6Enabled,
                             unifiedDelayEnabled = unifiedDelayEnabled,

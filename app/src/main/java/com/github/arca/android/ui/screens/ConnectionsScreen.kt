@@ -33,9 +33,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,8 +61,6 @@ import com.github.arca.android.ui.theme.LoonTextPrimary
 import com.github.arca.android.ui.theme.LoonTextSecondary
 import com.github.kr328.clash.core.util.trafficString
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -79,14 +79,16 @@ fun ConnectionsScreen(
     var confirmCloseAll by remember { mutableStateOf(false) }
     val running = vpnState.status == VpnState.Status.RUNNING
 
-    LaunchedEffect(running, paused) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, running) {
         if (!running) { connections = emptyList(); return@LaunchedEffect }
-        while (isActive && !paused) {
-            val snapshot = withContext(Dispatchers.IO) { ClashCore.queryConnections() }
-            if (snapshot == null) { supported = false; break }
-            connections = snapshot.connections.orEmpty().sortedByDescending { it.start }
-            delay(1000)
-        }
+        pollConnectionsWhileStarted(
+            lifecycle = lifecycle,
+            paused = snapshotFlow { paused },
+            querySnapshot = ClashCore::queryConnections,
+            onConnections = { connections = it },
+            onUnsupported = { supported = false }
+        )
     }
 
     val filtered = remember(connections, query) {

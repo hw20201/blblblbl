@@ -344,6 +344,12 @@ class SettingsManager(context: Context) {
             ShortcutTouchVariant.valueOf(prefs.getString("shortcut_touch_variant", ShortcutTouchVariant.GentleFloat.name)!!)
         }.getOrDefault(ShortcutTouchVariant.GentleFloat)
         set(value) = prefs.edit().putString("shortcut_touch_variant", value.name).apply()
+
+    /** Shared panel timing; absent or retired preference values use the middle speed. */
+    var panelAnimationSpeed: PanelAnimationSpeed
+        get() = PanelAnimationSpeed.fromPreference(prefs.getString("panel_animation_speed", null))
+        set(value) = prefs.edit().putString("panel_animation_speed", value.name).apply()
+
     /** Master switch for haptic feedback on key interactions. */
     var hapticEnabled: Boolean
         get() = prefs.getBoolean("haptic_enabled", true)

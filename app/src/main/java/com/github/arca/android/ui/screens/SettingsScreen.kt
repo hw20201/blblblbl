@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.core.ClashCore
+import com.github.arca.android.data.PanelAnimationSpeed
 import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunTuning
@@ -104,7 +105,9 @@ fun SettingsScreen(
     dnsDetailContent: (@Composable () -> Unit)? = null,
     connectionsDetailContent: (@Composable () -> Unit)? = null,
     logsDetailContent: (@Composable () -> Unit)? = null,
-    configurationCenterDetailContent: (@Composable (onClose: () -> Unit) -> Unit)? = null
+    configurationCenterDetailContent: (@Composable (onClose: () -> Unit) -> Unit)? = null,
+    panelAnimationSpeed: PanelAnimationSpeed = PanelAnimationSpeed.MEDIUM,
+    onPanelAnimationSpeedChanged: (PanelAnimationSpeed) -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -381,6 +384,26 @@ fun SettingsScreen(
                 SeparatedRow(
                     SeparatedRowPosition.Middle,
                     modifier = Modifier
+                        .graphicsLayer { alpha = if (hiddenSettingsDetailSource == SettingsDetailPage.PANEL_SPEED) 0f else 1f }
+                        .onGloballyPositioned {
+                            settingsDetailBounds[SettingsDetailPage.PANEL_SPEED] = it.boundsInWindow()
+                            settingsDetailRadius[SettingsDetailPage.PANEL_SPEED] = SeparatedRowPosition.Middle
+                        }
+                ) {
+                    CupertinoCell(
+                        modifier = Modifier.testTag("settings-panel-speed-entry"),
+                        title = "面板动画速度",
+                        subtitle = "首页快捷方式与设置面板",
+                        value = panelAnimationSpeed.label,
+                        icon = Icons.Default.Speed,
+                        iconBg = AppPalette.iconBlue,
+                        showChevron = true,
+                        onClick = { openSettingsDetail(SettingsDetailPage.PANEL_SPEED) }
+                    )
+                }
+                SeparatedRow(
+                    SeparatedRowPosition.Middle,
+                    modifier = Modifier
                         .graphicsLayer { alpha = if (hiddenSettingsDetailSource == SettingsDetailPage.GLASS_EFFECTS) 0f else 1f }
                         .onGloballyPositioned { settingsDetailBounds[SettingsDetailPage.GLASS_EFFECTS] = it.boundsInWindow(); settingsDetailRadius[SettingsDetailPage.GLASS_EFFECTS] = SeparatedRowPosition.Middle }
                 ) {
@@ -531,6 +554,7 @@ fun SettingsScreen(
         maxPanelWidth = 560.dp,
         reserveDockSpace = true,
         motionProfile = ShortcutMorphMotionProfile.QUVEN_MENU,
+        linearEdgeMotion = true,
         settingsTopBackdropBlur = false,
         settingsBottomCloseFade = false,
         panelSurfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.LARGE_PANELS,
@@ -555,6 +579,7 @@ fun SettingsScreen(
                     tunStack = tunStack,
                     logLevel = currentLogLevel,
                     shortcutTouchVariant = shortcutTouchVariant,
+                    panelAnimationSpeed = panelAnimationSpeed,
                     tunMtu = tunMtu,
                     mipsCongestionController = mipsCongestionController,
                     themeMode = themeMode,
@@ -576,6 +601,8 @@ fun SettingsScreen(
                 },
                 shortcutTouchVariant = shortcutTouchVariant,
                 onShortcutTouchVariantChanged = onShortcutTouchVariantChanged,
+                panelAnimationSpeed = panelAnimationSpeed,
+                onPanelAnimationSpeedChanged = onPanelAnimationSpeedChanged,
                 tunMtuDraft = mtuDraft,
                 onTunMtuDraftChanged = { mtuDraft = it },
                 onTunMtuSaved = onTunMtuChanged,
@@ -692,6 +719,7 @@ private fun SettingsDetailSourceFace(
     tunStack: TunStack,
     logLevel: String,
     shortcutTouchVariant: ShortcutTouchVariant,
+    panelAnimationSpeed: PanelAnimationSpeed,
     tunMtu: Int,
     mipsCongestionController: String,
     themeMode: ThemeMode,
@@ -719,6 +747,11 @@ private fun SettingsDetailSourceFace(
                     ShortcutTouchVariant.BuoyantSpring -> "C"
                 },
                 icon = Icons.Default.TouchApp, iconBg = AppPalette.iconBlue, showChevron = true
+            )
+            SettingsDetailPage.PANEL_SPEED -> CupertinoCell(
+                title = "面板动画速度", subtitle = "首页快捷方式与设置面板",
+                value = panelAnimationSpeed.label,
+                icon = Icons.Default.Speed, iconBg = AppPalette.iconBlue, showChevron = true
             )
             SettingsDetailPage.TUN_MTU -> CupertinoCell(title = "TUN MTU", value = tunMtu.toString(), showChevron = true)
             SettingsDetailPage.MIPS_CONGESTION -> CupertinoCell(title = "MIPS 拥塞控制", value = mipsCongestionController, showChevron = true)

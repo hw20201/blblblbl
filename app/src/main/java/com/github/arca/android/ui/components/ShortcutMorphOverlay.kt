@@ -1,19 +1,13 @@
 package com.github.arca.android.ui.components
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.coroutineScope
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.layout
 import androidx.compose.runtime.withFrameNanos
@@ -70,7 +64,7 @@ internal enum class ShortcutMorphMotionProfile(
     val sourceFaceFadeEnd: Float,
     val panelContentFadeStart: Float
 ) {
-    /** Keep v80/v81 shortcut panels on their established animation and content timing. */
+    /** Dashboard content handoff; timing is shared by every profile. */
     STANDARD(0.52f, 0.30f),
     /** A menu-like handoff: the source face has a broad, late cross-fade as the panel closes without spring overshoot. */
     QUVEN_MENU(0.60f, 0.30f)
@@ -262,6 +256,8 @@ internal fun ShortcutMorphOverlay(
     maxPanelWidth: Dp = 420.dp,
     reserveDockSpace: Boolean = true,
     motionProfile: ShortcutMorphMotionProfile = ShortcutMorphMotionProfile.STANDARD,
+    /** Settings uses a direct four-edge morph so its top and bottom never take separate paths. */
+    linearEdgeMotion: Boolean = false,
     settingsTopBackdropBlur: Boolean = false,
     settingsBottomCloseFade: Boolean = false,
     sourceCornerRadius: Dp? = null,
@@ -272,52 +268,35 @@ internal fun ShortcutMorphOverlay(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val progress = remember { Animatable(0f) }
-    // The far edge of a menu-style panel travels on its own, quicker spring.
-    val reach = remember { Animatable(0f) }
     var mounted by remember { mutableStateOf(false) }
     var closing by remember { mutableStateOf(false) }
     val animationsEnabled = LocalShortcutMotionEnabled.current ?: true
+    val latestSpeed by rememberUpdatedState(LocalPanelAnimationSpeed.current)
     val latestOnDismissed by rememberUpdatedState(onDismissed)
 
-    LaunchedEffect(visible, animationsEnabled, motionProfile) {
+    // Changing a preference does not restart an in-flight animation. The next
+    // open/close transition samples it, including closing the speed chooser itself.
+    LaunchedEffect(visible, animationsEnabled) {
         if (visible) {
+            val newlyMounted = !mounted
             closing = false
             mounted = true
             if (animationsEnabled) {
-                if (motionProfile == ShortcutMorphMotionProfile.QUVEN_MENU) {
-                    // Let the panel body compose and lay out while it is still invisible, so that
-                    // one-off cost lands before the motion starts instead of inside it.
+                if (newlyMounted) {
+                    // Prepare either panel body at its final size before motion begins.
                     withFrameNanos { }
                     withFrameNanos { }
                 }
-                if (motionProfile == ShortcutMorphMotionProfile.QUVEN_MENU) {
-                    coroutineScope {
-                        // Spread carries the sides; reach drops the far edge ahead of it (more swing).
-                        launch { progress.animateTo(1f, spring(dampingRatio = 0.80f, stiffness = 260f, visibilityThreshold = 0.0005f)) }
-                        launch { reach.animateTo(1f, spring(dampingRatio = 0.74f, stiffness = 340f, visibilityThreshold = 0.0005f)) }
-                    }
-                } else {
-                    progress.animateTo(1f, spring(dampingRatio = 0.95f, stiffness = 170f))
-                }
+                progress.animateTo(1f, panelMorphAnimationSpec(latestSpeed, opening = true, from = progress.value, linearEdgeMotion = linearEdgeMotion))
             } else {
                 progress.snapTo(1f)
-                reach.snapTo(1f)
             }
         } else if (mounted) {
             closing = true
             if (animationsEnabled) {
-                val closeSpec: AnimationSpec<Float> = if (motionProfile == ShortcutMorphMotionProfile.QUVEN_MENU) {
-                    tween(durationMillis = 230, easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f))
-                } else {
-                    spring(dampingRatio = 0.97f, stiffness = 210f)
-                }
-                coroutineScope {
-                    launch { progress.animateTo(0f, closeSpec) }
-                    launch { reach.animateTo(0f, closeSpec) }
-                }
+                progress.animateTo(0f, panelMorphAnimationSpec(latestSpeed, opening = false, from = progress.value, linearEdgeMotion = linearEdgeMotion))
             } else {
                 progress.snapTo(0f)
-                reach.snapTo(0f)
             }
             mounted = false
             closing = false
@@ -371,12 +350,20 @@ internal fun ShortcutMorphOverlay(
             val sharedGlasmioBackdrop = LocalArcaGlasmioBackdrop.current
             val bottomFadeAlpha = if (settingsBottomCloseFade) settingsMorphBottomFadeAlpha(fraction, closing) else 0f
             val menuProfile = motionProfile == ShortcutMorphMotionProfile.QUVEN_MENU
-            // Past 1 a spring may swing a little; keep the glass inside the safe area it was sized for.
-            val spreadNow = progress.value.coerceIn(0f, 1.03f)
-            val reachNow = reach.value.coerceIn(0f, 1.03f)
-            val current = if (menuProfile)
-                interpolateShortcutMorphRectDual(start, target, spreadNow, reachNow)
-            else interpolateShortcutMorphRect(start, target, fraction)
+            // Settings edges travel directly between their endpoints. Separately easing the
+            // top while changing height can send the bottom past both endpoints on close.
+            // Use this same mapping in both directions, including interrupted reversals.
+            val interpolated = when {
+                linearEdgeMotion -> interpolateShortcutMorphRect(start, target, fraction)
+                menuProfile -> interpolateShortcutMorphRectDual(start, target, fraction, fraction)
+                else -> interpolateShortcutMorphRect(start, target, panelMorphGrowth(fraction))
+            }
+            // Round the actual edges, not top and height independently: a short bottom
+            // path must not wobble by one pixel when two separate roundings disagree.
+            val current = if (linearEdgeMotion) Rect(
+                interpolated.left.roundToInt().toFloat(), interpolated.top.roundToInt().toFloat(),
+                interpolated.right.roundToInt().toFloat(), interpolated.bottom.roundToInt().toFloat()
+            ) else interpolated
             val currentWidth = with(density) { current.width.toDp() }.coerceAtLeast(1.dp)
             val currentHeight = with(density) { current.height.toDp() }.coerceAtLeast(1.dp)
             val cornerShape: RoundedCornerShape
@@ -401,7 +388,7 @@ internal fun ShortcutMorphOverlay(
             }
             // Opening retires the source row sooner so it does not ghost under the arriving panel
             // body; closing keeps the broad late cross-fade so the row is back before the panel lands.
-            val faceFadeEnd = if (menuProfile && !closing)
+            val faceFadeEnd = if (menuProfile && !closing && !linearEdgeMotion)
                 0.48f else motionProfile.sourceFaceFadeEnd
             val (collapsedAlpha, expandedAlpha) = shortcutMorphContentAlphas(
                 fraction,
@@ -419,7 +406,7 @@ internal fun ShortcutMorphOverlay(
                 modifier = Modifier
                     .offset { IntOffset(current.left.roundToInt(), current.top.roundToInt()) }
                     .size(currentWidth, currentHeight)
-                    .then(if (menuProfile) Modifier.graphicsLayer {
+                    .then(if (menuProfile && !linearEdgeMotion) Modifier.graphicsLayer {
                         // Lifted out of its group: a small rise in scale and a deeper shadow, at the row's own size.
                         val lift = menuLiftAmount(fraction)
                         val settleOut = 1f - smoothMorphWindow(MENU_LIFT_END, MENU_LIFT_END + 0.2f, fraction)
@@ -462,7 +449,10 @@ internal fun ShortcutMorphOverlay(
                                 .testTag("$panelTestTag-glasmio-top-backdrop-blur")
                         )
                     }
-                    if (fraction < faceFadeEnd) {
+                    // During close, keep the source face mounted from the first frame so the
+                    // row can fade back in while the panel is shrinking. Its alpha is still zero
+                    // at the open endpoint, so this adds no flash.
+                    if (closing || fraction < faceFadeEnd) {
                         Box(
                             Modifier.matchParentSize().graphicsLayer {
                                 alpha = collapsedAlpha
@@ -486,8 +476,8 @@ internal fun ShortcutMorphOverlay(
                             }
                         }
                     }
-                    if (fraction > motionProfile.panelContentFadeStart ||
-                        motionProfile == ShortcutMorphMotionProfile.QUVEN_MENU) {
+                    // Keep the body mounted from frame zero for both profiles.
+                    run {
                         val menu = motionProfile == ShortcutMorphMotionProfile.QUVEN_MENU
                         // Content comes into focus as the glass spreads: fades in from 40%, from blurred to sharp.
                         val contentAlpha = if (menu)
@@ -496,17 +486,17 @@ internal fun ShortcutMorphOverlay(
                         val finalWidth = target.width.roundToInt()
                         val finalHeight = target.height.roundToInt()
                         Box(
-                            Modifier.fillMaxSize().then(if (menu) Modifier.layout { measurable, constraints ->
+                            Modifier.fillMaxSize().layout { measurable, constraints ->
                                 // Lay the body out once at the final panel size: the growing panel
                                 // only reveals it, so text never reflows and sliders never resize
                                 // while the shape is still moving.
                                 val placeable = measurable.measure(Constraints.fixed(finalWidth, finalHeight))
                                 layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
-                            } else Modifier)
+                            }
                         ) {
                             Column(
                                 Modifier
-                                    .then(if (menu) Modifier.fillMaxSize() else Modifier.fillMaxSize())
+                                    .fillMaxSize()
                                     .graphicsLayer {
                                         alpha = contentAlpha
                                         if (menu) {

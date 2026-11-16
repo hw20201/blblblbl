@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Tune
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.arca.android.data.PanelAnimationSpeed
 import com.github.arca.android.data.TunStack
 import com.github.arca.android.data.TunTuning
 import com.github.arca.android.ui.components.ShortcutTouchVariant
@@ -62,6 +64,7 @@ internal enum class SettingsDetailPage(
     TUN_STACK("TUN 协议栈", "为当前连接选择网络实现", Icons.Default.VpnKey),
     LOG_LEVEL("日志详细程度", "选择核心日志记录级别", Icons.Default.Terminal),
     SHORTCUT_TOUCH("快捷卡片触感", "选择按压与回弹的动态反馈", Icons.Default.TouchApp),
+    PANEL_SPEED("面板动画速度", "首页快捷方式与设置面板", Icons.Default.Speed),
     TUN_MTU("TUN MTU", "调整隧道传输单元大小", Icons.Default.Tune),
     MIPS_CONGESTION("MIPS 拥塞控制", "选择连接拥塞控制算法", Icons.Default.Memory),
     APPEARANCE("外观与显示", "主题、壁纸与策略节点排版", Icons.Default.Palette),
@@ -77,7 +80,7 @@ internal val SettingsDetailPage.preferredPanelHeight: androidx.compose.ui.unit.D
     get() {
         val optionCount = when (this) {
             SettingsDetailPage.TUN_STACK, SettingsDetailPage.LOG_LEVEL -> 4
-            SettingsDetailPage.SHORTCUT_TOUCH -> 3
+            SettingsDetailPage.SHORTCUT_TOUCH, SettingsDetailPage.PANEL_SPEED -> 3
             SettingsDetailPage.MIPS_CONGESTION -> TunTuning.CONGESTION_CONTROLLERS.size
             else -> 0
         }
@@ -117,7 +120,9 @@ internal fun SettingsDetailMorphPage(
     dnsContent: (@Composable () -> Unit)? = null,
     connectionsContent: (@Composable () -> Unit)? = null,
     logsContent: (@Composable () -> Unit)? = null,
-    configurationCenterContent: (@Composable (onClose: () -> Unit) -> Unit)? = null
+    configurationCenterContent: (@Composable (onClose: () -> Unit) -> Unit)? = null,
+    panelAnimationSpeed: PanelAnimationSpeed = PanelAnimationSpeed.MEDIUM,
+    onPanelAnimationSpeedChanged: (PanelAnimationSpeed) -> Unit = {}
 ) {
     val header: @Composable () -> Unit = {
         Row(
@@ -232,6 +237,23 @@ internal fun SettingsDetailMorphPage(
                             tag = "settings-detail-touch-$index"
                         ) {
                             onShortcutTouchVariantChanged(variant)
+                            onClose()
+                        }
+                    }
+                }
+                SettingsDetailPage.PANEL_SPEED -> {
+                    PanelAnimationSpeed.entries.forEach { speed ->
+                        SettingsDetailOption(
+                            title = speed.label,
+                            subtitle = when (speed) {
+                                PanelAnimationSpeed.FAST -> "快速展开与收起"
+                                PanelAnimationSpeed.MEDIUM -> "适中的展开与收起速度"
+                                PanelAnimationSpeed.SLOW -> "舒缓的展开与收起"
+                            },
+                            selected = panelAnimationSpeed == speed,
+                            tag = "settings-detail-panel-speed-${speed.name.lowercase(java.util.Locale.ROOT)}"
+                        ) {
+                            onPanelAnimationSpeedChanged(speed)
                             onClose()
                         }
                     }
