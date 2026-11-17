@@ -525,7 +525,8 @@ internal fun ShortcutMorphOverlay(
                             }
                         }
                     }
-                    if (pinnedOverlay != null && visible && !closing && fraction >= 0.999f) {
+                    val showPinnedOverlay = pinnedOverlay != null && visible && !closing && fraction >= 0.999f
+                    if (showPinnedOverlay) {
                         Box(Modifier.matchParentSize().testTag("$panelTestTag-pinned-overlay")) {
                             pinnedOverlay()
                         }

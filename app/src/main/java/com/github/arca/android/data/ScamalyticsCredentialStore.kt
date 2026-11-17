@@ -23,9 +23,10 @@ enum class ScamalyticsEndpoint(val id: String, val host: String, val label: Stri
         fun parse(value: String): ScamalyticsEndpoint? {
             entries.firstOrNull { it.id == value }?.let { return it }
             val url = value.toHttpUrlOrNull() ?: return null
-            if (url.scheme != "https" || url.port != 443 || url.username.isNotEmpty() ||
-                url.password.isNotEmpty() || url.query != null || url.fragment != null ||
-                url.encodedPath !in listOf("/", "/v3", "/v3/")) return null
+            val isApiRoot = url.scheme == "https" && url.port == 443 && url.username.isEmpty() &&
+                url.password.isEmpty() && url.query == null && url.fragment == null &&
+                url.encodedPath in listOf("/", "/v3", "/v3/")
+            if (!isApiRoot) return null
             return entries.firstOrNull { it.host == url.host }
         }
     }
@@ -92,12 +93,16 @@ internal fun readScamalyticsCredentials(input: InputStream): ScamalyticsCredenti
     return parseScamalyticsCredentials(JSONObject(output.toString(Charsets.UTF_8.name())))
 }
 
+private fun missingCredential(field: String): Nothing = throw IllegalArgumentException("Missing $field")
+
+private fun invalidEndpoint(): Nothing = throw IllegalArgumentException("Invalid endpoint")
+
 internal fun parseScamalyticsCredentials(json: JSONObject): ScamalyticsCredentials {
-    val username = json.opt("username") as? String ?: throw IllegalArgumentException("Missing username")
-    val apiKey = json.opt("api_key") as? String ?: throw IllegalArgumentException("Missing API key")
+    val username = json.opt("username") as? String ?: missingCredential("username")
+    val apiKey = json.opt("api_key") as? String ?: missingCredential("api_key")
     val endpoint = if (!json.has("endpoint")) ScamalyticsEndpoint.US else {
-        val value = json.opt("endpoint") as? String ?: throw IllegalArgumentException("Invalid endpoint")
-        ScamalyticsEndpoint.parse(value) ?: throw IllegalArgumentException("Invalid endpoint")
+        val value = json.opt("endpoint") as? String ?: invalidEndpoint()
+        ScamalyticsEndpoint.parse(value) ?: invalidEndpoint()
     }
     return ScamalyticsCredentials(username, apiKey, endpoint).validated()
 }

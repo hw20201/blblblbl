@@ -53,12 +53,14 @@ internal class TinyHttpServer(private val reply: (requestLine: String, headers: 
     val port: Int get() = server.localPort
     val address: InetSocketAddress get() = InetSocketAddress("127.0.0.1", server.localPort)
 
-    private val thread = Thread {
-        while (!server.isClosed) {
-            val socket = try { server.accept() } catch (_: Exception) { break }
-            Thread { serve(socket) }.apply { isDaemon = true }.start()
-        }
-    }.apply { isDaemon = true; start() }
+    init {
+        Thread {
+            while (!server.isClosed) {
+                val socket = try { server.accept() } catch (_: Exception) { break }
+                Thread { serve(socket) }.apply { isDaemon = true }.start()
+            }
+        }.apply { isDaemon = true; start() }
+    }
 
     private fun serve(socket: Socket) { socket.use {
         try {

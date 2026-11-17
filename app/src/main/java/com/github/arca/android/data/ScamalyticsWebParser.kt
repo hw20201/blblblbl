@@ -105,18 +105,24 @@ private fun normalizedLabel(label: String): String =
  * pages, pages for another IP and pages with neither a valid score nor a single explicit check are
  * rejected, so stale or invented data can never appear as a result.
  */
+private fun emptyWebPage(): Nothing = throw IpLookupException("Scamalytics 网页返回了空页面。")
+
+private fun webPageTooLarge(): Nothing = throw IpLookupException("Scamalytics 网页返回的内容过大，已丢弃。")
+
+private fun webPageChallenge(): Nothing = throw IpLookupException("Scamalytics 网页需要人机验证或拒绝访问，暂时无法读取。")
+
 internal fun parseScamalyticsWebPage(html: String, requestedIp: String): ScamalyticsInfo {
-    if (html.isBlank()) throw IpLookupException("Scamalytics 网页返回了空页面。")
-    if (html.length > SCAMALYTICS_WEB_MAX_BYTES) throw IpLookupException("Scamalytics 网页返回的内容过大，已丢弃。")
+    if (html.isBlank()) emptyWebPage()
+    if (html.length > SCAMALYTICS_WEB_MAX_BYTES) webPageTooLarge()
     val content = html.replace(NON_CONTENT, " ")
     val text = textOf(content)
     val title = TITLE.find(content)?.groupValues?.get(1)?.let(::textOf).orEmpty()
 
     val lowered = (title + " " + text).lowercase()
     if (CHALLENGE_MARKUP.containsMatchIn(content) || CHALLENGE_TEXT.any { it in lowered }) {
-        throw IpLookupException("Scamalytics 网页需要人机验证或拒绝访问，暂时无法读取。")
+        webPageChallenge()
     }
-    if (text.isEmpty()) throw IpLookupException("Scamalytics 网页返回了空页面。")
+    if (text.isEmpty()) emptyWebPage()
 
     // Structured data blocks (embedded JSON) are only read from pre/code elements.
     val jsonText = PRE_BLOCK.findAll(content).joinToString("\n") {

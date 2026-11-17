@@ -476,8 +476,10 @@ class MihomoVpnService : VpnService() {
      */
     private fun restartVpn() {
         // A settings restart is not an explicit START request. Never revive a stopped tunnel.
-        if (destroyed || stopRequested || _vpnState.value.status == VpnState.Status.STOPPED ||
-            _vpnState.value.status == VpnState.Status.STOPPING) {
+        val restartForbidden = destroyed || stopRequested ||
+            _vpnState.value.status == VpnState.Status.STOPPED ||
+            _vpnState.value.status == VpnState.Status.STOPPING
+        if (restartForbidden) {
             if (_vpnState.value.status == VpnState.Status.STOPPED) stopSelfResult(latestCommandStartId)
             return
         }
