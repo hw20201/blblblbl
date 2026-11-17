@@ -297,7 +297,9 @@ fun NavigationLens(
     modifier: Modifier = Modifier,
     selectionPulse: Int = 0,
     dragPosition: Float? = null,
-    optics: NavigationLensOpticsState? = null
+    optics: NavigationLensOpticsState? = null,
+    lensTestTag: String = "navigation-liquid-lens",
+    surfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION
 ) {
     if (lens == null || slotCount <= 0) return
     val destination = selectedSlot.coerceIn(0, slotCount - 1).toFloat()
@@ -363,12 +365,13 @@ fun NavigationLens(
         modifier = modifier.graphicsLayer { clip = false },
         content = {
             NavigationGlassSurface(
-                modifier = Modifier.fillMaxSize().testTag("navigation-liquid-lens"),
+                modifier = Modifier.fillMaxSize().testTag(lensTestTag),
                 lens = lens,
                 shape = CircleShape,
                 cornerRadius = 1000.dp,
                 strength = NAVIGATION_SELECTED_LENS_STRENGTH,
-                surfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
+                surfaceCategory = surfaceCategory,
+                forceOpticalLens = true,
                 expansionProgress = { frame.expansion },
                 content = {}
             )

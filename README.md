@@ -2,7 +2,7 @@
 
 基于 Mihomo (Clash.Meta) 内核的 Android 代理客户端。
 
-本交付为 Arca V94：性能优化、设置面板动画及 Scamalytics IP 检测说明见 [V94 改动与构建说明](docs/V94-performance-and-IP.md)。
+本交付为 Arca V98 核心集成优化测试版：JNI 引用配对释放、日志有界批量消费、物理网络/DNS 去重与服务生命周期修复。完整改动、验证和边界见 [V98 改动与验证说明](docs/V98-core-optimization.md)。界面延续 V97。Debug 使用独立包名 `com.github.arca.android.coretest.v98`，不覆盖现有 V97 测试包。
 
 ## 特性
 
@@ -15,7 +15,7 @@
 
 ## 构建
 
-预置核心为 Mihomo v1.19.32；MIPS 指其原生 Go IP 栈，不是 CPU 架构。核心源码、补丁和许可见 [native/UPSTREAM.md](native/UPSTREAM.md)。修改原生部分后先运行 `bash scripts/build-native.sh`；Gradle 会校验核心与 JNI 两库的配对哈希。本版原生契约为 2（新增 MTU 与拥塞控制参数），只构建 APK 而不重建 native 时会退回契约 1 的行为并忽略这两项设置。
+预置核心为 Mihomo v1.19.33；MIPS 指其原生 Go IP 栈，不是 CPU 架构。核心源码、补丁和许可见 [native/UPSTREAM.md](native/UPSTREAM.md)。修改原生部分后运行 `bash scripts/build-native.sh --abi arm64-v8a`，模拟器运行 `bash scripts/build-native.sh --abi x86_64`；Gradle 会校验所选架构核心与 JNI 两库的配对哈希。TUN 契约仍为 2（MTU 与拥塞控制），V98 的引用/在途任务诊断为独立附加符号。
 
 ## 原生库的二进制与源码归属
 
@@ -29,8 +29,11 @@
 图标采用深灰底青蓝 N，通知与快捷设置使用同形单色 N，并支持 Android 13 主题图标。可编辑 SVG 及生成方法见 [assets/README.md](assets/README.md)。
 
 ```bash
-# Debug APK
-./gradlew assembleDebug
+# ARM64 Debug APK
+./gradlew :app:assembleDebug
+
+# 含真实 Go/JNI 核心的 x86_64 模拟器包
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Parca.nativeAbi=x86_64
 
 # Release APK（需签名配置）
 ./gradlew assembleRelease
@@ -38,13 +41,13 @@
 
 ## 说明
 
-- 支持架构：`arm64-v8a`
+- 构建架构：默认 `arm64-v8a`；`-Parca.nativeAbi=x86_64` 用于真实核心模拟器集成测试，每个 APK 只打包一种架构。
 - 界面：仅保留 Cupertino；旧版保存的 Miuix 偏好会自动按 Cupertino 读取。保留 Liquid Glass 开关与强度。
 - 订阅与远程脚本：远程地址必须使用 `HTTPS`；`HTTP` 仅允许精确的 `127.0.0.1` 与 `localhost` 回环地址，远程 HTTP 链接需更换为 HTTPS。
 - 局域网共享：其他设备需使用共享页显示的用户名和随机密码；可复制、轮换。应用本机回环访问免认证。
 - 订阅脚本：保留 QuickJS 主引擎与 Rhino 1.7.15 兜底，不换引擎。新增 256 KiB UTF-8 源文件上限、慢执行日志，以及逐 runtime 的 QuickJS 原生 3 秒 deadline、64 MiB 堆与 512 KiB 栈限制。创建、守卫、执行和清理均使用同一调用线程；守卫不可用时拒绝无界 QuickJS，进入既有 Rhino 兜底（不影响应用启动）。Rhino 保留指令限时，并使用单调时钟和不可被脚本捕获的宿主超时信号。Android 实际中断、内存边界与设备性能仍需真机验收。
 - 配置安全：仅接受可解析的 YAML 映射；非法 YAML 或序列/标量根直接拒绝，不把未过滤的文本拼入运行时配置。
-- R8：默认关闭；`-Pnexus.r8=true` 仅供实验构建，需独立真机验收。普通 Release 草稿不启用。
+- R8：现有 release 配置默认开启；本交付构建 Debug，未启用 R8。Release/R8 构建需单独验收；需要禁用时显式传 `-Pnexus.r8=false`。
 
 ## 许可证
 

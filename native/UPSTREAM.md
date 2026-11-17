@@ -1,6 +1,6 @@
 # 原生 MIPS 核心
 
-MIPS 指 **Mihomo IP Stack**，不是 MIPS CPU 架构。应用仍为 Android ARM64。
+MIPS 指 **Mihomo IP Stack**，不是 MIPS CPU 架构。默认交付 Android ARM64；V98 另构建 x86_64 原生核心供模拟器真实集成测试。
 
 ## 二进制与源码的两层归属
 
@@ -18,11 +18,13 @@ MIPS 指 **Mihomo IP Stack**，不是 MIPS CPU 架构。应用仍为 Android ARM
 
 ## 构建
 
-需要 Linux、Go（本次使用 1.26.8）、Android NDK r28c、Python 3、patch。运行：
+需要 Linux x86_64 构建主机、Go（V98 使用 1.27.4；V97 记录为 1.26.8）、Android NDK r28c、Python 3、patch。工具链版本变化单独记录，不能把二进制体积/性能差异全归因于客户端改动。运行：
 
 ```sh
 export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/28.2.13676358"
-bash scripts/build-native.sh
+bash scripts/build-native.sh --abi arm64-v8a
+# 模拟器真实核心（生成独立 SHA256SUMS.x86_64）
+bash scripts/build-native.sh --abi x86_64
 ```
 
 脚本取得固定 Mihomo 模块，在忽略的 `native/build/` 内依次应用 `patches/mihomo-borrowed-fd.patch` 与 `patches/mihomo-proxy-only-traffic.patch`，不修改共享 Go 模块缓存。构建标签为 `foss with_gvisor cmfa`，最低原生 API 为 26。两库均成功且所有 ELF LOAD 段达到 16 KiB 对齐后才复制到应用，并生成 `native/SHA256SUMS`。Gradle 打包前检查两库哈希，防止混搭。
@@ -37,7 +39,9 @@ Go adapter 模块路径为 `cfa/native`，保留上游包导入路径。生成�
 4. 记录选择的栈与原生监听器启动成功。启动成功不等于网络连通，也不能据此声称性能提升。
 5. 契约版本 2 增加 `nativeStartTunV2`：Kotlin 传入 `{"mtu":9000,"congestion-controller":"cubic"}`，Go 侧校验 MTU 1280–65535 与 `cubic/reno/bbr/bbr3`，写入 `LC.Tun.MTU` 与 `CongestionController`。拥塞控制只对 MIPS 栈生效；旧库仍走版本 1 的入口并忽略这两个选项。
 6. IPv6 由 Kotlin 决定：关闭时不添加 IPv6 地址、`::/0` 与 IPv6 DNS，并且不把 IPv6 网关/portal 传给 native；开启时三处一起生效；Builder 任一 IPv6 操作失败则整个启动失败，不继续报告 IPv4-only。关闭时 Android 显式 `allowFamily(AF_INET6)`，允许 IPv6 在 VPN 外通信（不提供 IPv6 防泄漏）。
-7. 设置变更仅重建活动隧道；服务控制在 Main 串行执行，耗时启动和流量查询仍使用 Default。STOP 后的迟到 RESTART 不会重新启动，只有显式 START 可清除停止意图。
+7. 设置变更仅重建活动隧道；服务命令在 Main 串行处理，启动和流量查询使用 Default，原生停止在 IO + NonCancellable 执行。进程级生命周期 Mutex 与服务实例 owner token 防止旧清理停止新核心。STOP 后的迟到 RESTART 不会重新启动，只有显式 START 可清除停止意图；停止携带 startId，不终止尚待送达的新前台启动请求。
+8. V98 healthCheck 异步任务以 defer 释放其 JNI global reference；Kotlin 超时仅停止等待，Go 仍拥有引用直到工作结束。附加 `nativeGlobalReferenceCount()` 与 `nativePendingHealthChecks()` 用于调试/集成验证，TUN 契约不变。
+9. V98 两架构均使用 Go 1.27.4、NDK 28.2.13676358 重建；Android x86_64 包包含真实 Go/JNI，不再是缺失核心的纯 UI 预览。
 
 ## 测试
 

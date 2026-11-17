@@ -130,6 +130,31 @@ class OutboundIpSheetTest {
         }
     }
 
+    @Test fun testOptionFollowsResultsAndTogglingNeverQueries() {
+        val calls = AtomicInteger()
+        val storage = object : ScamalyticsCredentialsStorage {
+            override fun load() = ScamalyticsCredentials("fixture", "not-a-live-key")
+            override fun save(credentials: ScamalyticsCredentials) = Unit
+            override fun clear() = Unit
+        }
+        compose.setContent {
+            MihomoTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    OutboundIpPanel(isVpnRunning = false, credentialStorage = storage,
+                        onRefresh = { calls.incrementAndGet(); OutboundIpInfo("203.0.113.9", source = "fixture") })
+                }
+            }
+        }
+        awaitReady()
+        compose.onNodeWithTag("scamalytics-test-mode").performScrollTo().assertIsOff()
+        val option = compose.onNodeWithTag("scamalytics-test-options").fetchSemanticsNode().boundsInRoot
+        val lastResult = compose.onNodeWithTag("quick-ip-details-window").fetchSemanticsNode().boundsInRoot
+        assertTrue("test option belongs below result details", option.top > lastResult.bottom)
+        compose.onNodeWithTag("scamalytics-test-mode").performClick().assertIsOn()
+        compose.onNodeWithTag("scamalytics-test-mode").performClick().assertIsOff()
+        compose.runOnIdle { assertEquals(0, calls.get()) }
+    }
+
     private fun awaitReady() {
         compose.waitUntil(timeoutMillis = 5000) {
             compose.onAllNodesWithText("正在读取本机配置…").fetchSemanticsNodes().isEmpty()

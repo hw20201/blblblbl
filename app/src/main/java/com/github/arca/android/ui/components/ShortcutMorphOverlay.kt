@@ -241,7 +241,9 @@ internal fun shortcutMorphTargetRect(
 @Composable
 internal fun ShortcutMorphOverlay(
     visible: Boolean,
+    /** Resting source face in this overlay host's local coordinates, including any permanent lift. */
     sourceBounds: Rect?,
+    /** Refresh layout/scroll placement without introducing transient press or pickup transforms. */
     liveSourceBounds: (() -> Rect?)? = null,
     sourceTitle: String,
     sourceSubtitle: String,
@@ -523,9 +525,7 @@ internal fun ShortcutMorphOverlay(
                             }
                         }
                     }
-                    // Pinned overlay: only once the panel is fully open and settled.
-                    val panelFullyOpen = visible && !closing && fraction >= 0.999f
-                    if (pinnedOverlay != null && panelFullyOpen) {
+                    if (pinnedOverlay != null && visible && !closing && fraction >= 0.999f) {
                         Box(Modifier.matchParentSize().testTag("$panelTestTag-pinned-overlay")) {
                             pinnedOverlay()
                         }

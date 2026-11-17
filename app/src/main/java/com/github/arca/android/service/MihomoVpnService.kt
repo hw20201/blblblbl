@@ -27,6 +27,7 @@ import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.data.TunStack
 import com.github.arca.android.data.TunTuning
 import com.github.arca.android.ui.MainActivity
+import com.github.arca.android.service.network.PhysicalNetworkObserver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -84,6 +85,10 @@ class MihomoVpnService : VpnService() {
 
         // Native log subscription lives for the process, not one VPN service instance.
         private val coreLogcatSubscription = ProcessLogcatSubscription()
+        // Native TUN state is process-wide, including cleanup after an old Service is destroyed.
+        private val coreLifecycleMutex = Mutex()
+        private var coreOwner: Any? = null // Access only while holding coreLifecycleMutex.
+        private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun start(context: Context) {
             val intent = Intent(context, MihomoVpnService::class.java).apply {
@@ -121,14 +126,21 @@ class MihomoVpnService : VpnService() {
     // Serialize service control (including restart continuations) on Android's main thread.
     // Blocking native/configuration work stays on Dispatchers.Default below.
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val lifecycleMutex = Mutex()
+    private val lifecycleMutex get() = coreLifecycleMutex
+    private val ownerToken = Any()
     private var trafficMonitorJob: Job? = null
     private var startJob: Job? = null
+    private var stopJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var networkObserver: PhysicalNetworkObserver? = null
+    private var foregroundStarted = false // Main-thread service command lifecycle.
+    private var latestCommandStartId = 0
 
     /** A queued restart must not resurrect a tunnel after the user asked to stop. */
     @Volatile
     private var stopRequested = false
+    @Volatile
+    private var destroyed = false
     // Preserve the existing notification N artwork independently of the launcher icon.
     private val notificationLargeIcon by lazy {
         requireNotNull(getDrawable(R.drawable.ic_notification_brand)).toBitmap(
@@ -145,6 +157,10 @@ class MihomoVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestCommandStartId = startId
+        // Even an idle STOP/RESTART can recreate a Service while Android still expects its
+        // pending foreground acknowledgement. Satisfy it before any no-op/stop branch.
+        if (!foregroundStarted) startForegroundServiceNotification("准备 Nexus 核心")
         when (intent?.action) {
             ACTION_START -> {
                 stopRequested = false
@@ -152,21 +168,28 @@ class MihomoVpnService : VpnService() {
             }
             ACTION_STOP -> stopVpn()
             ACTION_RESTART -> restartVpn()
+            else -> stopSelf(startId)
         }
         return START_NOT_STICKY
     }
 
     private fun startVpn() {
-        val status = _vpnState.value.status
-        if (stopRequested || startJob?.isActive == true || status != VpnState.Status.STOPPED) {
-            return
-        }
-
-        _vpnState.value = _vpnState.value.copy(status = VpnState.Status.STARTING, error = null)
+        if (destroyed || stopRequested) return
+        val previousStart = startJob
+        if (previousStart?.isActive == true && !previousStart.isCancelled) return
+        val previousStop = stopJob
+        val commandStartId = latestCommandStartId
         startForegroundServiceNotification("启动 Nexus 核心")
 
         startJob = serviceScope.launch(Dispatchers.Default) {
+            previousStart?.join()
+            previousStop?.join()
             lifecycleMutex.withLock {
+            currentCoroutineContext().ensureActive()
+            if (destroyed || stopRequested) return@withLock
+            if (coreOwner === ownerToken && _vpnState.value.status == VpnState.Status.RUNNING) return@withLock
+            coreOwner = ownerToken
+            _vpnState.value = VpnState(status = VpnState.Status.STARTING)
             try {
                 val traceStartup = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
                 val startupStartedAtNanos = if (traceStartup) SystemClock.elapsedRealtimeNanos() else 0L
@@ -214,18 +237,13 @@ class MihomoVpnService : VpnService() {
                     }
                 }
 
-                // Notify physical network DNS and Timezone to core
-                runCatching {
-                    val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                    val activeNet = cm?.activeNetwork
-                    val linkProps = cm?.getLinkProperties(activeNet)
-                    val dnsServers = linkProps?.dnsServers?.mapNotNull { it.hostAddress }?.filter { !it.contains(":") } ?: emptyList()
-                    val dnsStr = if (dnsServers.isNotEmpty()) dnsServers.joinToString(",") else "223.5.5.5,119.29.29.29"
-                    com.github.kr328.clash.core.bridge.Bridge.nativeNotifyDnsChanged(dnsStr)
-                    com.github.kr328.clash.core.bridge.Bridge.nativeNotifyTimeZoneChanged(
-                        java.util.TimeZone.getDefault().id,
-                        java.util.TimeZone.getDefault().rawOffset / 1000
-                    )
+                // Shared DNS deduplication excludes the VPN's own virtual LinkProperties.
+                ClashCore.notifyNetworkChanged(this@MihomoVpnService)
+                if (networkObserver == null) {
+                    networkObserver = PhysicalNetworkObserver(
+                        this@MihomoVpnService,
+                        onDnsChanged = ClashCore::notifyPhysicalDns
+                    ).also { it.start() }
                 }
 
                 // Reuse one native subscriber across VPN restarts to avoid duplicate fan-out.
@@ -233,8 +251,8 @@ class MihomoVpnService : VpnService() {
                     coreLogcatSubscription.subscribeIfNeeded {
                         com.github.kr328.clash.core.bridge.Bridge.nativeSubscribeLogcat(object : com.github.kr328.clash.core.bridge.LogcatInterface {
                             override fun received(jsonPayload: String) {
-                                Log.i("NexusCore", jsonPayload)
-                                com.github.arca.android.data.LogRepository.addRawLogcat(jsonPayload)
+                                // Native already emits Android logcat; keep this callback short.
+                                com.github.arca.android.data.LogRepository.enqueueRawLogcat(jsonPayload)
                             }
                         })
                     }
@@ -325,21 +343,17 @@ class MihomoVpnService : VpnService() {
                 )
 
             } catch (e: kotlinx.coroutines.CancellationException) {
-                ClashCore.stopTun()
-                runCatching { vpnInterface?.close() }
-                vpnInterface = null
+                closeTunnelLocked()
                 throw e
             } catch (e: Throwable) {
                 Log.e(TAG, "Failed to start Nexus VPN", e)
                 com.github.arca.android.data.LogRepository.addLog("error", "启动失败: ${e.message}")
-                ClashCore.stopTun()
-                runCatching { vpnInterface?.close() }
-                vpnInterface = null
-                _vpnState.value = _vpnState.value.copy(
+                closeTunnelLocked()
+                _vpnState.value = VpnState(
                     status = VpnState.Status.STOPPED,
                     error = e.message ?: "未知启动错误"
                 )
-                stopSelf()
+                if (!destroyed && startJob === currentCoroutineContext()[Job]) stopSelfResult(commandStartId)
             }
             }
         }
@@ -418,12 +432,14 @@ class MihomoVpnService : VpnService() {
                 if (!screenInteractive) {
                     delay(SCREEN_OFF_SAMPLE_MS)
                     val proxyTotal = ClashCore.queryProxyTrafficTotal()
+                    currentCoroutineContext().ensureActive()
                     com.github.arca.android.data.TrafficRecordRepository.recordProxy(proxyTotal)
                     continue
                 }
                 delay(1000)
                 val now = ClashCore.queryTrafficNow()
                 val proxyTotal = ClashCore.queryProxyTrafficTotal()
+                currentCoroutineContext().ensureActive()
                 com.github.arca.android.data.TrafficRecordRepository.recordProxy(proxyTotal)
 
                 val upStr = now.trafficSpeedUpload()
@@ -442,18 +458,16 @@ class MihomoVpnService : VpnService() {
 
     private fun stopVpn() {
         stopRequested = true
-        if (_vpnState.value.status == VpnState.Status.STOPPED) {
-            stopSelf()
-            return
-        }
-        _vpnState.value = _vpnState.value.copy(status = VpnState.Status.STOPPING)
-        // Cancel an in-flight start first: otherwise it can establish the TUN and flip the state
-        // back to RUNNING after we have already torn down and reported STOPPED.
-        startJob?.cancel()
-        startJob = null
+        if (stopJob?.isActive == true) return
+        val starting = startJob
+        val commandStartId = latestCommandStartId
+        starting?.cancel()
         trafficMonitorJob?.cancel()
-
-        serviceScope.launch { closeTunnel() }
+        stopJob = serviceScope.launch {
+            // Waiting while holding the native lifecycle mutex would deadlock start cleanup.
+            starting?.join()
+            closeTunnel(commandStartId)
+        }
     }
 
     /**
@@ -462,13 +476,17 @@ class MihomoVpnService : VpnService() {
      */
     private fun restartVpn() {
         // A settings restart is not an explicit START request. Never revive a stopped tunnel.
-        if (stopRequested || _vpnState.value.status == VpnState.Status.STOPPED ||
-            _vpnState.value.status == VpnState.Status.STOPPING) return
+        if (destroyed || stopRequested || _vpnState.value.status == VpnState.Status.STOPPED ||
+            _vpnState.value.status == VpnState.Status.STOPPING) {
+            if (_vpnState.value.status == VpnState.Status.STOPPED) stopSelfResult(latestCommandStartId)
+            return
+        }
         serviceScope.launch {
             startJob?.cancelAndJoin()
             lifecycleMutex.withLock {
                 if (stopRequested) return@withLock
                 // A queued start may have been launched while this coroutine waited for the lock.
+                if (destroyed || (coreOwner != null && coreOwner !== ownerToken)) return@withLock
                 startJob?.cancel()
                 startJob = null
                 trafficMonitorJob?.cancel()
@@ -478,24 +496,50 @@ class MihomoVpnService : VpnService() {
         }
     }
 
-    private fun closeTunnelLocked() {
+    private suspend fun closeTunnelLocked() {
+        networkObserver?.close()
+        networkObserver = null
+        if (coreOwner !== ownerToken) {
+            val oldDescriptor = vpnInterface
+            vpnInterface = null
+            kotlinx.coroutines.withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                runCatching { oldDescriptor?.close() }
+            }
+            return
+        }
+        _vpnState.value = _vpnState.value.copy(status = VpnState.Status.STOPPING)
+        // Keep the lifecycle lock while the blocking native close runs away from Main.
+        // The app's borrowed descriptor remains alive until the native listener stops.
+        val descriptor = vpnInterface
         try {
-            ClashCore.stopTun()
-            vpnInterface?.close()
-        } catch (e: Throwable) {
+            kotlinx.coroutines.withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                try {
+                    ClashCore.stopTun()
+                } finally {
+                    descriptor?.close()
+                }
+            }
+        } catch (e: Exception) {
             Log.w(TAG, "Error closing VPN", e)
         } finally {
+            coreOwner = null
             vpnInterface = null
             _vpnState.value = VpnState(status = VpnState.Status.STOPPED)
             _trafficMetrics.value = TrafficMetrics()
         }
     }
 
-    private suspend fun closeTunnel() = lifecycleMutex.withLock {
-        startJob?.cancel()
+    private suspend fun closeTunnel(commandStartId: Int) = lifecycleMutex.withLock {
         closeTunnelLocked()
-        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-        stopSelf()
+        // A newer explicit START may be waiting for this stop job to finish.
+        if (stopRequested && !destroyed) {
+            // Android may already have accepted a newer START not delivered to Main yet.
+            // A stale stop ID must not destroy that pending foreground-service request.
+            if (stopSelfResult(commandStartId)) {
+                runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+                foregroundStarted = false
+            }
+        }
         Log.i(TAG, "Nexus VPN stopped.")
     }
 
@@ -521,6 +565,7 @@ class MihomoVpnService : VpnService() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        foregroundStarted = true
     }
 
     private fun updateNotification(content: String) {
@@ -560,20 +605,20 @@ class MihomoVpnService : VpnService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        destroyed = true
         stopRequested = true
-        // The service can be destroyed without ACTION_STOP (process death, low memory), so the
-        // native tunnel and the shared state are cleaned up here as well.
         unregisterScreenReceiver()
+        networkObserver?.close()
+        networkObserver = null
         trafficMonitorJob?.cancel()
-        startJob?.cancel()
+        val starting = startJob
+        starting?.cancel()
         serviceScope.cancel()
-        runCatching { ClashCore.stopTun() }
-        runCatching { vpnInterface?.close() }
-        vpnInterface = null
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-        if (_vpnState.value.status != VpnState.Status.STOPPED) {
-            _vpnState.value = VpnState(status = VpnState.Status.STOPPED)
-            _trafficMetrics.value = TrafficMetrics()
+        // Never block Main on rTunLock/listener.Close. Old cleanup must not stop a newer owner.
+        cleanupScope.launch {
+            starting?.join()
+            lifecycleMutex.withLock { closeTunnelLocked() }
         }
     }
 

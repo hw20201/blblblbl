@@ -79,12 +79,17 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists() &&
 // R8 remains experimental and off for signed draft packages.
 val r8Enabled = providers.gradleProperty("nexus.r8").orNull?.toBoolean() ?: true
 
+// Build one verified ABI per APK; x86_64 includes a real core for emulator integration tests.
+val nativeAbi = providers.gradleProperty("arca.nativeAbi").orElse("arm64-v8a").get()
+require(nativeAbi in setOf("arm64-v8a", "x86_64")) { "Unsupported arca.nativeAbi: $nativeAbi" }
 val nativeLibraryPaths = listOf(
-    "app/src/main/jniLibs/arm64-v8a/libclash.so",
-    "app/src/main/jniLibs/arm64-v8a/libbridge.so",
+    "app/src/main/jniLibs/$nativeAbi/libclash.so",
+    "app/src/main/jniLibs/$nativeAbi/libbridge.so",
 )
 val verifyNativeLibraries = tasks.register<VerifyNativeLibrariesTask>("verifyNativeLibraries") {
-    checksumFile.set(rootProject.layout.projectDirectory.file("native/SHA256SUMS"))
+    checksumFile.set(rootProject.layout.projectDirectory.file(
+        if (nativeAbi == "arm64-v8a") "native/SHA256SUMS" else "native/SHA256SUMS.$nativeAbi"
+    ))
     libraryPaths.set(nativeLibraryPaths)
     libraries.from(nativeLibraryPaths.map { rootProject.file(it) })
 }
@@ -99,13 +104,13 @@ android {
         applicationId = "com.github.arca.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 88
+        versionCode = 89
         versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters.add("arm64-v8a")
+            abiFilters.add(nativeAbi)
         }
     }
 
@@ -137,8 +142,8 @@ android {
         debug {
             isMinifyEnabled = false
             // Isolated disposable UI draft; never replaces the owner's installed production app.
-            applicationIdSuffix = ".glasstest.fusion"
-            versionNameSuffix = "-glass-fusion-private-test"
+            applicationIdSuffix = ".coretest.v98"
+            versionNameSuffix = "-v98-core-test"
         }
     }
 

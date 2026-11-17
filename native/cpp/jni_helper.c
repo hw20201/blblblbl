@@ -2,6 +2,25 @@
 
 #include <malloc.h>
 #include <string.h>
+#include <stdatomic.h>
+
+static _Atomic int64_t global_reference_count;
+
+jobject jni_new_global(JNIEnv *env, jobject obj) {
+    jobject ref = (*env)->NewGlobalRef(env, obj);
+    if (ref != NULL) atomic_fetch_add_explicit(&global_reference_count, 1, memory_order_relaxed);
+    return ref;
+}
+
+void jni_delete_global(JNIEnv *env, jobject obj) {
+    if (obj == NULL) return;
+    (*env)->DeleteGlobalRef(env, obj);
+    atomic_fetch_sub_explicit(&global_reference_count, 1, memory_order_relaxed);
+}
+
+int64_t jni_global_reference_count(void) {
+    return atomic_load_explicit(&global_reference_count, memory_order_relaxed);
+}
 
 static JavaVM *global_vm;
 

@@ -88,9 +88,6 @@ internal class IpConfigEntryState {
     }
 }
 
-/** Rethrows coroutine cancellation; shared by the panel's load/save/delete flows. */
-private fun rethrowCancellation(cancelled: CancellationException): Nothing = throw cancelled
-
 /** Shared body for the V93 morph column and the standalone glass sheet; owns no scroll container. */
 @Composable
 internal fun OutboundIpPanel(
@@ -134,7 +131,7 @@ internal fun OutboundIpPanel(
                 }
             }
         } catch (cancelled: CancellationException) {
-            rethrowCancellation(cancelled)
+            throw cancelled
         } catch (_: Exception) {
             credentialNotice = "无法读取本机凭据，请重新配置。"
         } finally {
@@ -166,12 +163,8 @@ internal fun OutboundIpPanel(
                 credentials == null -> "内置检测：无需配置凭据，手动检测可查看风险详情。"
                 else -> "Scamalytics API 已配置 · ${credentials!!.endpoint.label}（优先使用官方 API）"
             }, color = LoonTextMuted, fontSize = 11.sp)
-            if (credentials != null) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(checked = testMode, onCheckedChange = { testMode = it }, enabled = !state.loading,
-                        modifier = Modifier.testTag("scamalytics-test-mode"))
-                    Text("测试模式（不消耗实时额度）", color = LoonTextSecondary, fontSize = 12.sp)
-                }
+            if (testMode && credentials != null) {
+                Text("测试模式已开启 · 本次仅验证 API", color = LoonTextSecondary, fontSize = 11.sp)
             }
             Button(
                 onClick = {
@@ -259,6 +252,25 @@ internal fun OutboundIpPanel(
                 color = LoonTextMuted, fontSize = 11.sp
             )
         }
+        // Advanced API option follows the results, beside the low-priority configuration entry.
+        // It shares the same state used at request start; moving it must never trigger a query.
+        if (credentials != null) {
+            Row(
+                Modifier.fillMaxWidth().testTag("scamalytics-test-options"),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = testMode,
+                    onCheckedChange = { testMode = it },
+                    enabled = !state.loading && !credentialBusy,
+                    modifier = Modifier.testTag("scamalytics-test-mode")
+                )
+                Column {
+                    Text("测试模式", color = LoonTextSecondary, fontSize = 12.sp)
+                    Text("验证 API · 不消耗实时额度", color = LoonTextMuted, fontSize = 11.sp)
+                }
+            }
+        }
         // Room under the last row for the fixed bottom-right API entry.
         Spacer(Modifier.height(18.dp))
     }
@@ -284,7 +296,7 @@ internal fun OutboundIpPanel(
                         credentialNotice = "凭据已加密保存。点击检测才会查询。"
                         settingsOpen = false
                     } catch (cancelled: CancellationException) {
-                        rethrowCancellation(cancelled)
+                        throw cancelled
                     } catch (_: Exception) {
                         credentialError = "无法保存凭据，请检查输入与本机安全存储后重试。"
                     } finally { credentialBusy = false }
@@ -302,7 +314,7 @@ internal fun OutboundIpPanel(
                         credentialNotice = "本机凭据已删除。"
                         settingsOpen = false
                     } catch (cancelled: CancellationException) {
-                        rethrowCancellation(cancelled)
+                        throw cancelled
                     } catch (_: Exception) {
                         credentialError = "无法删除本机凭据，请重试。"
                     } finally { credentialBusy = false }

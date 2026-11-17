@@ -1,12 +1,8 @@
 package com.github.arca.android.ui.screens
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
@@ -28,8 +24,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -110,6 +104,7 @@ private fun DashboardShortcutCard(
     lens: NavigationLensState?,
     navigationLensBoundsState: State<NavigationLensGlobalBounds?>?,
     onPickupChanged: (Boolean) -> Unit,
+    onRestingBoundsChanged: (LayoutCoordinates, Rect) -> Unit,
     onDelete: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -123,6 +118,7 @@ private fun DashboardShortcutCard(
         lensBounds = navigationLensBoundsState?.value,
         lensTintTarget = if (item.id == "dns") Color(0xFF22C55E) else null,
         onPickupChanged = onPickupChanged,
+        onRestingBoundsChanged = onRestingBoundsChanged,
         onDelete = onDelete,
         onClick = onClick
     )
@@ -181,34 +177,6 @@ fun DashboardScreen(
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
     val coroutineScope = rememberCoroutineScope()
-    var modePickerOpen by remember { mutableStateOf(false) }
-    val modePickerProgress = remember { Animatable(0f) }
-    val pickerMorph = modePickerProgress.value.coerceIn(0f, 1f)
-    val panelReveal = FastOutSlowInEasing.transform(pickerMorph)
-    val optionsReveal = ((panelReveal - 0.08f) / 0.92f).coerceIn(0f, 1f)
-    val showPickerOptions = modePickerOpen || pickerMorph > 0.001f
-    // The opaque selector keeps one palette surface as its contour grows downward.
-    val collapsedPickerWidth = 136.dp
-    val capsuleHeight = 48.dp
-    val optionHeight = 40.dp
-    val pickerHeight = capsuleHeight + 96.dp * pickerMorph
-    val closeModePicker: () -> Unit = {
-        modePickerOpen = false
-        coroutineScope.launch { modePickerProgress.animateTo(0f, spring(dampingRatio = 0.96f, stiffness = 320f)) }
-    }
-    val toggleModePicker: () -> Unit = {
-        if (modePickerOpen) {
-            closeModePicker()
-        } else {
-            modePickerOpen = true
-            coroutineScope.launch {
-                modePickerProgress.animateTo(1f, spring(dampingRatio = 0.96f, stiffness = 320f))
-            }
-        }
-    }
-    val toggleModePickerWithHaptic = rememberHapticAction(toggleModePicker)
-    val chooseModeWithHaptic = rememberHapticValueAction(onModeSelected)
-    BackHandler(enabled = modePickerOpen, onBack = toggleModePickerWithHaptic)
 
     // Every shortcut can morph from its own card into the shared glass panel.
     // Keep geometry outside Compose state so scrolling only updates the tiny bounds map.
@@ -501,16 +469,6 @@ fun DashboardScreen(
                                         alpha = if (item.id == hiddenShortcutId) 0f else 1f
                                     }
                                     .testTag("shortcut-${item.id}")
-                                itemModifier = itemModifier.onGloballyPositioned { coordinates ->
-                                    val root = dashboardRootCoordinates.get()
-                                    if (root != null) {
-                                        val topLeft = root.localPositionOf(coordinates, Offset.Zero)
-                                        val width = coordinates.size.width.toFloat()
-                                        val height = coordinates.size.height.toFloat()
-                                        val bounds = Rect(topLeft.x, topLeft.y, topLeft.x + width, topLeft.y + height)
-                                        shortcutBounds.set(shortcutBounds.get() + (item.id to bounds))
-                                    }
-                                }
 
                                 if (isEditingShortcuts) {
                                     itemModifier = itemModifier.pointerInput(item.id) {
@@ -587,6 +545,17 @@ fun DashboardScreen(
                                 onPickupChanged = { picked ->
                                     if (picked) pickedUpShortcutId = item.id
                                     else if (pickedUpShortcutId == item.id) pickedUpShortcutId = null
+                                },
+                                onRestingBoundsChanged = { coordinates, restingRect ->
+                                    val root = dashboardRootCoordinates.get()
+                                    if (root != null && root.isAttached && coordinates.isAttached) {
+                                        // Overlay is a sibling in this root. Keep scroll/edit placement,
+                                        // but anchor to the settled plane (B rests 6dp above its hit slot),
+                                        // not the transient press, tilt or pickup transform.
+                                        val topLeft = root.localPositionOf(coordinates, restingRect.topLeft)
+                                        val bottomRight = root.localPositionOf(coordinates, restingRect.bottomRight)
+                                        shortcutBounds.set(shortcutBounds.get() + (item.id to Rect(topLeft, bottomRight)))
+                                    }
                                 },
                                 onDelete = {
                                     if (draggedId == null) { // Prevent delete during drag
@@ -675,168 +644,12 @@ fun DashboardScreen(
                     )
                 }
 
-                val modeOptions = remember(lang) {
-                    TunnelMode.values().map { mode ->
-                        val key = when (mode) {
-                            TunnelMode.RULE -> "mode_rule"
-                            TunnelMode.GLOBAL -> "mode_global"
-                            TunnelMode.DIRECT -> "mode_direct"
-                            else -> "mode_${mode.name.lowercase()}"
-                        }
-                        mode to AppStrings.get(key, lang)
-                    }
-                }
-                BoxWithConstraints(
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
-                ) {
-                    val pickerCornerRadius = (24f - 3f * panelReveal).dp
-                    val pickerShape = RoundedCornerShape(pickerCornerRadius)
-                    val optionShape = RoundedCornerShape(13.dp)
-                    val otherModes = modeOptions.filterNot { it.first == currentMode }.take(2)
-                    val outerPickerModifier = Modifier
-                        .requiredSize(collapsedPickerWidth, pickerHeight)
-                        .testTag(if (modePickerOpen) "mode-picker-panel" else "mode-picker-trigger")
-                        .semantics { selected = modePickerOpen }
-                        .clip(pickerShape)
-                        .clickable(interactionSource = null, indication = null, onClick = toggleModePickerWithHaptic)
-                    Box(outerPickerModifier) {
-                        val pickerEdge = glassPalette.edge.copy(
-                            alpha = (glassPalette.edge.alpha * 0.32f).coerceIn(0f, 0.10f)
-                        )
-                        val pickerDivider = glassPalette.edge.copy(
-                            alpha = (glassPalette.edge.alpha * 0.18f).coerceIn(0f, 0.06f)
-                        )
-                        // The picker shell is the same Glasmio glass as every other
-                        // panel; the fully opaque gradient it used to paint is gone.
-                        GlassSurface(
-                            modifier = Modifier.matchParentSize()
-                                .border(0.45.dp, pickerEdge, pickerShape)
-                                .testTag("mode-picker-glass-surface"),
-                            shape = pickerShape,
-                            surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
-                        ) { }
-                        if (showPickerOptions) {
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(
-                                        start = 8.dp,
-                                        end = 8.dp,
-                                        top = capsuleHeight + 4.dp,
-                                        bottom = 4.dp
-                                    )
-                                    .fillMaxWidth()
-                                    .offset(y = ((1f - optionsReveal) * 4f).dp)
-                                    .graphicsLayer {
-                                        alpha = optionsReveal
-                                        scaleY = 0.96f + 0.04f * optionsReveal
-                                    }
-                                    .testTag("mode-picker-options")
-                            ) {
-                                Box(
-                                    Modifier.fillMaxWidth()
-                                        .height(0.75.dp)
-                                        .background(pickerDivider)
-                                )
-                                Spacer(Modifier.height(3.dp))
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    otherModes.forEach { (mode, title) ->
-                                        val modeAccent = when (mode) {
-                                            TunnelMode.GLOBAL -> LoonOrangeLight
-                                            TunnelMode.RULE -> Color(0xFF82B9F4)
-                                            TunnelMode.DIRECT -> Color(0xFF7FD3AE)
-                                            else -> Color.White.copy(alpha = 0.75f)
-                                        }
-                                        GlassSurface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(optionHeight)
-                                                .testTag("mode-option-${mode.name.lowercase()}")
-                                                .border(0.4.dp, pickerEdge, optionShape)
-                                                .semantics { selected = mode == currentMode }
-                                                .clickable {
-                                                    chooseModeWithHaptic(mode)
-                                                    closeModePicker()
-                                                },
-                                            shape = optionShape,
-                                            surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Box(
-                                                    Modifier.size(7.dp)
-                                                        .background(modeAccent, CircleShape)
-                                                )
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(
-                                                    title,
-                                                    modifier = Modifier.weight(1f),
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = LoonTextPrimary,
-                                                    maxLines = 1,
-                                                    softWrap = false
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (showPickerOptions) {
-                            val selectedShape = RoundedCornerShape(16.dp)
-                            GlassSurface(
-                                modifier = Modifier.align(Alignment.TopCenter)
-                                    .padding(horizontal = 6.dp, vertical = 5.dp)
-                                    .fillMaxWidth().height(capsuleHeight - 10.dp)
-                                    .graphicsLayer {
-                                        alpha = panelReveal
-                                        scaleX = 0.96f + 0.04f * panelReveal
-                                        scaleY = 0.94f + 0.06f * panelReveal
-                                    }
-                                    .border(0.4.dp, pickerEdge, selectedShape)
-                                    .testTag("mode-picker-selected-surface"),
-                                shape = selectedShape,
-                                accent = glassPalette.panelAccent,
-                                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
-                            ) { }
-                        }
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(horizontal = 12.dp)
-                                .fillMaxWidth()
-                                .height(capsuleHeight)
-                                .testTag("mode-picker-capsule"),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                modifier = Modifier.weight(1f),
-                                text = when (currentMode) {
-                                    TunnelMode.RULE -> AppStrings.get("mode_rule", lang)
-                                    TunnelMode.GLOBAL -> AppStrings.get("mode_global", lang)
-                                    TunnelMode.DIRECT -> AppStrings.get("mode_direct", lang)
-                                    else -> AppStrings.get("mode_${currentMode.name.lowercase()}", lang)
-                                },
-                                color = LoonOrangeLight,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                tint = LoonOrangeLight,
-                                modifier = Modifier.size(18.dp).graphicsLayer {
-                                    rotationZ = 180f * panelReveal
-                                }
-                            )
-                        }
-                    }
-                }
+                DashboardModeControl(
+                    currentMode = currentMode,
+                    onModeSelected = onModeSelected,
+                    lens = titleScene,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
             // One shared morph hosts the node selector and every other shortcut action.
             val activePanelShortcut = shortcutPanelDataId?.let { allShortcutMap[it] }

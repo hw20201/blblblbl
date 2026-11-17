@@ -2,6 +2,7 @@ package com.github.arca.android.core
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.util.Log
@@ -41,23 +42,52 @@ object ClashCore {
     var isCoreLoaded = false
         private set
 
-    fun notifyNetworkChanged(context: Context) {
+    private val dnsLock = Any()
+    private val dnsState = DnsStatePolicy()
+    private val dnsNotificationCount = java.util.concurrent.atomic.AtomicLong()
+
+    /** All DNS entry points share one deduplication state; never read the VPN's virtual DNS. */
+    fun notifyNetworkChanged(context: Context, force: Boolean = false) {
         runCatching {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val activeNet = cm?.activeNetwork
-            val linkProps = cm?.getLinkProperties(activeNet)
-            val dnsServers = linkProps?.dnsServers?.mapNotNull { it.hostAddress }?.filter { !it.contains(":") } ?: emptyList()
-            val dnsStr = if (dnsServers.isNotEmpty()) dnsServers.joinToString(",") else "223.5.5.5,119.29.29.29"
-            Bridge.nativeNotifyDnsChanged(dnsStr)
+            val active = cm?.activeNetwork
+            val capabilities = active?.let { cm?.getNetworkCapabilities(it) }
+            val physical = active?.takeIf {
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            }
+            val servers = physical?.let { cm?.getLinkProperties(it)?.dnsServers }
+                ?.mapNotNull { it.hostAddress }.orEmpty()
+            applyPhysicalDns(DnsUpdate(physical?.networkHandle?.toString(), servers), force)
             Bridge.nativeNotifyTimeZoneChanged(
                 java.util.TimeZone.getDefault().id,
                 java.util.TimeZone.getDefault().rawOffset / 1000
             )
-            Log.i(TAG, "Notified native core DNS: $dnsStr")
-        }.onFailure {
-            Log.w(TAG, "Failed to notify DNS to native core", it)
+        }.onFailure { Log.w(TAG, "Failed to notify network context to native core", it) }
+    }
+
+    fun notifyPhysicalDns(update: DnsUpdate) = applyPhysicalDns(update, force = false)
+
+    private fun applyPhysicalDns(update: DnsUpdate, force: Boolean) = synchronized(dnsLock) {
+        val previous = dnsState.lastAccepted
+        val changed = dnsState.update(update.networkIdentity, update.dnsServers)
+        val accepted = changed ?: dnsState.lastAccepted
+        if (accepted != null && (changed != null || force)) {
+            try {
+                Bridge.nativeNotifyDnsChanged(accepted.orderedDnsKey)
+                dnsNotificationCount.incrementAndGet()
+                Log.i(TAG, "Updated physical DNS for network=${accepted.networkIdentity}: ${accepted.orderedDnsKey}")
+            } catch (failure: Throwable) {
+                // Do not cache a state the core rejected; a later event must be able to retry.
+                dnsState.reset()
+                previous?.let { dnsState.update(it.networkIdentity, it.dnsServers) }
+                throw failure
+            }
         }
     }
+
+    /** Process-lifetime diagnostics; no polling is attached to this counter. */
+    fun dnsUpdateCount(): Long = dnsNotificationCount.get()
 
     /** Idempotent; safe to call from any thread. Native loading and asset extraction are heavy. */
     @Synchronized
@@ -286,10 +316,13 @@ object ClashCore {
                     }
                 }
             }
-            withTimeout(5500L) {
-                deferred.await()
-            }
-        } catch (_: Throwable) {
+            // A native timeout stops waiting but still returns the final available snapshot.
+            kotlinx.coroutines.withTimeoutOrNull(5500L) { deferred.await() }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            // Native work may still finish later and owns its JNI reference until then.
+            throw cancelled
+        } catch (failure: Exception) {
+            Log.w(TAG, "Health check failed for $name", failure)
         } finally {
             pollJob?.cancel()
         }
@@ -314,10 +347,12 @@ object ClashCore {
         val deferred = CompletableDeferred<Unit>()
         try {
             Bridge.nativeHealthCheck(deferred, proxyName)
-            withTimeout(5500L) {
-                deferred.await()
-            }
-        } catch (_: Throwable) {
+            // A native timeout stops waiting but still returns the final available snapshot.
+            kotlinx.coroutines.withTimeoutOrNull(5500L) { deferred.await() }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Log.w(TAG, "Delay test failed for $proxyName", failure)
         }
 
         if (!groupName.isNullOrBlank()) {

@@ -4,6 +4,7 @@ package main
 import "C"
 
 import (
+	"sync/atomic"
 	"unsafe"
 
 	"cfa/native/app"
@@ -73,13 +74,25 @@ func queryGroup(name C.c_string, sortMode C.c_string) *C.char {
 	return marshalJson(response)
 }
 
+// The asynchronous operation owns the JNI global reference until its native work
+// finishes. A Kotlin timeout only stops waiting; it must not free this reference.
+var pendingHealthChecks atomic.Int64
+
 //export healthCheck
 func healthCheck(completable unsafe.Pointer, name C.c_string) {
+	pendingHealthChecks.Add(1)
 	go func(name string) {
+		defer pendingHealthChecks.Add(-1)
+		defer C.release_object(completable)
 		tunnel.HealthCheck(name)
 
 		C.complete(completable, nil)
 	}(C.GoString(name))
+}
+
+//export queryPendingHealthChecks
+func queryPendingHealthChecks() C.int64_t {
+	return C.int64_t(pendingHealthChecks.Load())
 }
 
 //export healthCheckAll

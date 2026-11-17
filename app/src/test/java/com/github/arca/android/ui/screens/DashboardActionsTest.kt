@@ -143,9 +143,11 @@ class DashboardActionsTest {
         compose.onNodeWithTag("shortcut-panel-action").assertDoesNotExist()
     }
 
-    @Test fun ruleModeMorphUsesDiscreteHapticsAndHonorsPreference() {
+    @Test fun modeSegmentsOnlyDispatchChangesAndHonorHapticPreference() {
         val hapticsEnabled = mutableStateOf(true)
+        val mode = mutableStateOf(TunnelMode.RULE)
         var hapticTicks = 0
+        var unrelatedActions = 0
         val selectedModes = mutableListOf<TunnelMode>()
         setUnifiedContent {
             CompositionLocalProvider(
@@ -154,33 +156,51 @@ class DashboardActionsTest {
             ) {
                 DashboardScreen(
                     scrollState = ScrollState(0), vpnState = VpnState(status = VpnState.Status.STOPPED),
-                    currentMode = TunnelMode.RULE, activeProfileName = "测试配置", mainGroupName = "",
+                    currentMode = mode.value, activeProfileName = "测试配置", mainGroupName = "",
                     mainGroupProxies = emptyList(), activeNodeName = "", totalNodes = 0, totalRules = 0,
                     visibleShortcuts = emptySet(), shortcutOrder = emptyList(),
-                    onToggleVpn = {}, onModeSelected = { selectedModes += it },
-                    onSelectProxy = { _, _ -> }, onHealthCheck = {}, onNavigateToProfiles = {},
-                    onNavigateToAppRouting = {}, onNavigateToLogs = {}, onNavigateToRules = {},
-                    onNavigateToDns = {}, onNavigateToRequests = {}, onNavigateToNetworkShare = {},
-                    onUpdateVisibleShortcuts = {}, onUpdateShortcutOrder = {}
+                    onToggleVpn = { unrelatedActions++ }, onModeSelected = { selectedModes += it; mode.value = it },
+                    onSelectProxy = { _, _ -> unrelatedActions++ }, onHealthCheck = { unrelatedActions++ },
+                    onNavigateToProfiles = { unrelatedActions++ }, onNavigateToAppRouting = { unrelatedActions++ },
+                    onNavigateToLogs = { unrelatedActions++ }, onNavigateToRules = { unrelatedActions++ },
+                    onNavigateToDns = { unrelatedActions++ }, onNavigateToRequests = { unrelatedActions++ },
+                    onNavigateToNetworkShare = { unrelatedActions++ },
+                    onUpdateVisibleShortcuts = { unrelatedActions++ }, onUpdateShortcutOrder = { unrelatedActions++ }
                 )
             }
         }
-        val collapsedBounds = compose.onNodeWithTag("mode-picker-trigger").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithTag("mode-picker-trigger").performClick()
+        val initialBounds = compose.onNodeWithTag("mode-segment-control").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("mode-option-rule").assertIsSelected().performClick()
+        compose.runOnIdle {
+            assertTrue("selected option is a no-op", selectedModes.isEmpty())
+            assertEquals("selected option does not tick", 0, hapticTicks)
+        }
+        compose.onNodeWithTag("mode-option-global").performClick()
         compose.waitForIdle()
-        compose.onNodeWithTag("mode-picker-panel").assertExists()
-        val expandedBounds = compose.onNodeWithTag("mode-picker-panel").fetchSemanticsNode().boundsInRoot
-        assertEquals("selector width is unchanged", collapsedBounds.width, expandedBounds.width, 1f)
-        assertEquals("selector remains anchored at the same top", collapsedBounds.top, expandedBounds.top, 1f)
-        assertTrue("selector morph grows downward", expandedBounds.height > collapsedBounds.height + 48f)
-        compose.runOnIdle { assertEquals("opening the morph ticks once", 1, hapticTicks) }
-        compose.runOnIdle { hapticsEnabled.value = false }
-        compose.onNodeWithTag("mode-option-global", useUnmergedTree = true).performClick()
-        compose.waitForIdle()
+        compose.onNodeWithTag("mode-option-global").assertIsSelected().performClick()
         compose.runOnIdle {
             assertEquals(listOf(TunnelMode.GLOBAL), selectedModes)
-            assertEquals("disabled haptics stay silent", 1, hapticTicks)
+            assertEquals("one effective change ticks once; repeated selection is silent", 1, hapticTicks)
+            hapticsEnabled.value = false
         }
+        compose.onNodeWithTag("mode-option-direct").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("mode-option-direct").assertIsSelected().performClick()
+        compose.runOnIdle {
+            assertEquals(listOf(TunnelMode.GLOBAL, TunnelMode.DIRECT), selectedModes)
+            assertEquals("disabled haptics stay silent", 1, hapticTicks)
+            hapticsEnabled.value = true
+        }
+        compose.onNodeWithTag("mode-option-rule").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("mode-option-rule").assertIsSelected()
+        compose.runOnIdle {
+            assertEquals(listOf(TunnelMode.GLOBAL, TunnelMode.DIRECT, TunnelMode.RULE), selectedModes)
+            assertEquals("re-enabled feedback applies to the next effective change", 2, hapticTicks)
+            assertEquals("mode changes dispatch no navigation, VPN or shortcut action", 0, unrelatedActions)
+        }
+        assertEquals("switching never expands or moves the control", initialBounds,
+            compose.onNodeWithTag("mode-segment-control").fetchSemanticsNode().boundsInRoot)
     }
 
     private fun setUnifiedContent(content: @Composable () -> Unit) {

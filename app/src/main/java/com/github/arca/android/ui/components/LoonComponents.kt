@@ -1,6 +1,5 @@
 package com.github.arca.android.ui.components
 import androidx.compose.ui.platform.LocalDensity
-import com.github.arca.android.ui.glass.roundedRectOverlapFraction
 import com.github.arca.android.ui.glass.insetLensRect
 import com.github.arca.android.ui.glass.navigationLensGlobalBounds
 import com.github.arca.android.ui.glass.overlapTintProgress
@@ -74,6 +73,7 @@ import com.github.arca.android.ui.glass.glassTextPrimary
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.glassPalette
 import com.github.arca.android.ui.glass.NavigationLens
+import com.github.arca.android.ui.glass.NavigationLensContent
 import com.github.arca.android.ui.glass.NavigationLensOpticsState
 import com.github.arca.android.ui.glass.NavigationLensGlobalBounds
 import com.github.arca.android.ui.glass.lensTabMagnification
@@ -493,7 +493,9 @@ fun LoonShortcutCard(
     onPickupChanged: (Boolean) -> Unit = {},
     onClick: () -> Unit,
     lensBounds: NavigationLensGlobalBounds? = null,
-    lensTintTarget: Color? = null
+    lensTintTarget: Color? = null,
+    /** Slot coordinates plus the resting glass rect in that slot; never a pressed/tilted AABB. */
+    onRestingBoundsChanged: ((LayoutCoordinates, Rect) -> Unit)? = null
 ) {
     val haptic = rememberIosHaptic()
     val touchVariant = LocalShortcutTouchVariant.current
@@ -510,7 +512,18 @@ fun LoonShortcutCard(
     val iconTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(iconBoundsInWindow, lensBounds)
     val labelTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(labelBoundsInWindow, lensBounds)
     val experimental = touchVariant != null && !isEditing
-    val fixedSlot = modifier.height(118.dp)
+    val density = LocalDensity.current
+    val restingOffset = with(density) {
+        Offset(touchMotion.restingPose.offsetXDp.dp.toPx(), touchMotion.restingPose.offsetYDp.dp.toPx())
+    }
+    val fixedSlot = modifier.height(118.dp).then(
+        if (onRestingBoundsChanged == null) Modifier else Modifier.onGloballyPositioned { coordinates ->
+            onRestingBoundsChanged(
+                coordinates,
+                Rect(restingOffset, Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
+            )
+        }
+    )
     val slotModifier = if (experimental) fixedSlot.then(touchMotion.gestureModifier)
         .clickable(interactionSource = experimentalInteractions, indication = null) {
             haptic.lightTick()
@@ -1234,8 +1247,18 @@ fun LoonFloatingBottomBar(
                 dragPosition = dragPosition,
                 optics = optics
             )
-            BottomBarItems(selectedTab, selectTabWithHaptic,
-                glassMode = true, optics = if (lens != null) optics else null)
+            if (lens != null) {
+                NavigationLensContent(
+                    modifier = Modifier.widthIn(max = BOTTOM_BAR_WIDTH).fillMaxWidth().height(BOTTOM_BAR_HEIGHT),
+                    optics = optics,
+                    slotCount = BOTTOM_BAR_SLOTS,
+                    selectedTint = IosBlue
+                ) {
+                    BottomBarItems(selectedTab, selectTabWithHaptic, glassMode = true, opticalForeground = true)
+                }
+            } else {
+                BottomBarItems(selectedTab, selectTabWithHaptic, glassMode = true)
+            }
         }
         return
     }
@@ -1295,26 +1318,8 @@ internal fun MainDockContentViewport(
 private fun BottomBarItems(
     selectedTab: Int, onTabSelected: (Int) -> Unit,
     glassMode: Boolean = false, hideSelectedIcon: Boolean = false,
-    optics: NavigationLensOpticsState? = null
+    opticalForeground: Boolean = false
 ) {
-        val density = LocalDensity.current
-        val barWidthDp = minOf(BOTTOM_BAR_WIDTH, LocalConfiguration.current.screenWidthDp.dp)
-        val barWidthPx = with(density) { barWidthDp.toPx() }
-        val barHeightPx = with(density) { BOTTOM_BAR_HEIGHT.toPx() }
-        val slotPitchPx = barWidthPx / BOTTOM_BAR_SLOTS
-        val shell = optics?.frame?.let { frame ->
-            insetLensRect(frame.position, frame.stretch, frame.expansion, slotPitchPx, barWidthPx, barHeightPx, density.density)
-        }
-        val shellRadius = shell?.let { minOf(with(density) { GlassRadius.bar.toPx() }, it.height / 2f) } ?: 0f
-        val contentWidthPx = with(density) { minOf(72.dp, (barWidthDp / BOTTOM_BAR_SLOTS.toFloat() - 12.dp).coerceAtLeast(1.dp)).toPx() }
-        val contentHeightPx = with(density) { 38.dp.toPx() }
-        fun overlapFor(slot: Int): Float? {
-            val currentShell = shell ?: return null
-            val left = slot * slotPitchPx + (slotPitchPx - contentWidthPx) / 2f
-            val item = androidx.compose.ui.geometry.Rect(left, (barHeightPx - contentHeightPx) / 2f,
-                left + contentWidthPx, (barHeightPx + contentHeightPx) / 2f)
-            return roundedRectOverlapFraction(item, currentShell, shellRadius)
-        }
         Row(
             modifier = Modifier
                 .then(if (glassMode) Modifier.widthIn(max = BOTTOM_BAR_WIDTH).fillMaxWidth() else Modifier)
@@ -1329,8 +1334,7 @@ private fun BottomBarItems(
                 isSelected = selectedTab == 0,
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 0,
-                opticalScale = optics?.let { { lensTabMagnification(0, it.frame.position, it.frame.expansion) } },
-                lensCoverage = if (glassMode && optics != null) overlapFor(0) else null,
+                opticalForeground = opticalForeground,
                 onClick = { onTabSelected(0) }
             )
             BottomNavItem(
@@ -1341,8 +1345,7 @@ private fun BottomBarItems(
                 isSelected = selectedTab == 1,
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 1,
-                opticalScale = optics?.let { { lensTabMagnification(1, it.frame.position, it.frame.expansion) } },
-                lensCoverage = if (glassMode && optics != null) overlapFor(1) else null,
+                opticalForeground = opticalForeground,
                 onClick = { onTabSelected(1) }
             )
             BottomNavItem(
@@ -1351,8 +1354,7 @@ private fun BottomBarItems(
                 isSelected = selectedTab == 2,
                 modifier = if (glassMode) Modifier.weight(1f) else Modifier,
                 hideIcon = hideSelectedIcon && selectedTab == 2,
-                opticalScale = optics?.let { { lensTabMagnification(2, it.frame.position, it.frame.expansion) } },
-                lensCoverage = if (glassMode && optics != null) overlapFor(2) else null,
+                opticalForeground = opticalForeground,
                 onClick = { onTabSelected(2) }
             )
         }
@@ -1417,24 +1419,21 @@ private fun BottomNavItem(
     isSelected: Boolean,
     modifier: Modifier = Modifier,
     hideIcon: Boolean = false,
-    opticalScale: (() -> Float)? = null,
-    lensCoverage: Float? = null,
+    opticalForeground: Boolean = false,
     onClick: () -> Unit
 ) {
     val haptic = rememberIosHaptic()
-    // The tint follows the lens coverage directly: the colour is a pure function
-    // of how much of this tab the glass currently covers, so the blue travels
-    // with the capsule instead of fading in on its own 200ms clock after the
-    // capsule arrives. The coverage itself is already animated by the lens spring.
-    val coverageTint = lensCoverage?.let { lerp(Color(0xFF8E8E93), IosBlue, it.coerceIn(0f, 1f)) }
-    val fallbackTarget = if (isSelected) IosBlue else Color(0xFF8E8E93)
-    val fallbackTint by animateColorAsState(
-        targetValue = fallbackTarget,
-        animationSpec = tween(durationMillis = 200),
-        label = "nav_tint"
-    )
-    val tint = coverageTint ?: fallbackTint
-    val scale = if (opticalScale == null) {
+    // The optical source is stable grey: the shared foreground renderer replaces only pixels
+    // under the real animated shell. Selection must not recolour/resize the entire source first.
+    val tint = if (opticalForeground) Color(0xFF8E8E93) else {
+        val fallbackTint by animateColorAsState(
+            targetValue = if (isSelected) IosBlue else Color(0xFF8E8E93),
+            animationSpec = tween(durationMillis = 200),
+            label = "nav_tint"
+        )
+        fallbackTint
+    }
+    val scale = if (!opticalForeground) {
         val legacyScale by animateFloatAsState(
             targetValue = if (isSelected) 1.08f else 1.0f,
             animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
@@ -1452,13 +1451,10 @@ private fun BottomNavItem(
                 haptic.selection()
                 onClick()
             }
-            // Draw-time vector/text magnification only: no bitmap readback, shader per icon,
-            // blur or extra animation clock. The existing AGSL shell supplies the glass sheen.
+            // Legacy mode keeps its selected-item scale. Optical mode transforms covered pixels
+            // once in NavigationLensContent, leaving the original nodes and hit targets untouched.
             .drawWithContent {
-                val magnification = opticalScale?.invoke() ?: scale
-                scaleDrawing(magnification, magnification) {
-                    this@drawWithContent.drawContent()
-                }
+                scaleDrawing(scale, scale) { this@drawWithContent.drawContent() }
             }
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -1473,7 +1469,7 @@ private fun BottomNavItem(
             text = label,
             color = tint,
             fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+            fontWeight = if (opticalForeground || isSelected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

@@ -274,6 +274,8 @@ fun NavigationGlassSurface(
     /** Optional explicit optics for editors/previews that must mirror an in-progress value. */
     opticsOverride: GlassOptics? = null,
     frostedBlurRadiusDp: Dp = 12.dp,
+    /** Selection lenses keep their clear shell even when their settings category uses Glasmio. */
+    forceOpticalLens: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
     val palette = glassPalette
@@ -283,7 +285,7 @@ fun NavigationGlassSurface(
     // optical renderer; the selected capsule must not inherit Glasmio's blur/tint material.
     val isOpticalLensCategory = surfaceCategory == GlassSurfaceCategory.TITLE_CAPSULES ||
         surfaceCategory == GlassSurfaceCategory.BOTTOM_NAVIGATION
-    val keepArcaOpticalLens = lens != null && isOpticalLensCategory
+    val keepArcaOpticalLens = lens != null && (isOpticalLensCategory || forceOpticalLens)
     val glasmioAvailable = GlassDefaults.enabled &&
         LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
         glasmioBackdrop != null && !keepArcaOpticalLens

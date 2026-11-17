@@ -18,6 +18,10 @@ extern int jni_catch_exception(JNIEnv *env);
 extern void jni_attach_thread(struct _scoped_jni *jni);
 extern void jni_detach_thread(struct _scoped_jni *env);
 extern void release_string(char **str);
+/* Pair diagnostics count successful global refs, including process-lifetime classes. */
+extern jobject jni_new_global(JNIEnv *env, jobject obj);
+extern void jni_delete_global(JNIEnv *env, jobject obj);
+extern int64_t jni_global_reference_count(void);
 
 #define ATTACH_JNI() __attribute__((unused, cleanup(jni_detach_thread))) \
                     struct _scoped_jni _jni; \
@@ -28,7 +32,7 @@ extern void release_string(char **str);
 
 #define find_class(name) (*env)->FindClass(env, name)
 #define find_method(cls, name, signature) (*env)->GetMethodID(env, cls, name, signature)
-#define new_global(obj) (*env)->NewGlobalRef(env, obj)
-#define del_global(obj) (*env)->DeleteGlobalRef(env, obj)
+#define new_global(obj) jni_new_global(env, obj)
+#define del_global(obj) jni_delete_global(env, obj)
 #define get_string(jstr) jni_get_string(env, jstr)
 #define new_string(cstr) jni_new_string(env, cstr)

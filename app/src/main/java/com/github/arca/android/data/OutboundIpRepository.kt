@@ -318,11 +318,9 @@ class OutboundIpRepository internal constructor(
                         val result = parse(readBounded(it.body, maxBytes, source))
                         if (continuation.isActive) continuation.resume(result)
                     }
-                } catch (e: IpLookupException) {
-                    if (continuation.isActive) continuation.resumeWithException(e)
                 } catch (e: Exception) {
                     if (continuation.isActive) continuation.resumeWithException(
-                        IpLookupException("$source 返回了无效数据，请重试。")
+                        if (e is IpLookupException) e else IpLookupException("$source 返回了无效数据，请重试。")
                     )
                 }
             }
@@ -344,19 +342,15 @@ class OutboundIpRepository internal constructor(
         else -> IpLookupException("$source 服务暂时不可用（HTTP $code）。")
     }
 
-    /** Single throw site for bounded body read failures. */
-    private fun failLookup(source: String, reason: String): Nothing =
-        throw IpLookupException("$source $reason")
-
     /** Bounded read of the (already gzip-decoded) body; oversize is a failure, never truncated data. */
     private fun readBounded(body: ResponseBody?, maxBytes: Long, source: String): String {
-        body ?: failLookup(source, "返回了空响应。")
-        if (body.contentLength() > maxBytes) failLookup(source, "返回的内容过大，已丢弃。")
+        body ?: throw IpLookupException("$source 返回了空响应。")
+        if (body.contentLength() > maxBytes) throw IpLookupException("$source 返回的内容过大，已丢弃。")
         val buffered = body.source()
         buffered.request(maxBytes + 1)
-        if (buffered.buffer.size > maxBytes) failLookup(source, "返回的内容过大，已丢弃。")
+        if (buffered.buffer.size > maxBytes) throw IpLookupException("$source 返回的内容过大，已丢弃。")
         val text = buffered.readString(body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8)
-        if (text.isBlank()) failLookup(source, "返回了空响应。")
+        if (text.isBlank()) throw IpLookupException("$source 返回了空响应。")
         return text
     }
 

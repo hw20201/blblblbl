@@ -195,7 +195,9 @@ internal class ShortcutTouchMotion(
     val gestureModifier: Modifier,
     val visualModifier: Modifier,
     val refraction: () -> ShortcutRefraction,
-    val contentModifier: Modifier
+    val contentModifier: Modifier,
+    /** The settled glass plane, independent of the last contact, pickup or release spring. */
+    val restingPose: ShortcutTouchPose
 ) {
     val modifier: Modifier = gestureModifier.then(visualModifier)
 }
@@ -244,11 +246,12 @@ internal fun rememberShortcutTouchMotion(
         ShortcutTouchVariant.FingerTilt -> if (tuned) 0.72f else 0.76f
         ShortcutTouchVariant.BuoyantSpring -> 0.55f
     }
+    val restingPose = if (animate) shortcutLiveRestingPose(variant) else ShortcutTouchPose()
     val target = when {
-        !animate -> ShortcutTouchPose()
+        !animate -> restingPose
         frozenPose != null -> frozenPose
         input.pressed -> currentTarget(if (jelly) input.tiltX else input.x, if (jelly) input.tiltY else input.y)
-        else -> shortcutLiveRestingPose(variant)
+        else -> restingPose
     }
     // Compose's animation clock applies the system duration scale, including slow scales.
     val releaseSpec = spring<Float>(
@@ -452,8 +455,7 @@ internal fun rememberShortcutTouchMotion(
     }
     val directJellyLayer = Modifier.graphicsLayer {
         translationX = travelX()
-        translationY = travelY() + if (animate && frozenPose == null && variant == ShortcutTouchVariant.FingerTilt)
-            -FINGER_TILT_REST_FLOAT_DP.dp.toPx() else 0f
+        translationY = travelY() + restingPose.offsetYDp.dp.toPx()
         rotationX = visiblePitch(); rotationY = visibleRoll()
         // Keep the measured card bounds stable; the rotations and shader normals carry the tilt.
         scaleX = 1f
@@ -489,5 +491,5 @@ internal fun rememberShortcutTouchMotion(
             contact = if (contactFollow) contactValue() else 0f,
             contactFollow = contactFollow,
             depression = if (variant == ShortcutTouchVariant.FingerTilt) visibleLift() else 0f)
-    }, contentPerspectiveModifier)
+    }, contentPerspectiveModifier, restingPose)
 }

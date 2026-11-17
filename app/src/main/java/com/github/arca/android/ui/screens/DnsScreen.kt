@@ -200,7 +200,7 @@ fun DnsScreen(
                                     scope.launch(Dispatchers.IO) {
                                         runCatching {
                                             if (com.github.arca.android.core.ClashCore.isCoreLoaded) {
-                                                com.github.arca.android.core.ClashCore.notifyNetworkChanged(context)
+                                                com.github.arca.android.core.ClashCore.notifyNetworkChanged(context, force = true)
                                             }
                                         }
                                     }

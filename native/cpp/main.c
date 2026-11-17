@@ -234,6 +234,16 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeHealthCheck(JNIEnv *env, jo
     healthCheck(_completable, _name);
 }
 
+JNIEXPORT jlong JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativeGlobalReferenceCount(JNIEnv *env, jobject thiz) {
+    return (jlong) jni_global_reference_count();
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativePendingHealthChecks(JNIEnv *env, jobject thiz) {
+    return (jlong) queryPendingHealthChecks();
+}
+
 JNIEXPORT void JNICALL
 Java_com_github_kr328_clash_core_bridge_Bridge_nativeHealthCheckAll(JNIEnv *env, jobject thiz) {
     TRACE_METHOD();
