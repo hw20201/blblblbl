@@ -84,7 +84,12 @@ func genX25519KeyPair() *C.char {
 		return nil
 	}
 
-	return marshalJson(ageKeyPair{SecretKey: secretKey, PublicKey: publicKey})
+	res, err := marshalJson(ageKeyPair{SecretKey: secretKey, PublicKey: publicKey})
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export genHybridKeyPair
@@ -94,7 +99,12 @@ func genHybridKeyPair() *C.char {
 		return nil
 	}
 
-	return marshalJson(ageKeyPair{SecretKey: secretKey, PublicKey: publicKey})
+	res, err := marshalJson(ageKeyPair{SecretKey: secretKey, PublicKey: publicKey})
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export veritySecretKeys
@@ -113,7 +123,12 @@ func toPublicKeys(secretKeys C.c_string) *C.char {
 		return nil
 	}
 
-	return marshalJson(publicKeys)
+	res, err := marshalJson(publicKeys)
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export verityPublicKeys

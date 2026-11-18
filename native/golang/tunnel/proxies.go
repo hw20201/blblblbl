@@ -21,6 +21,37 @@ const (
 	Delay
 )
 
+// defaultTestURL is the latency-test URL shown when a proxy has no other
+// delay history. It used to be a magic string copied in two places.
+const defaultTestURL = "https://www.gstatic.com/generate_204"
+
+// delayTestURL picks the URL whose delay is shown for a proxy: the default
+// test URL when it has history, otherwise the smallest non-empty history
+// key, so the choice is stable across queries. Picking an arbitrary map key
+// (as before) made the shown delay flip between URLs from one query to the
+// next whenever a proxy had more than one test URL.
+func delayTestURL(histories map[string]C.ProxyState) string {
+	if _, ok := histories[defaultTestURL]; ok {
+		return defaultTestURL
+	}
+
+	pick := ""
+	for k := range histories {
+		if k == "" {
+			continue
+		}
+		if pick == "" || k < pick {
+			pick = k
+		}
+	}
+
+	if pick == "" {
+		return defaultTestURL
+	}
+
+	return pick
+}
+
 type Proxy struct {
 	Name     string `json:"name"`
 	Title    string `json:"title"`
@@ -166,7 +197,7 @@ func PatchSelector(selector, name string) bool {
 }
 
 func convertProxies(proxies []C.Proxy, uiSubtitlePattern *regexp2.Regexp) []*Proxy {
-	result := make([]*Proxy, 0, 128)
+	result := make([]*Proxy, 0, len(proxies))
 
 	for _, p := range proxies {
 		name := p.Name()
@@ -183,13 +214,7 @@ func convertProxies(proxies []C.Proxy, uiSubtitlePattern *regexp2.Regexp) []*Pro
 				}
 			}
 		}
-		testURL := "https://www.gstatic.com/generate_204"
-		for k := range p.ExtraDelayHistories() {
-			if len(k) > 0 {
-				testURL = k
-				break
-			}
-		}
+		testURL := delayTestURL(p.ExtraDelayHistories())
 		_, isGroup := p.Adapter().(outboundgroup.ProxyGroup)
 
 		result = append(result, &Proxy{
@@ -224,13 +249,7 @@ func collectProviders(providers []provider.ProxyProvider, uiSubtitlePattern *reg
 				}
 			}
 
-			testURL := "https://www.gstatic.com/generate_204"
-			for k := range px.ExtraDelayHistories() {
-				if len(k) > 0 {
-					testURL = k
-					break
-				}
-			}
+			testURL := delayTestURL(px.ExtraDelayHistories())
 			_, isGroup := px.Adapter().(outboundgroup.ProxyGroup)
 
 			result = append(result, &Proxy{

@@ -19,7 +19,12 @@ func queryTunnelState() *C.char {
 		Mode string `json:"mode"`
 	}{mode}
 
-	return marshalJson(response)
+	res, err := marshalJson(response)
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export queryNow
@@ -48,7 +53,12 @@ func queryProxyTotal(upload, download *C.uint64_t) {
 
 //export queryGroupNames
 func queryGroupNames(excludeNotSelectable C.int) *C.char {
-	return marshalJson(tunnel.QueryProxyGroupNames(excludeNotSelectable != 0))
+	res, err := marshalJson(tunnel.QueryProxyGroupNames(excludeNotSelectable != 0))
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export queryGroup
@@ -71,7 +81,12 @@ func queryGroup(name C.c_string, sortMode C.c_string) *C.char {
 		return nil
 	}
 
-	return marshalJson(response)
+	res, err := marshalJson(response)
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 // The asynchronous operation owns the JNI global reference until its native work
@@ -114,7 +129,12 @@ func patchSelector(selector, name C.c_string) C.int {
 
 //export queryProviders
 func queryProviders() *C.char {
-	return marshalJson(tunnel.QueryProviders())
+	res, err := marshalJson(tunnel.QueryProviders())
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export updateProvider
@@ -133,7 +153,12 @@ func suspend(suspended C.int) {
 
 //export queryConnections
 func queryConnections() *C.char {
-	return marshalJson(tunnel.QueryConnections())
+	res, err := marshalJson(tunnel.QueryConnections())
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 //export closeConnection

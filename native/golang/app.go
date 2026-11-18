@@ -52,7 +52,12 @@ func notifyTimeZoneChanged(name C.c_string, offset C.int) {
 func queryConfiguration() *C.char {
 	response := &struct{}{}
 
-	return marshalJson(&response)
+	res, err := marshalJson(&response)
+	if err != nil {
+		return nil
+	}
+
+	return res
 }
 
 func init() {

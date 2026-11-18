@@ -4,7 +4,10 @@ package main
 import "C"
 
 import (
+	"context"
+	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -41,32 +44,94 @@ func init() {
 	}()
 }
 
+// Active logcat subscriptions, keyed by the JNI global reference Kotlin
+// passed in. The C side only ends a subscription by returning non-zero from
+// logcat_received (which happens when the Kotlin callback throws), so
+// unsubscribeLogcat is the explicit way for Kotlin to stop one, e.g. when
+// the log viewer goes away. The JNI reference is released exactly once.
+var (
+	logcatMu   sync.Mutex
+	logcatSubs = map[unsafe.Pointer]context.CancelFunc{}
+)
+
 //export subscribeLogcat
 func subscribeLogcat(remote unsafe.Pointer) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	logcatMu.Lock()
+	if old, ok := logcatSubs[remote]; ok {
+		// A second subscribe for the same reference replaces the first;
+		// stop the old one instead of fanning out twice.
+		old()
+	}
+	logcatSubs[remote] = cancel
+	logcatMu.Unlock()
+
 	go func(remote unsafe.Pointer) {
+		var releaseOnce sync.Once
+		release := func() {
+			releaseOnce.Do(func() { C.release_object(remote) })
+		}
+		defer func() {
+			// Only remove the entry if it is still this subscription:
+			// a re-subscribe for the same reference must not lose its
+			// entry to this goroutine's cleanup.
+			logcatMu.Lock()
+			if c, ok := logcatSubs[remote]; ok && reflect.ValueOf(c).Pointer() == reflect.ValueOf(cancel).Pointer() {
+				delete(logcatSubs, remote)
+			}
+			logcatMu.Unlock()
+			release()
+		}()
+
 		sub := log.Subscribe()
 		defer log.UnSubscribe(sub)
 
-		for msg := range sub {
-			if msg.LogLevel < log.Level() && !strings.HasPrefix(msg.Payload, "[APP]") {
-				continue
-			}
+		for {
+			select {
+			case <-ctx.Done():
+				log.Debugln("Logcat subscriber cancelled")
 
-			rMsg := &message{
-				Level:   msg.LogLevel.String(),
-				Message: msg.Payload,
-				Time:    time.Now().UnixNano() / 1000 / 1000,
-			}
+				return
+			case msg, ok := <-sub:
+				if !ok {
+					return
+				}
 
-			if C.logcat_received(remote, marshalJson(rMsg)) != 0 {
-				C.release_object(remote)
+				if msg.LogLevel < log.Level() && !strings.HasPrefix(msg.Payload, "[APP]") {
+					continue
+				}
 
-				log.Debugln("Logcat subscriber closed")
+				rMsg := &message{
+					Level:   msg.LogLevel.String(),
+					Message: msg.Payload,
+					Time:    time.Now().UnixNano() / 1000 / 1000,
+				}
 
-				break
+				payload, err := marshalJson(rMsg)
+				if err != nil {
+					continue
+				}
+
+				if C.logcat_received(remote, payload) != 0 {
+					log.Debugln("Logcat subscriber closed")
+
+					return
+				}
 			}
 		}
 	}(remote)
 
 	log.Infoln("[APP] Logcat level: %s", log.Level().String())
+}
+
+//export unsubscribeLogcat
+func unsubscribeLogcat(remote unsafe.Pointer) {
+	logcatMu.Lock()
+	cancel, ok := logcatSubs[remote]
+	logcatMu.Unlock()
+
+	if ok {
+		cancel()
+	}
 }

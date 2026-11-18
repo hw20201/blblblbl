@@ -27,6 +27,10 @@ const (
 	defaultMTU = 9000
 	minMTU     = 1280
 	maxMTU     = 65535
+	// maxTunAddresses bounds the comma-separated gateway/DNS lists Start
+	// accepts. Real setups pass one or two entries; anything past this is
+	// a malformed config, not a list to chew through unbounded.
+	maxTunAddresses = 16
 )
 
 // startOptions mirrors the JSON that the Kotlin service passes through JNI.
@@ -81,8 +85,12 @@ func Start(fd int, stack, gateway, portal, dns, rawOptions string) (io.Closer, e
 	if err != nil {
 		return nil, err
 	}
+	gatewayParts := strings.Split(gateway, ",")
+	if len(gatewayParts) > maxTunAddresses {
+		return nil, fmt.Errorf("TUN gateway list too long: %d entries (max %d)", len(gatewayParts), maxTunAddresses)
+	}
 	var prefix4, prefix6 []netip.Prefix
-	for _, raw := range strings.Split(gateway, ",") {
+	for _, raw := range gatewayParts {
 		if raw = strings.TrimSpace(raw); raw == "" {
 			continue
 		}
@@ -99,8 +107,12 @@ func Start(fd int, stack, gateway, portal, dns, rawOptions string) (io.Closer, e
 	if len(prefix4)+len(prefix6) == 0 {
 		return nil, fmt.Errorf("TUN requires at least one local address")
 	}
+	dnsParts := strings.Split(dns, ",")
+	if len(dnsParts) > maxTunAddresses {
+		return nil, fmt.Errorf("TUN DNS list too long: %d entries (max %d)", len(dnsParts), maxTunAddresses)
+	}
 	var dnsHijack []string
-	for _, raw := range strings.Split(dns, ",") {
+	for _, raw := range dnsParts {
 		if raw = strings.TrimSpace(raw); raw == "" {
 			continue
 		}

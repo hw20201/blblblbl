@@ -27,6 +27,17 @@ jobs:
         with:
           ndk-version: r28c
           add-to-path: false
+      - name: Vet Go core
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          bash scripts/build-native.sh --prepare-only
+          cd native/golang
+          export CGO_ENABLED=1 GOOS=android GOARCH=arm64
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+          export CGO_CFLAGS='-D__BIONIC_NO_PAGE_SIZE_MACRO'
+          go vet -mod=readonly -modfile="$PWD/../build/native.go.mod" -tags 'foss with_gvisor cmfa' ./...
       - name: Build native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
