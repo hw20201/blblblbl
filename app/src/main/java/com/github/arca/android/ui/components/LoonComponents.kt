@@ -495,7 +495,8 @@ fun LoonShortcutCard(
     lensBounds: NavigationLensGlobalBounds? = null,
     lensTintTarget: Color? = null,
     /** Slot coordinates plus the resting glass rect in that slot; never a pressed/tilted AABB. */
-    onRestingBoundsChanged: ((LayoutCoordinates, Rect) -> Unit)? = null
+    onRestingBoundsChanged: ((LayoutCoordinates, Rect) -> Unit)? = null,
+    lensBoundsState: State<NavigationLensGlobalBounds?>? = null
 ) {
     val haptic = rememberIosHaptic()
     val touchVariant = LocalShortcutTouchVariant.current
@@ -509,8 +510,17 @@ fun LoonShortcutCard(
     )
     var iconBoundsInWindow by remember(title) { mutableStateOf<Rect?>(null) }
     var labelBoundsInWindow by remember(title) { mutableStateOf<Rect?>(null) }
-    val iconTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(iconBoundsInWindow, lensBounds)
-    val labelTintProgress = if (lensTintTarget == null) 0f else overlapTintProgress(labelBoundsInWindow, lensBounds)
+    val latestBounds by rememberUpdatedState(lensBounds)
+    // Observe the result rather than every moving lens rect: a disjoint DNS card stays unchanged.
+    val tintCoverage by remember(lensBoundsState, lensTintTarget) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            if (lensTintTarget == null) 0f to 0f else {
+                val bounds = if (lensBoundsState != null) lensBoundsState.value else latestBounds
+                overlapTintProgress(iconBoundsInWindow, bounds) to overlapTintProgress(labelBoundsInWindow, bounds)
+            }
+        }
+    }
+    val (iconTintProgress, labelTintProgress) = tintCoverage
     val experimental = touchVariant != null && !isEditing
     val density = LocalDensity.current
     val restingOffset = with(density) {
@@ -1166,18 +1176,27 @@ fun LoonFloatingBottomBar(
         val density = LocalDensity.current
         var barWindowOrigin by remember { mutableStateOf<Offset?>(null) }
         var barLayoutSize by remember { mutableStateOf(IntSize.Zero) }
-        val localLensShell = if (lens != null && barLayoutSize.width > 0 && barLayoutSize.height > 0) {
-            val frame = optics.frame
-            val width = barLayoutSize.width.toFloat()
-            val height = barLayoutSize.height.toFloat()
-            insetLensRect(frame.position, frame.stretch, frame.expansion, width / BOTTOM_BAR_SLOTS, width, height, density.density)
-        } else null
-        val shellRadius = localLensShell?.let { minOf(with(density) { GlassRadius.bar.toPx() }, it.height / 2f) } ?: 0f
-        val origin = barWindowOrigin
-        val globalLensBounds = if (localLensShell != null && origin != null) {
-            navigationLensGlobalBounds(localLensShell, origin, shellRadius)
-        } else null
-        SideEffect { onLensBoundsChanged(globalLensBounds) }
+        val publishLensBounds by rememberUpdatedState(onLensBoundsChanged)
+        val densityScale = density.density
+        val shellRadiusPx = with(density) { GlassRadius.bar.toPx() }
+        // Observe motion independently: the dock's items and semantics do not depend on a frame.
+        LaunchedEffect(lens, optics, densityScale, shellRadiusPx) {
+            snapshotFlow {
+                val origin = barWindowOrigin
+                if (lens == null || origin == null) {
+                    null
+                } else if (barLayoutSize.width <= 0 || barLayoutSize.height <= 0) {
+                    null
+                } else {
+                    val frame = optics.frame
+                    val width = barLayoutSize.width.toFloat()
+                    val height = barLayoutSize.height.toFloat()
+                    val shell = insetLensRect(frame.position, frame.stretch, frame.expansion,
+                        width / BOTTOM_BAR_SLOTS, width, height, densityScale)
+                    navigationLensGlobalBounds(shell, origin, minOf(shellRadiusPx, shell.height / 2f))
+                }
+            }.collect { publishLensBounds(it) }
+        }
         val selectTabWithHaptic = rememberHapticValueAction<Int> { tab ->
             selectionPulse++
             onTabSelected(tab)

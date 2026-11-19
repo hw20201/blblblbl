@@ -41,6 +41,7 @@ import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
+import com.github.arca.android.ui.glass.PageScrollEdge
 import com.github.arca.android.ui.glass.PageTitleGlass
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -516,6 +517,8 @@ fun SettingsScreen(
             }
         }
         }
+        PageScrollEdge(titleScene, headerInset, testTag = "settings-top-edge-blur") { scrollState.value }
+
         Box(
             modifier = Modifier.fillMaxWidth()
                 .onSizeChanged { headerHeightPx = it.height }

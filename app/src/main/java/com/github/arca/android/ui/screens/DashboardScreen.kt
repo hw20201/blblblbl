@@ -56,6 +56,7 @@ import com.github.arca.android.service.VpnState
 import com.github.arca.android.service.TrafficMetrics
 import com.github.arca.android.service.MihomoVpnService
 import kotlinx.coroutines.flow.StateFlow
+import com.github.arca.android.ui.glass.PageScrollEdge
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
@@ -115,7 +116,7 @@ private fun DashboardShortcutCard(
         icon = item.icon,
         isEditing = isEditing,
         lens = lens,
-        lensBounds = navigationLensBoundsState?.value,
+        lensBoundsState = navigationLensBoundsState,
         lensTintTarget = if (item.id == "dns") Color(0xFF22C55E) else null,
         onPickupChanged = onPickupChanged,
         onRestingBoundsChanged = onRestingBoundsChanged,
@@ -369,7 +370,7 @@ fun DashboardScreen(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable {
+                            .iosPressable {
                                 haptic.lightTick()
                                 isEditingShortcuts = !isEditingShortcuts
                             }
@@ -434,31 +435,24 @@ fun DashboardScreen(
                                 val targetSlotX = col * (itemWidthPx + spacingPx)
                                 val targetSlotY = row * (itemHeightPx + spacingPx)
 
-                                val animatedX by animateFloatAsState(
+                                val animatedX = animateFloatAsState(
                                     targetValue = targetSlotX,
                                     animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
                                     label = "animX_${item.id}"
                                 )
-                                val animatedY by animateFloatAsState(
+                                val animatedY = animateFloatAsState(
                                     targetValue = targetSlotY,
                                     animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
                                     label = "animY_${item.id}"
                                 )
 
-                                val currentPosX: Float
-                                val currentPosY: Float
-                                if (isBeingDragged) {
-                                    currentPosX = dragStartSlotX + dragOffsetState.x
-                                    currentPosY = dragStartSlotY + dragOffsetState.y
-                                } else {
-                                    currentPosX = animatedX
-                                    currentPosY = animatedY
-                                }
-
                                 var itemModifier = Modifier
                                     .size(itemWidthDp, itemHeightDp)
                                     .offset {
-                                        IntOffset(currentPosX.roundToInt(), currentPosY.roundToInt())
+                                        // Position changes invalidate placement, not the grid composition.
+                                        val x = if (isBeingDragged) dragStartSlotX + dragOffsetState.x else animatedX.value
+                                        val y = if (isBeingDragged) dragStartSlotY + dragOffsetState.y else animatedY.value
+                                        IntOffset(x.roundToInt(), y.roundToInt())
                                     }
                                     .zIndex(if (isBeingDragged) 100f else if (pickedUpShortcutId == item.id) 50f else 1f)
                                     .graphicsLayer {
@@ -613,6 +607,8 @@ fun DashboardScreen(
 
 
             } // Only scrolling content belongs to the recorded scene.
+
+            PageScrollEdge(titleScene, headerInset, testTag = "dashboard-top-edge-blur") { scrollState.value }
 
             // Header: ARCA (LOON style) & Mode Selector + iOS Switch
             Column(

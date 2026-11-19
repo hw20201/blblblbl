@@ -11,7 +11,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.ui.draw.drawWithContent
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -96,34 +99,60 @@ class IosHapticHelper(private val tick: () -> Unit) {
 fun Modifier.iosPressable(
     enabled: Boolean = true,
     pressedScale: Float = 0.982f,
+    role: Role? = null,
     onClick: (() -> Unit)? = null
 ): Modifier = composed {
+    if (onClick == null) return@composed this
+    if (!enabled) return@composed clickable(enabled = false, role = role, onClick = onClick)
+
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (enabled && isPressed) pressedScale else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "ios_press_scale"
-    )
-
+    val contact = remember { Animatable(0f) }
+    // Clickable owns touch slop, cancellation, keyboard and accessibility. The feedback
+    // observes its interactions without putting animation frames into composition.
+    LaunchedEffect(interactionSource) {
+        coroutineScope {
+            val presses = mutableSetOf<PressInteraction.Press>()
+            var animation: Job? = null
+            interactionSource.interactions.collect { interaction ->
+                val wasPressed = presses.isNotEmpty()
+                when (interaction) {
+                    is PressInteraction.Press -> presses.add(interaction)
+                    is PressInteraction.Release -> presses.remove(interaction.press)
+                    is PressInteraction.Cancel -> presses.remove(interaction.press)
+                    else -> return@collect
+                }
+                val isPressed = presses.isNotEmpty()
+                if (wasPressed == isPressed) return@collect
+                animation?.cancel()
+                animation = launch {
+                    if (isPressed) {
+                        contact.animateTo(1f, tween(70, easing = FastOutSlowInEasing))
+                    } else {
+                        // A tap can be released before its first animated frame, especially in a scroll container.
+                        if (interaction is PressInteraction.Release && contact.value < 0.55f) contact.snapTo(0.55f)
+                        contact.animateTo(0f, spring(dampingRatio = 1f, stiffness = 650f))
+                    }
+                }
+            }
+        }
+    }
+    val scale = pressedScale.coerceIn(0.9f, 1f)
+    val highlightColor = if (LocalLoonColors.current.isDark) Color.White else Color.Black
     this
         .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
+            scaleX = 1f - (1f - scale) * contact.value
+            scaleY = scaleX
         }
-        .then(
-            if (onClick != null) {
-                Modifier.clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    enabled = enabled,
-                    onClick = onClick
-                )
-            } else Modifier
+        .drawWithContent {
+            drawContent()
+            val highlight = contact.value.coerceIn(0f, 1f) * 0.055f
+            if (highlight > 0f) drawRect(highlightColor, alpha = highlight)
+        }
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            role = role,
+            onClick = onClick
         )
 }
 

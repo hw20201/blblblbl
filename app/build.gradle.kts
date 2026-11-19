@@ -155,7 +155,7 @@ android {
         isMinifyEnabled = false
         isShrinkResources = false
         applicationIdSuffix = ".draftglass"
-        versionNameSuffix = "-draft-glass-candidate12-reference-paced-performance"
+        versionNameSuffix = "-ui-perf-20261120-test"
         signingConfig = signingConfigs.getByName("debug")
         matchingFallbacks += listOf("release")
     }
