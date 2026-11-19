@@ -77,7 +77,7 @@ jobs:
           "$adb" -P "$ARCA_ADB_PORT" start-server
           "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port "${ARCA_ADB_SERIAL#emulator-}" \
             -accel on -cores 3 -memory 3072 -no-window -no-audio -no-boot-anim -no-snapshot \
-            -no-metrics -gpu swiftshader -feature -Vulkan > "$ARCA_SMOKE_ROOT/evidence/emulator.txt" 2>&1 &
+            -no-metrics -gpu lavapipe > "$ARCA_SMOKE_ROOT/evidence/emulator.txt" 2>&1 &
           emu_pid=$!
           finish() {
             rc=$?
