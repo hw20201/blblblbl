@@ -43,6 +43,12 @@
                 <data android:scheme="clashmeta" android:host="install-config" />
                 <data android:scheme="mihomo" android:host="install-config" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nowhere" />
+            </intent-filter>
         </activity>
 
         <!-- VPN Service -->

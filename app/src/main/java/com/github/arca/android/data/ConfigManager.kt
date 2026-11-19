@@ -203,9 +203,10 @@ object ConfigManager {
                 )
 
                 val body = response.body?.string() ?: error("响应内容为空")
+                val content = NowhereLink.normalizeProfile(body)
                 val id = java.util.UUID.randomUUID().toString()
                 val file = getProfilesDir(context).resolve("$id.yaml")
-                file.writeText(body)
+                file.writeText(content)
 
                 val resolvedName = extractProfileName(name, response, body, url)
                 val item = ProfileItem(
@@ -248,9 +249,10 @@ object ConfigManager {
                 )
 
                 val body = response.body?.string() ?: error("响应内容为空")
+                val content = NowhereLink.normalizeProfile(body)
                 // Overwrite the EXISTING file without creating a duplicate ID!
                 val file = getProfilesDir(context).resolve("$id.yaml")
-                file.writeText(body)
+                file.writeText(content)
 
                 val existing = getProfiles(context).find { it.id == id }
                 val item = ProfileItem(
@@ -275,10 +277,26 @@ object ConfigManager {
         }
     }
 
+    /** A node URL is saved locally, never persisted as an auto-updating subscription URL. */
+    suspend fun importProfileLink(context: Context, raw: String, name: String): Result<ProfileItem> {
+        val input = raw.trim()
+        if (!NowhereLink.hasScheme(input)) return downloadSubscription(context, input, name)
+        val link = NowhereLink.parse(input) ?: return Result.failure(IllegalArgumentException(NowhereLink.INVALID_LINK_MESSAGE))
+        return importNowhereLink(context, link, name)
+    }
+
+    internal suspend fun importNowhereLink(context: Context, link: NowhereLink, name: String): Result<ProfileItem> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                saveLocalProfile(context, name.trim().ifEmpty { link.name }, link.toProfileYaml())
+            }
+        }
+
     fun saveLocalProfile(context: Context, name: String, content: String): ProfileItem {
+        val normalized = NowhereLink.normalizeProfile(content)
         val id = java.util.UUID.randomUUID().toString()
         val file = getProfilesDir(context).resolve("$id.yaml")
-        file.writeText(content)
+        file.writeText(normalized)
         val item = ProfileItem(id, name, null, file, System.currentTimeMillis())
         saveProfileMetadata(context, item)
         return item

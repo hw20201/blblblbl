@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.SubscriptionLink
+import com.github.arca.android.data.NowhereLink
 import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.theme.IosBlue
 import com.github.arca.android.ui.theme.LoonTextPrimary
@@ -31,19 +32,39 @@ fun SubscriptionImportDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String) -> Unit
 ) {
-    var name by remember(link) { mutableStateOf(link.name) }
     val host = remember(link) { runCatching { java.net.URI(link.url).host }.getOrNull() ?: link.url }
+    ProfileLinkImportDialog(link, link.name, host, link.url, onDismiss, onConfirm)
+}
+
+@Composable
+internal fun NowhereImportDialog(link: NowhereLink, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    ProfileLinkImportDialog(link, link.name.take(64), link.endpoint, null, onDismiss, onConfirm)
+}
+
+@Composable
+private fun ProfileLinkImportDialog(
+    key: Any,
+    initialName: String,
+    host: String,
+    url: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String) -> Unit
+) {
+    var name by remember(key) { mutableStateOf(initialName) }
+    val isNowhere = url == null
     GlassAlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("subscription-import-dialog"),
-        title = { Text("导入订阅", fontWeight = FontWeight.Bold, color = LoonTextPrimary) },
+        modifier = Modifier.testTag(if (isNowhere) "nowhere-import-dialog" else "subscription-import-dialog"),
+        title = { Text(if (isNowhere) "导入 Nowhere 节点" else "导入订阅", fontWeight = FontWeight.Bold, color = LoonTextPrimary) },
         text = {
             Column {
                 Text("来源：$host", color = LoonTextSecondary, fontSize = 13.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                Text(link.url, color = LoonTextSecondary, fontSize = 11.5.sp,
-                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+                if (url != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(url, color = LoonTextSecondary, fontSize = 11.5.sp,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = name,

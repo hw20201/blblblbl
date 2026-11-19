@@ -1,0 +1,516 @@
+diff --git a/adapter/outbound/nowhere_packet.go b/adapter/outbound/nowhere_packet.go
+index a4787de..2efd07f 100644
+--- a/adapter/outbound/nowhere_packet.go
++++ b/adapter/outbound/nowhere_packet.go
+@@ -50,7 +50,7 @@ func newNowherePacketConn(parent context.Context, client *nowhere.Client, budget
+ // flow is called with exclusive creation ownership (before publication or via gate).
+ func (c *nowherePacketConn) flow(ctx context.Context, addr net.Addr) (*nowhereFlow, error) {
+ 	udp, ok := addr.(*net.UDPAddr)
+-	if !ok || udp == nil || !udp.AddrPort().IsValid() || udp.Port == 0 {
++	if !ok || udp == nil || udp.Port < 1 || udp.Port > 65535 || !udp.AddrPort().IsValid() {
+ 		return nil, errors.New("nowhere: UDP destination must be a resolved address")
+ 	}
+ 	key := udp.AddrPort().String()
+@@ -68,9 +68,33 @@ func (c *nowherePacketConn) flow(ctx context.Context, addr net.Addr) (*nowhereFl
+ 		return nil, errors.New("nowhere: UDP association target limit reached")
+ 	}
+ 	c.mu.Unlock()
+-	conn, err := c.client.DialUDP(ctx, nowhere.Target{Host: udp.AddrPort().Addr().Unmap().String(), Port: uint16(udp.Port)})
++	// Only new targets need a cancellable setup. Cached flows already carry
++	// the association's write deadline and are closed with the association.
++	dialCtx, cancel := context.WithCancelCause(ctx)
++	stop := context.AfterFunc(c.ctx, func() { cancel(net.ErrClosed) })
++	defer func() { stop(); cancel(context.Canceled) }()
++	go func() {
++		select {
++		case <-c.writeDeadline.Wait():
++			cancel(os.ErrDeadlineExceeded)
++		case <-dialCtx.Done():
++		}
++	}()
++	conn, err := c.client.DialUDP(dialCtx, nowhere.Target{Host: udp.AddrPort().Addr().Unmap().String(), Port: uint16(udp.Port)})
+ 	if err != nil {
+-		return nil, err
++		if c.ctx.Err() != nil {
++			return nil, net.ErrClosed
++		}
++		// A refreshed deadline must not erase this setup's cancellation reason.
++		if errors.Is(context.Cause(dialCtx), os.ErrDeadlineExceeded) {
++			return nil, os.ErrDeadlineExceeded
++		}
++		select {
++		case <-c.writeDeadline.Wait():
++			return nil, os.ErrDeadlineExceeded
++		default:
++			return nil, err
++		}
+ 	}
+ 	f := &nowhereFlow{Conn: conn, addr: net.UDPAddrFromAddrPort(udp.AddrPort())}
+ 	c.mu.Lock()
+@@ -174,16 +198,7 @@ func (c *nowherePacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+ 		return 0, os.ErrDeadlineExceeded
+ 	}
+ 	defer func() { <-c.gate }()
+-	ctx, cancel := context.WithCancel(c.ctx)
+-	defer cancel()
+-	go func() {
+-		select {
+-		case <-c.writeDeadline.Wait():
+-			cancel()
+-		case <-ctx.Done():
+-		}
+-	}()
+-	f, err := c.flow(ctx, addr)
++	f, err := c.flow(c.ctx, addr)
+ 	if err != nil {
+ 		return 0, err
+ 	}
+diff --git a/adapter/outbound/nowhere_packet_test.go b/adapter/outbound/nowhere_packet_test.go
+index eacf4f6..6e11b28 100644
+--- a/adapter/outbound/nowhere_packet_test.go
++++ b/adapter/outbound/nowhere_packet_test.go
+@@ -2,10 +2,16 @@ package outbound
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"net"
++	"os"
++	"strconv"
+ 	"sync/atomic"
+ 	"testing"
+ 	"time"
++
++	"github.com/metacubex/mihomo/pkg/nowhere"
++	"github.com/metacubex/tls"
+ )
+ 
+ func TestNowherePacketQueueBudgetReleasedOnClose(t *testing.T) {
+@@ -36,3 +42,108 @@ func TestNowherePacketQueueBudgetReleasedOnClose(t *testing.T) {
+ 		t.Fatal("receive queue leaked its reservation")
+ 	}
+ }
++
++type nowhereDiscardConn struct{ net.Conn }
++
++func (*nowhereDiscardConn) Write(p []byte) (int, error)      { return len(p), nil }
++func (*nowhereDiscardConn) Close() error                     { return nil }
++func (*nowhereDiscardConn) SetReadDeadline(time.Time) error  { return nil }
++func (*nowhereDiscardConn) SetWriteDeadline(time.Time) error { return nil }
++
++func TestNowherePacketRejectsInvalidPortsBeforeLookup(t *testing.T) {
++	for _, port := range []int{-65535, -1, 0, 65536, 65537} {
++		t.Run(strconv.Itoa(port), func(t *testing.T) {
++			var budget atomic.Int64
++			association := newNowherePacketConn(context.Background(), nil, &budget)
++			defer association.Close()
++			addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port}
++			// AddrPort truncates the int port to uint16. An invalid destination
++			// must not alias a valid flow already in the cache.
++			association.flows[addr.AddrPort().String()] = &nowhereFlow{Conn: &nowhereDiscardConn{}}
++			if _, err := association.flow(context.Background(), addr); err == nil {
++				t.Fatal("invalid port selected a cached destination")
++			}
++		})
++	}
++}
++
++func TestNowherePacketSetupCancellation(t *testing.T) {
++	for _, name := range []string{"deadline", "close", "deadline-reset"} {
++		t.Run(name, func(t *testing.T) {
++			started := make(chan struct{})
++			canceled := make(chan struct{})
++			release := make(chan struct{}, 1)
++			defer close(release)
++			client, err := nowhere.NewClient(nowhere.Options{
++				SharedKey: "0123456789abcdef0123456789abcdef", TLSConfig: &tls.Config{},
++				DialStream: func(ctx context.Context) (net.Conn, error) {
++					close(started)
++					<-ctx.Done()
++					if name == "deadline-reset" {
++						close(canceled)
++						<-release
++					}
++					return nil, ctx.Err()
++				},
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer client.Close()
++			var budget atomic.Int64
++			association := newNowherePacketConn(context.Background(), client, &budget)
++			defer association.Close()
++			result := make(chan error, 1)
++			go func() {
++				_, err := association.WriteTo([]byte("packet"), &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53})
++				result <- err
++			}()
++			select {
++			case <-started:
++			case <-time.After(time.Second):
++				t.Fatal("flow setup did not start")
++			}
++			want := os.ErrDeadlineExceeded
++			if name == "close" {
++				association.Close()
++				want = net.ErrClosed
++			} else {
++				_ = association.SetWriteDeadline(time.Now().Add(-time.Second))
++				if name == "deadline-reset" {
++					select {
++					case <-canceled:
++					case <-time.After(time.Second):
++						t.Fatal("deadline did not cancel setup")
++					}
++					_ = association.SetWriteDeadline(time.Time{})
++					release <- struct{}{}
++				}
++			}
++			select {
++			case err := <-result:
++				if !errors.Is(err, want) {
++					t.Fatalf("setup returned %v, want %v", err, want)
++				}
++			case <-time.After(time.Second):
++				t.Fatal("flow setup did not cancel")
++			}
++		})
++	}
++}
++
++func BenchmarkNowherePacketCachedWrite(b *testing.B) {
++	var budget atomic.Int64
++	association := newNowherePacketConn(context.Background(), nil, &budget)
++	defer association.Close()
++	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53}
++	association.flows[addr.AddrPort().String()] = &nowhereFlow{Conn: &nowhereDiscardConn{}}
++	payload := make([]byte, 1200)
++	b.SetBytes(int64(len(payload)))
++	b.ReportAllocs()
++	b.ResetTimer()
++	for i := 0; i < b.N; i++ {
++		if n, err := association.WriteTo(payload, addr); err != nil || n != len(payload) {
++			b.Fatal(n, err)
++		}
++	}
++}
+diff --git a/pkg/nowhere/client.go b/pkg/nowhere/client.go
+index 6104baa..734e687 100644
+--- a/pkg/nowhere/client.go
++++ b/pkg/nowhere/client.go
+@@ -270,9 +270,10 @@ func (c *uotConn) Read(p []byte) (int, error) {
+ 		}
+ 	}
+ 	size := int(c.header[0])<<8 | int(c.header[1])
+-	if c.payload == nil {
++	if cap(c.payload) < size {
+ 		c.payload = make([]byte, size)
+ 	}
++	c.payload = c.payload[:size]
+ 	for c.payloadRead < size {
+ 		n, err := c.Conn.Read(c.payload[c.payloadRead:])
+ 		c.payloadRead += n
+@@ -284,7 +285,7 @@ func (c *uotConn) Read(p []byte) (int, error) {
+ 		}
+ 	}
+ 	n := copy(p, c.payload)
+-	c.payload, c.headerRead, c.payloadRead = nil, 0, 0
++	c.headerRead, c.payloadRead = 0, 0
+ 	if n < size {
+ 		return n, io.ErrShortBuffer
+ 	}
+diff --git a/pkg/nowhere/client_test.go b/pkg/nowhere/client_test.go
+new file mode 100644
+index 0000000..a7888c9
+--- /dev/null
++++ b/pkg/nowhere/client_test.go
+@@ -0,0 +1,122 @@
++package nowhere
++
++import (
++	"bytes"
++	"errors"
++	"io"
++	"net"
++	"os"
++	"testing"
++)
++
++type uotReadConn struct {
++	net.Conn
++	reader io.Reader
++}
++
++func (c *uotReadConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
++
++func TestUOTConnReadPacketBoundaries(t *testing.T) {
++	packets := [][]byte{bytes.Repeat([]byte("a"), 4096), nil, []byte("short buffer"), []byte("z"), nil}
++	var wire bytes.Buffer
++	for _, packet := range packets {
++		if err := WriteUOTPacket(&wire, packet); err != nil {
++			t.Fatal(err)
++		}
++	}
++	conn := &uotConn{Conn: &uotReadConn{reader: &wire}}
++	for i, packet := range packets {
++		out := make([]byte, 8192)
++		wantErr := error(nil)
++		if i == 2 {
++			out = out[:3]
++			wantErr = io.ErrShortBuffer
++		}
++		n, err := conn.Read(out)
++		if !errors.Is(err, wantErr) || n != min(len(packet), len(out)) || !bytes.Equal(out[:n], packet[:n]) {
++			t.Fatalf("packet %d: got %q, %v; want %q, %v", i, out[:n], err, packet, wantErr)
++		}
++	}
++	if n, err := conn.Read(make([]byte, 1)); n != 0 || err != io.EOF {
++		t.Fatal("packet boundary EOF", n, err)
++	}
++}
++
++type uotReadStep struct {
++	data []byte
++	err  error
++}
++
++type uotScriptedReader struct{ steps []uotReadStep }
++
++func (r *uotScriptedReader) Read(p []byte) (int, error) {
++	if len(r.steps) == 0 {
++		return 0, io.EOF
++	}
++	step := &r.steps[0]
++	n := copy(p, step.data)
++	step.data = step.data[n:]
++	if len(step.data) != 0 {
++		return n, nil
++	}
++	err := step.err
++	r.steps = r.steps[1:]
++	return n, err
++}
++
++func TestUOTConnReadResumesAfterDeadline(t *testing.T) {
++	r := &uotScriptedReader{steps: []uotReadStep{
++		{data: []byte{0}},
++		{err: os.ErrDeadlineExceeded},
++		{data: []byte{4}},
++		{data: []byte("da")},
++		{err: os.ErrDeadlineExceeded},
++		{data: []byte("ta")},
++		{data: []byte{0, 1, 'z'}},
++	}}
++	conn := &uotConn{Conn: &uotReadConn{reader: r}}
++	out := make([]byte, 16)
++	for i := 0; i < 2; i++ {
++		if n, err := conn.Read(out); n != 0 || !errors.Is(err, os.ErrDeadlineExceeded) {
++			t.Fatal("partial packet deadline", n, err)
++		}
++	}
++	for _, want := range []string{"data", "z"} {
++		n, err := conn.Read(out)
++		if err != nil || string(out[:n]) != want {
++			t.Fatal("packet after deadline", n, err, string(out[:n]))
++		}
++	}
++}
++
++type uotRepeatingReader struct {
++	packet []byte
++	offset int
++}
++
++func (r *uotRepeatingReader) Read(p []byte) (int, error) {
++	n := copy(p, r.packet[r.offset:])
++	r.offset += n
++	if r.offset == len(r.packet) {
++		r.offset = 0
++	}
++	return n, nil
++}
++
++func BenchmarkUOTConnRead(b *testing.B) {
++	payload := make([]byte, 1200)
++	var wire bytes.Buffer
++	if err := WriteUOTPacket(&wire, payload); err != nil {
++		b.Fatal(err)
++	}
++	conn := &uotConn{Conn: &uotReadConn{reader: &uotRepeatingReader{packet: wire.Bytes()}}}
++	out := make([]byte, len(payload))
++	b.ReportAllocs()
++	b.SetBytes(int64(len(payload)))
++	b.ResetTimer()
++	for i := 0; i < b.N; i++ {
++		if n, err := conn.Read(out); err != nil || n != len(payload) {
++			b.Fatal(n, err)
++		}
++	}
++}
+diff --git a/pkg/nowhere/morph/morph.go b/pkg/nowhere/morph/morph.go
+index b4a05c9..bb02fb5 100644
+--- a/pkg/nowhere/morph/morph.go
++++ b/pkg/nowhere/morph/morph.go
+@@ -185,6 +185,7 @@ type tcpConn struct {
+ 	rmu, wmu                sync.Mutex
+ 	reader, writer          *chacha20.Cipher
+ 	readOffset, writeOffset uint64
++	writeBuffer             []byte // protected by wmu
+ }
+ 
+ func (c *tcpConn) Read(p []byte) (int, error) {
+@@ -215,7 +216,10 @@ func (c *tcpConn) Write(p []byte) (int, error) {
+ 	written := 0
+ 	for len(p) != 0 {
+ 		chunk := p[:min(len(p), 32*1024)]
+-		out := make([]byte, len(chunk))
++		if cap(c.writeBuffer) < len(chunk) {
++			c.writeBuffer = make([]byte, len(chunk))
++		}
++		out := c.writeBuffer[:len(chunk)]
+ 		// A cipher is value state. Commit only the bytes accepted by the socket;
+ 		// short writes must not consume the unsent part of the keystream.
+ 		trial := *c.writer
+@@ -265,8 +269,11 @@ type packetConn struct {
+ 	mu            sync.Mutex
+ 	send, receive [32]byte
+ 	prelude       []byte
++	writeBuffer   []byte // protected by mu
+ }
+ 
++var packetReadBuffers = sync.Pool{New: func() any { return new([65535]byte) }}
++
+ func (c *packetConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+ 	c.mu.Lock()
+ 	defer c.mu.Unlock()
+@@ -283,7 +290,10 @@ func (c *packetConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+ 	if len(p) > 65535-nonceLen {
+ 		return 0, errors.New("nowhere: Morph UDP datagram too large")
+ 	}
+-	b := make([]byte, nonceLen+len(p))
++	if cap(c.writeBuffer) < nonceLen+len(p) {
++		c.writeBuffer = make([]byte, nonceLen+len(p))
++	}
++	b := c.writeBuffer[:nonceLen+len(p)]
+ 	if _, err := rand.Read(b[:nonceLen]); err != nil {
+ 		return 0, err
+ 	}
+@@ -300,7 +310,9 @@ func (c *packetConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+ }
+ 
+ func (c *packetConn) ReadFrom(p []byte) (int, net.Addr, error) {
+-	b := make([]byte, 65535)
++	buffer := packetReadBuffers.Get().(*[65535]byte)
++	defer packetReadBuffers.Put(buffer)
++	b := buffer[:]
+ 	for {
+ 		n, addr, err := c.PacketConn.ReadFrom(b)
+ 		if err != nil {
+diff --git a/pkg/nowhere/morph/morph_test.go b/pkg/nowhere/morph/morph_test.go
+index 492c2ec..13bac5e 100644
+--- a/pkg/nowhere/morph/morph_test.go
++++ b/pkg/nowhere/morph/morph_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"encoding/hex"
+ 	"io"
+ 	"net"
++	"strconv"
+ 	"sync"
+ 	"testing"
+ 	"time"
+@@ -190,3 +191,94 @@ func TestCounterConcurrencyAndExhaustion(t *testing.T) {
+ 		t.Fatal("counter wrapped")
+ 	}
+ }
++
++type morphDiscardConn struct{ net.Conn }
++
++func (*morphDiscardConn) Write(p []byte) (int, error) { return len(p), nil }
++
++type morphPacketSocket struct {
++	net.PacketConn
++	wire []byte
++	addr net.Addr
++}
++
++func (c *morphPacketSocket) ReadFrom(p []byte) (int, net.Addr, error) {
++	return copy(p, c.wire), c.addr, nil
++}
++func (*morphPacketSocket) WriteTo(p []byte, _ net.Addr) (int, error) { return len(p), nil }
++
++func TestMorphPacketConcurrentReads(t *testing.T) {
++	key := derive("key").udpReceive
++	payload := bytes.Repeat([]byte("packet"), 200)
++	wire := make([]byte, nonceLen+len(payload))
++	cipher, _ := chacha20.NewUnauthenticatedCipher(key[:], wire[:nonceLen])
++	cipher.XORKeyStream(wire[nonceLen:], payload)
++	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 443}
++	conn := &packetConn{PacketConn: &morphPacketSocket{wire: wire, addr: addr}, receive: key}
++	var wg sync.WaitGroup
++	for i := 0; i < 8; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			out := make([]byte, len(payload))
++			for j := 0; j < 32; j++ {
++				n, from, err := conn.ReadFrom(out)
++				if err != nil || from != addr || !bytes.Equal(out[:n], payload) {
++					t.Error("concurrent packet read corrupted payload", n, err)
++					return
++				}
++			}
++		}()
++	}
++	wg.Wait()
++}
++
++func BenchmarkMorphTCPWrite(b *testing.B) {
++	for _, size := range []int{1200, 32768} {
++		b.Run(strconv.Itoa(size), func(b *testing.B) {
++			key := derive("key").tcpSend
++			cipher, _ := chacha20.NewUnauthenticatedCipher(key[:], make([]byte, nonceLen))
++			conn := &tcpConn{Conn: &morphDiscardConn{}, writer: cipher}
++			payload := make([]byte, size)
++			b.SetBytes(int64(size))
++			b.ReportAllocs()
++			b.ResetTimer()
++			for i := 0; i < b.N; i++ {
++				if n, err := conn.Write(payload); err != nil || n != len(payload) {
++					b.Fatal(n, err)
++				}
++			}
++		})
++	}
++}
++
++func BenchmarkMorphPacketRead(b *testing.B) {
++	key := derive("key").udpReceive
++	wire := make([]byte, nonceLen+1200)
++	cipher, _ := chacha20.NewUnauthenticatedCipher(key[:], wire[:nonceLen])
++	cipher.XORKeyStream(wire[nonceLen:], wire[nonceLen:])
++	conn := &packetConn{PacketConn: &morphPacketSocket{wire: wire}, receive: key}
++	out := make([]byte, 1200)
++	b.SetBytes(int64(len(out)))
++	b.ReportAllocs()
++	b.ResetTimer()
++	for i := 0; i < b.N; i++ {
++		if n, _, err := conn.ReadFrom(out); err != nil || n != len(out) {
++			b.Fatal(n, err)
++		}
++	}
++}
++
++func BenchmarkMorphPacketWrite(b *testing.B) {
++	conn := &packetConn{PacketConn: &morphPacketSocket{}, send: derive("key").udpSend}
++	payload := make([]byte, 1200)
++	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 443}
++	b.SetBytes(int64(len(payload)))
++	b.ReportAllocs()
++	b.ResetTimer()
++	for i := 0; i < b.N; i++ {
++		if n, err := conn.WriteTo(payload, addr); err != nil || n != len(payload) {
++			b.Fatal(n, err)
++		}
++	}
++}
