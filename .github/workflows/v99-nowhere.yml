@@ -100,11 +100,16 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
           bash scripts/build-native-v99.sh --abi arm64-v8a
           git diff --exit-code HEAD -- scripts/build-native.sh native/golang/go.mod native/golang/go.sum
+      - name: Rebuild same-version QuickJS native libraries for 16 KiB pages
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          bash scripts/build-quickjs-v99.sh --abi arm64-v8a
       - name: Static analysis and all app unit tests
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew detekt testDebugUnitTest --no-daemon --no-configuration-cache --max-workers=2
+          ./gradlew detekt testDebugUnitTest -Parca.quickJs16k=true --no-daemon --no-configuration-cache --max-workers=2
       - name: Build R8 Release APK with fixed release signing key
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -124,8 +129,8 @@ jobs:
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
           test -s "$RELEASE_STORE_FILE"
           unset RELEASE_KEYSTORE_BASE64
-          ./gradlew assembleRelease -Pnexus.r8=true --no-daemon --no-configuration-cache --max-workers=2
-      - name: Verify signed APK, version and bundled core pair
+          ./gradlew assembleRelease -Pnexus.r8=true -Parca.quickJs16k=true --no-daemon --no-configuration-cache --max-workers=2
+      - name: Verify signed APK, ABI, and native payloads
         run: |
           set -euo pipefail
           mkdir -p build_output/jniLibs/arm64-v8a
@@ -143,6 +148,7 @@ jobs:
           cp app/src/main/jniLibs/arm64-v8a/*.so build_output/jniLibs/arm64-v8a/
           cp native/SHA256SUMS build_output/native-SHA256SUMS
           cp native/build-v99/core-source-* native/build-v99/core-patches.sha256 native/build-v99/go-* build_output/
+          cp native/build-v99/quickjs-android-1.4.6-16k.{aar,provenance.json,sha256} build_output/
           git rev-parse HEAD > build_output/source-commit.txt
           printf '%s\n' "$GITHUB_WORKFLOW_SHA" > build_output/workflow-commit.txt
           (cd build_output && sha256sum Arca-v99-arm64-v8a.apk > SHA256SUMS)

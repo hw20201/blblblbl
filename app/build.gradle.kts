@@ -95,6 +95,13 @@ val verifyNativeLibraries = tasks.register<VerifyNativeLibrariesTask>("verifyNat
 }
 tasks.named("preBuild") { dependsOn(verifyNativeLibraries) }
 
+// Only the explicit v99 pipeline opts into the same-version, 16 KiB native rebuild.
+val quickJs16k = providers.gradleProperty("arca.quickJs16k").orNull?.toBoolean() ?: false
+val quickJs16kAar = rootProject.file("native/build-v99/quickjs-android-1.4.6-16k.aar")
+if (quickJs16k) {
+    require(quickJs16kAar.isFile) { "Run scripts/build-quickjs-v99.sh before enabling arca.quickJs16k" }
+}
+
 android {
     namespace = "com.github.arca.android"
     compileSdk = 37
@@ -218,8 +225,11 @@ android {
         }
         jniLibs {
             useLegacyPackaging = true
-            // The guard's NDK build must not strip/rewrite pinned core binaries.
+            // Preserve the exact native payloads covered by their build manifests.
             keepDebugSymbols += setOf("**/libclash.so", "**/libbridge.so")
+            if (quickJs16k) {
+                keepDebugSymbols += setOf("**/libquickjs.so", "**/libquickjs-android.so")
+            }
         }
     }
 }
@@ -255,7 +265,13 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.2")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.mozilla:rhino:1.7.15")
-    implementation("io.github.taoweiji.quickjs:quickjs-android:1.4.6")
+    if (quickJs16k) {
+        implementation(files(quickJs16kAar))
+        // The original 1.4.6 POM declares this transitive dependency.
+        implementation("androidx.annotation:annotation:1.0.0")
+    } else {
+        implementation("io.github.taoweiji.quickjs:quickjs-android:1.4.6")
+    }
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.5")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.7.5")

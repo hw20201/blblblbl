@@ -37,8 +37,10 @@ The earlier user-supplied Cachefly results of TCP 105.5 MB/s and UDP 51.95 MB/s 
 
 ## GitHub packaging and verification
 
-`.github/workflows/v99-nowhere.yml` runs core races with the real reference server, TUN tests, app static analysis and all app unit tests, then builds the native pair and signs the R8 release APK using the repository's existing release signing secrets. The workflow only has read access to repository contents and never creates tags or Releases.
+`.github/workflows/v99-nowhere.yml` runs core races with the checksum-pinned Rust reference, TUN tests, app static analysis and all app unit tests, then signs the R8 release APK using the repository's existing release signing secrets. The workflow only has read access to repository contents and never creates tags or Releases.
 
-The APK must pass signature, package/version, non-debuggable ARM64, ZIP alignment, embedded library hash, and ELF LOAD alignment checks before upload. The fixed signing certificate SHA-256 is `e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2`. CI retains the APK, source/workflow identities, core provenance, checksums, native pair, test reports and R8 mapping for review.
+The published QuickJS Android 1.4.6 ARM64 libraries have 4 KiB LOAD alignment. `scripts/build-quickjs-v99.sh` verifies the original Maven AAR and pinned `taoweiji/quickjs-android@fadb5b52f2ea988420b4d8dfae589ab55d66b911` sources, then relinks both libraries for 16 KiB pages with NDK 28.2.13676358 and CMake 3.22.1. The rebuilt AAR keeps all non-JNI entries byte-identical and checks the JNI and engine exports. Only the explicit `-Parca.quickJs16k=true` build opts in; the default Maven dependency, QuickJS guard, and Rhino fallback are unchanged.
+
+The APK must pass signature, package/version, non-debuggable ARM64, ZIP alignment, and 16 KiB ELF LOAD checks before upload. The bundled core pair and QuickJS libraries must match their build manifests byte for byte. The fixed signing certificate SHA-256 is `e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2`. CI retains the APK, source/workflow identities, core and QuickJS provenance, checksums, native pair, test reports and R8 mapping for review.
 
 The release evidence is authoritative for final job conclusions and APK hashes. The R8 build is not merged into main by this task; physical-device and remote real-node throughput validation are separate from the host interoperability tests above.
