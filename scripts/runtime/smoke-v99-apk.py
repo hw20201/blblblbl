@@ -209,23 +209,17 @@ def main():
         summary['nowhere_view_confirmation'] = 'pass'
         tap(button)
 
-        def ready_for_settings(tree):
+        def ready_for_profiles(tree):
             if any('导入失败' in node.get('text', '') for node in tree.iter('node') if node.get('package') == PACKAGE):
                 raise RuntimeError('Nowhere import failed in the R8 app')
             if find_node(tree, '导入 Nowhere 节点', 'nowhere-import-dialog') is not None:
                 return None
-            return find_node(tree, '设置', 'Settings', 'Настройки')
+            return find_node(tree, 'Profiles', '配置文件', 'Конфигурация', 'dashboard-shortcut-profiles')
 
-        tap(wait_ui('after-import.xml', ready_for_settings, 'Import did not return to the main navigation'))
-        tap(wait_ui(
-            'settings.xml', lambda tree: find_node(tree, '配置中心', 'settings-configuration-center-entry'),
-            'Settings did not show Configuration Center',
-            scroll_from=lambda tree: find_node(tree, '设置', 'Settings', 'Настройки', 'settings-scroll') is not None,
-        ))
-        tap(wait_ui(
-            'configuration-center.xml', lambda tree: find_node(tree, '配置文件与订阅', 'configuration-center-profiles-entry'),
-            'Configuration Center did not show Profiles and Subscriptions',
-        ))
+        # The dashboard exposes the saved profile through its normal Profiles shortcut.
+        # Use that visible entry directly instead of scrolling the separate Settings page.
+        tap(wait_ui('after-import.xml', ready_for_profiles, 'Dashboard did not expose its Profiles shortcut'))
+        summary['profile_navigation'] = 'dashboard-shortcut'
 
         def saved_profile(tree):
             if find_node(tree, '配置管理', 'Profile Manager', 'Управление конфигами', 'profiles-screen-root') is None:
