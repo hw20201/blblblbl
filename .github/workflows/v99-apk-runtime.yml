@@ -1,0 +1,114 @@
+name: Arca v99 APK runtime validation
+
+on:
+  push:
+    branches: [v99-apk-validation]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: arca-v99-apk-runtime
+  cancel-in-progress: false
+
+env:
+  APK_RUN: "44571339820"
+  APK_ARTIFACT: "14556222199"
+  ZIP_SHA256: ae5289e26dfe9daed7314f327a8d0c845e8f8c79ee2c03e3a55cccef1559d892
+  SOURCE_SHA: 0a2629bf042d7b9548ebfd891014c3223553aff6
+  APK_SHA256: d6301e000af126492c4d45f80ff3065c69a9db65c1af3f9cb440b3d920cf37ed
+  CERT_SHA256: e73785b2afe10e9e3181c6cc337a1da5900edf9751896e21790d4d3ddc7a1ef2
+  SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
+  ARCA_ADB_PORT: "5037"
+  ARCA_ADB_SERIAL: emulator-5558
+  ARCA_SMOKE_DEVICE: GitHub-hosted KVM Android 35 x86_64 with ARM64 translation
+
+jobs:
+  smoke:
+    name: Install and exercise exact signed ARM64 artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Locate disposable evidence directory
+        run: printf 'ARCA_SMOKE_ROOT=%s/arca-v99-runtime\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Download and authenticate existing CI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARCA_SMOKE_ROOT/evidence"
+          API="repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN" \
+            | jq -e --arg sha "$SOURCE_SHA" '.conclusion == "success" and .head_sha == $sha and .head_branch == "v99-nowhere-core"' >/dev/null
+          gh api "$API" | jq -e --arg sha "$SOURCE_SHA" --arg hash "sha256:$ZIP_SHA256" --argjson run "$APK_RUN" \
+            '.name == "Arca-v99-arm64-v8a" and .expired == false and .workflow_run.id == $run and .workflow_run.head_sha == $sha and .digest == $hash' >/dev/null
+          gh api "$API/zip" > "$RUNNER_TEMP/arca-artifact.zip"
+          printf '%s  %s\n' "$ZIP_SHA256" "$RUNNER_TEMP/arca-artifact.zip" | sha256sum --check
+          unzip -j "$RUNNER_TEMP/arca-artifact.zip" Arca-v99-arm64-v8a.apk source-commit.txt -d "$ARCA_SMOKE_ROOT"
+          test "$(<"$ARCA_SMOKE_ROOT/source-commit.txt")" = "$SOURCE_SHA"
+          printf '%s  %s\n' "$APK_SHA256" "$ARCA_SMOKE_ROOT/Arca-v99-arm64-v8a.apk" | sha256sum --check
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools emulator build-tools;36.0.0 system-images;android-35;google_apis;x86_64
+      - name: Verify signer and require hardware acceleration
+        run: |
+          set -euo pipefail
+          apk="$ARCA_SMOKE_ROOT/Arca-v99-arm64-v8a.apk"
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          "$bt/apksigner" verify --verbose --print-certs "$apk" > "$ARCA_SMOKE_ROOT/evidence/apksigner.txt"
+          test "$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$ARCA_SMOKE_ROOT/evidence/apksigner.txt")" = "$CERT_SHA256"
+          "$bt/zipalign" -c -P 16 -v 4 "$apk" > "$ARCA_SMOKE_ROOT/evidence/zipalign.txt"
+          test -c /dev/kvm
+          sudo chown "$(id -u):$(id -g)" /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -accel-check | tee "$ARCA_SMOKE_ROOT/evidence/kvm.txt"
+      - name: Boot unchanged Android image and smoke the signed APK
+        timeout-minutes: 14
+        run: |
+          set -euo pipefail
+          adb="$ANDROID_HOME/platform-tools/adb"
+          adb_dev=("$adb" -P "$ARCA_ADB_PORT" -s "$ARCA_ADB_SERIAL")
+          avd=ArcaV99
+          printf 'no\n' | avdmanager create avd --force --name "$avd" --package "$SYSTEM_IMAGE"
+          "$adb" -P "$ARCA_ADB_PORT" start-server
+          "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port "${ARCA_ADB_SERIAL#emulator-}" \
+            -accel on -cores 3 -memory 3072 -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect > "$ARCA_SMOKE_ROOT/evidence/emulator.txt" 2>&1 &
+          emu_pid=$!
+          finish() {
+            rc=$?
+            if (( rc != 0 )); then
+              timeout 20s "${adb_dev[@]}" shell dumpsys activity exit-info com.github.arca.android \
+                > "$ARCA_SMOKE_ROOT/evidence/exit-info.txt" 2>&1 || true
+              tail -n 35 "$ARCA_SMOKE_ROOT/evidence/emulator.txt"
+            fi
+            timeout 15s "${adb_dev[@]}" emu kill >/dev/null 2>&1 || kill "$emu_pid" 2>/dev/null || true
+            wait "$emu_pid" 2>/dev/null || true
+          }
+          trap finish EXIT
+          for attempt in {1..60}; do
+            kill -0 "$emu_pid"
+            if [[ "$(timeout 10s "${adb_dev[@]}" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" == 1 ]]; then
+              break
+            fi
+            sleep 3
+          done
+          test "$("${adb_dev[@]}" shell getprop sys.boot_completed | tr -d '\r')" = 1
+          "${adb_dev[@]}" shell wm size 1080x2340
+          "${adb_dev[@]}" shell wm density 440
+          "${adb_dev[@]}" shell 'getprop ro.build.fingerprint; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.hw_timeout_multiplier; getconf PAGE_SIZE' \
+            | tee "$ARCA_SMOKE_ROOT/evidence/android.txt"
+          "${adb_dev[@]}" shell getprop ro.product.cpu.abilist | tr -d '\r' | grep -Eq '(^|,)arm64-v8a(,|$)'
+          python3 scripts/runtime/smoke-v99-apk.py "$ARCA_SMOKE_ROOT/Arca-v99-arm64-v8a.apk" "$APK_SHA256" "$SOURCE_SHA"
+          python3 scripts/runtime/smoke-quickjs-runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Arca-v99-runtime-evidence
+          path: ${{ env.ARCA_SMOKE_ROOT }}/evidence/
+          if-no-files-found: warn
+          retention-days: 30
