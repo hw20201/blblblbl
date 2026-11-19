@@ -121,7 +121,8 @@ internal fun insetLensRect(
 internal fun roundedRectOverlapFraction(item: Rect, shell: Rect, cornerRadius: Float, samples: Int = 48): Float {
     val itemHasNoArea = item.width <= 0f || item.height <= 0f
     val shellHasNoArea = shell.width <= 0f || shell.height <= 0f
-    if (itemHasNoArea || shellHasNoArea || samples <= 0) return 0f
+    if (itemHasNoArea || shellHasNoArea) return 0f
+    if (samples <= 0 || !item.overlaps(shell)) return 0f
     val radius = cornerRadius.coerceIn(0f, minOf(shell.width, shell.height) / 2f)
     val step = item.width / samples
     var area = 0f

@@ -44,6 +44,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.glass.FROSTED_SELECTED_GLASS_TINT
+import com.github.arca.android.ui.glass.PageScrollEdge
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
@@ -72,7 +73,7 @@ fun AnimatedSpeedTestIcon(
     tint: Color = LoonTextPrimary,
     modifier: Modifier = Modifier
 ) {
-    val alpha by if (isTesting) {
+    val pulseAlpha = if (isTesting) {
         val infiniteTransition = rememberInfiniteTransition(label = "speed_test_anim")
         infiniteTransition.animateFloat(
             initialValue = 0.4f,
@@ -90,8 +91,8 @@ fun AnimatedSpeedTestIcon(
     Icon(
         imageVector = Icons.Default.Bolt,
         contentDescription = "测速",
-        tint = tint.copy(alpha = alpha),
-        modifier = modifier
+        tint = tint,
+        modifier = modifier.graphicsLayer { alpha = pulseAlpha.value }
     )
 }
 
@@ -378,7 +379,12 @@ fun ProxiesScreen(
         }
     }
 
-        // No screen-width scrim: the small title capsule samples the live scrolling list.
+        val visibleList = if (isListMode) listModeState else activeTabState
+        PageScrollEdge(titleScene, headerInset, testTag = "policy-top-edge-blur") {
+            if (visibleList.firstVisibleItemIndex > 0) Int.MAX_VALUE else visibleList.firstVisibleItemScrollOffset
+        }
+
+        // Draw the pinned controls in front of the shared scroll edge.
         Column(Modifier.onSizeChanged { headerHeightPx = it.height }.fillMaxWidth().statusBarsPadding()
             .padding(horizontal = 20.dp).padding(top = 12.dp)
             ) {
@@ -402,7 +408,7 @@ fun ProxiesScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(48.dp).clip(CircleShape)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button) {
+                        .iosPressable(pressedScale = 0.96f, role = Role.Button) {
                         if (selectedGroupName.isNotBlank()) {
                             onHealthCheck(selectedGroupName)
                         } else if (visibleGroups.isNotEmpty()) {
@@ -426,7 +432,7 @@ fun ProxiesScreen(
                 Box(
                     modifier = Modifier.size(48.dp).clip(CircleShape)
                         .onGloballyPositioned { policyMoreButtonBounds = it.boundsInWindow() }
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button) {
+                        .iosPressable(pressedScale = 0.96f, role = Role.Button) {
                             hidePolicyMoreSource = true
                             showOptionsMenu = true
                         }

@@ -2,7 +2,7 @@ package com.github.arca.android.ui.glass
 import android.os.Build
 import androidx.compose.runtime.CompositionLocalProvider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
-import io.github.neoruaa.glasmio.glass.glassBackdropSource
+import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop as rememberGlasmioLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop as GlasmioLayerBackdrop
@@ -43,8 +43,9 @@ fun rememberArcaGlasmioBackdrop(enabled: Boolean = true): GlasmioLayerBackdrop? 
     return rememberGlasmioLayerBackdrop()
 }
 
+/** Each source has one owner and identical visible/capture content; keep Glasmio's guarded reuse path. */
 fun Modifier.recordArcaGlasmioBackdropSource(backdrop: GlasmioLayerBackdrop?): Modifier =
-    if (backdrop == null) this else glassBackdropSource(backdrop).trackBackdropPosition(backdrop)
+    if (backdrop == null) this else layerBackdrop(backdrop, reuseContent = true).trackBackdropPosition(backdrop)
 
 @Composable
 fun ProvideArcaGlasmioBackdrop(backdrop: Backdrop?, content: @Composable () -> Unit) {
@@ -161,7 +162,7 @@ fun NexusGlassBackground(
         Box(
             modifier = Modifier.fillMaxSize().graphicsLayer().then(backdropRecorder)
                 .then(if (recordGlasmioBackdropSource && glasmioLayerBackdrop != null)
-                    Modifier.glassBackdropSource(glasmioLayerBackdrop).trackBackdropPosition(glasmioLayerBackdrop)
+                    Modifier.recordArcaGlasmioBackdropSource(glasmioLayerBackdrop)
                 else Modifier)
                 .then(if (testBackdropId == null) Modifier.background(base).drawBehind {
                     // Static wallpaper does not subscribe even to an injected/shared clock.

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -42,6 +43,18 @@ import androidx.compose.ui.unit.dp
 @Stable
 class NavigationLensState internal constructor(internal val scene: GraphicsLayer) {
     internal var origin by mutableStateOf(Offset.Zero)
+    internal var sourceCoordinates: LayoutCoordinates? = null
+    private val sourceObservers = linkedSetOf<() -> Unit>()
+    private var observerSnapshot = emptyList<() -> Unit>()
+
+    internal fun observeSourceChanges(observer: () -> Unit): () -> Unit {
+        if (sourceObservers.add(observer)) observerSnapshot = sourceObservers.toList()
+        return {
+            if (sourceObservers.remove(observer)) observerSnapshot = sourceObservers.toList()
+        }
+    }
+
+    internal fun sourceRecorded() = observerSnapshot.forEach { it() }
 }
 
 @Composable
@@ -56,7 +69,10 @@ fun rememberNavigationLens(): NavigationLensState {
 /** Record only the scene sibling below the dock: never include the dock in its own input. */
 fun Modifier.recordNavigationScene(state: NavigationLensState, underlay: NavigationLensState? = null): Modifier {
     if (Build.VERSION.SDK_INT < 31) return this
-    return onGloballyPositioned { state.origin = it.positionInRoot() }
+    return onGloballyPositioned {
+        state.origin = it.positionInRoot()
+        state.sourceCoordinates = it
+    }
         .drawWithContent {
             if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) {
                 state.scene.record {
@@ -72,6 +88,7 @@ fun Modifier.recordNavigationScene(state: NavigationLensState, underlay: Navigat
                 // Replay the bounded display list, not an unbounded translated underlay.
                 // Retain Compose's record-once/draw-layer path so nested child layers
                 // have a single parent and the glass receives live foreground content.
+                state.sourceRecorded()
                 drawLayer(state.scene)
             } else {
                 drawContent()
