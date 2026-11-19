@@ -25,18 +25,29 @@ def locate(label, output):
 
 
 try:
-    # The prior smoke ends on the saved profile list. Select the fixture without starting VPN.
-    profile = locate(previous['profile_name'], 'profiles-before.xml')
-    s.tap(profile)
-    time.sleep(3)
-    tree = s.dump_ui('selected-profile.xml', compressed=False)
-    profile = s.find_node(tree, previous['profile_name'])
-    assert profile is not None
-    y = (s.bounds(profile)[1] + s.bounds(profile)[3]) // 2
-    buttons = [node for node in tree.iter('node') if node.get('package') == s.PACKAGE
-               and node.get('content-desc') == '更多' and s.bounds(node)]
-    assert buttons, 'No profile actions button'
-    s.tap(min(buttons, key=lambda n: abs((s.bounds(n)[1] + s.bounds(n)[3]) // 2 - y)))
+    s.tap(locate('关闭', 'shortcut-before-close.xml'))
+    s.tap(locate('Settings', 'dashboard-before-settings.xml'))
+    s.tap(s.wait_ui(
+        'settings.xml', lambda tree: s.find_node(tree, '配置中心', 'settings-configuration-center-entry'),
+        'Settings did not show Configuration Center',
+        scroll_from=lambda tree: s.find_node(tree, 'Settings') is not None,
+    ))
+    s.tap(locate('配置文件与订阅', 'configuration-center.xml'))
+
+    def fixture_action(tree):
+        candidates = []
+        for row in tree.iter('node'):
+            rect = s.bounds(row)
+            if row.get('package') != s.PACKAGE or rect is None:
+                continue
+            if s.find_node(row, previous['profile_name']) is None:
+                continue
+            buttons = [node for node in row.iter('node') if node.get('content-desc') == '更多' and s.bounds(node)]
+            if len(buttons) == 1:
+                candidates.append(((rect[2] - rect[0]) * (rect[3] - rect[1]), buttons[0]))
+        return min(candidates, key=lambda item: item[0])[1] if candidates else None
+
+    s.tap(s.wait_ui('profiles-before.xml', fixture_action, 'No action on the saved fixture row in Profile Manager'))
     s.tap(locate('JS 脚本覆写', 'profile-actions.xml'))
     s.tap(locate('管理脚本中心', 'profile-override.xml'))
     s.tap(locate('新建脚本', 'scripts-empty.xml'))

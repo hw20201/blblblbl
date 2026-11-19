@@ -222,16 +222,50 @@ def main():
         summary['profile_navigation'] = 'dashboard-shortcut'
 
         def saved_profile(tree):
-            if find_node(tree, '配置管理', 'Profile Manager', 'Управление конфигами', 'profiles-screen-root') is None:
+            if (find_node(tree, '添加配置：本地文件 / 订阅') is None
+                    or find_node(tree, '关闭', 'shortcut-panel-close') is None):
                 return None
-            return find_node(tree, profile_name)
+            # Require a real clickable row containing the active-state labels.
+            # The panel subtitle repeats the fixture name but is not a saved row.
+            for row in tree.iter('node'):
+                if row.get('package') != PACKAGE or row.get('clickable') != 'true':
+                    continue
+                labels = {node.get('text') for node in row.iter('node')}
+                if {profile_name, '当前使用', '当前'} <= labels:
+                    return find_node(row, profile_name)
+            return None
 
-        profile = wait_ui(
-            'saved-profile.xml', saved_profile, f'No saved profile row was found for {profile_name}',
-            scroll_from=lambda tree: find_node(tree, '配置管理', 'Profile Manager', 'Управление конфигами', 'profiles-screen-root') is not None,
-        )
+        wait_ui('imported-profile.xml', saved_profile, f'No active saved profile row for {profile_name}')
+        summary['nowhere_import_action'] = 'pass'
+
+        # A process restart proves the fixture was saved, beyond in-memory state.
+        summary['initial_app_pid'] = pid
+        run('shell', 'am', 'force-stop', PACKAGE)
+        launch = run('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.ui.MainActivity', timeout=180)
+        if 'Error:' in launch or 'Exception' in launch:
+            raise RuntimeError(launch)
+        restarted_pid = None
+        for _ in range(30):
+            current = app_pid()
+            if restarted_pid is not None and current != restarted_pid:
+                raise RuntimeError('Arca process changed during persistence relaunch')
+            restarted_pid = current
+            if current:
+                app = run('shell', 'logcat', *LOG_BUFFERS, '--pid=' + current, '-d', timeout=40)
+                check_crashes('', app, current)
+                if f'Mihomo Core initialized. Version: {CORE_VERSION}' in app:
+                    break
+            time.sleep(2)
+        else:
+            raise RuntimeError('The v99 core did not initialize on the persistence relaunch')
+        if restarted_pid == pid:
+            raise RuntimeError('The persistence relaunch did not start a new app process')
+        pid = restarted_pid
+        summary['app_pid'] = pid
+        tap(wait_ui('relaunched-dashboard.xml', ready_for_profiles, 'Relaunched dashboard lacked Profiles shortcut'))
+        profile = wait_ui('saved-profile.xml', saved_profile, f'Saved profile missing after restart: {profile_name}')
         screenshot('saved-profile.png')
-        summary.update(nowhere_import_action='pass', nowhere_profile_saved='pass',
+        summary.update(nowhere_profile_saved='pass', nowhere_profile_persisted_after_restart='pass',
                        profile_row_text=profile.get('text') or profile.get('content-desc'))
 
         if app_pid() != pid:

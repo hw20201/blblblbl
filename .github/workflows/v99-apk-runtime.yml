@@ -98,6 +98,8 @@ jobs:
             sleep 3
           done
           test "$("${adb_dev[@]}" shell getprop sys.boot_completed | tr -d '\r')" = 1
+          # Keep the Configuration Center row above the floating dock in this disposable viewport.
+          "${adb_dev[@]}" shell wm density 320
           "${adb_dev[@]}" shell 'getprop ro.build.fingerprint; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.hw_timeout_multiplier; getconf PAGE_SIZE; wm size; wm density' \
             | tee "$ARCA_SMOKE_ROOT/evidence/android.txt"
           "${adb_dev[@]}" shell getprop ro.product.cpu.abilist | tr -d '\r' | grep -Eq '(^|,)arm64-v8a(,|$)'
