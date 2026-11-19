@@ -398,7 +398,6 @@ class PolicySettingsGlassMorphTest {
                 selectedProfileId = null,
                 onBack = { backCalls++ },
                 onSelectProfile = {},
-                onAddSubscription = { _, _ -> },
                 onUpdateProfile = {},
                 onDeleteProfile = {},
                 embeddedPanel = true
@@ -460,7 +459,6 @@ class PolicySettingsGlassMorphTest {
                             selectedProfileId = selectedProfileId.value,
                             onBack = { nestedDestination.value = null },
                             onSelectProfile = { selectedProfileId.value = it.id },
-                            onAddSubscription = { _, _ -> },
                             onUpdateProfile = {},
                             onDeleteProfile = {},
                             embeddedPanel = true

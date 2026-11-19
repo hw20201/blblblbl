@@ -2,12 +2,14 @@ package com.github.arca.android.data
 
 import android.content.Context
 import android.util.Log
+import com.github.arca.android.data.subscription.SubscriptionManager
+import com.github.arca.android.data.subscription.SubscriptionStore
+import com.github.arca.android.data.subscription.SourceDraft
+import com.github.arca.android.data.subscription.readBounded
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 data class ProfileItem(
     val id: String,
@@ -22,7 +24,9 @@ data class ProfileItem(
     val uploadBytes: Long = 0L,
     val downloadBytes: Long = 0L,
     val totalBytes: Long = 0L,
-    val expireTimestamp: Long = 0L
+    val expireTimestamp: Long = 0L,
+    val managed: Boolean = false,
+    val canRefresh: Boolean = url != null
 )
 
 data class SubscriptionUserInfo(
@@ -34,12 +38,6 @@ data class SubscriptionUserInfo(
 
 object ConfigManager {
     private const val TAG = "ConfigManager"
-
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .addNetworkInterceptor(secureRemoteUrlInterceptor)
-        .build()
 
     /** Top-level config keys that only the injected runtime header may set. */
     private val PROTECTED_TOP_LEVEL_KEYS = setOf(
@@ -186,94 +184,23 @@ object ConfigManager {
         url: String,
         name: String
     ): Result<ProfileItem> = withContext(Dispatchers.IO) {
-        runCatching {
-            requireSecureRemoteUrl(url)
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", subscriptionUserAgent())
-                .build()
-
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("HTTP 错误: ${response.code} ${response.message}")
-                }
-
-                val userInfo = parseSubscriptionUserInfo(
-                    response.header("subscription-userinfo") ?: response.header("Subscription-Userinfo")
-                )
-
-                val body = response.body?.string() ?: error("响应内容为空")
-                val id = java.util.UUID.randomUUID().toString()
-                val file = getProfilesDir(context).resolve("$id.yaml")
-                file.writeText(body)
-
-                val resolvedName = extractProfileName(name, response, body, url)
-                val item = ProfileItem(
-                    id = id,
-                    name = resolvedName,
-                    url = url,
-                    file = file,
-                    lastUpdated = System.currentTimeMillis(),
-                    uploadBytes = userInfo?.upload ?: 0L,
-                    downloadBytes = userInfo?.download ?: 0L,
-                    totalBytes = userInfo?.total ?: 0L,
-                    expireTimestamp = userInfo?.expire ?: 0L
-                )
-                saveProfileMetadata(context, item)
-                item
-            }
-        }
+        try {
+            val preview = SubscriptionManager.preview(context, listOf(SourceDraft(name.ifBlank { "订阅" }, url)))
+            Result.success(SubscriptionManager.create(context, name.ifBlank { "订阅" }, preview,
+                standalone = preview.sources.singleOrNull()?.inspection?.completeValid == true, allowPartial = false))
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { Result.failure(IllegalArgumentException(SubscriptionManager.safeFailure(failure))) }
     }
 
-    suspend fun updateSubscription(
-        context: Context,
-        id: String,
-        name: String,
-        url: String
-    ): Result<ProfileItem> = withContext(Dispatchers.IO) {
-        runCatching {
-            requireSecureRemoteUrl(url)
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", subscriptionUserAgent())
-                .build()
-
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("HTTP 错误: ${response.code} ${response.message}")
-                }
-
-                val userInfo = parseSubscriptionUserInfo(
-                    response.header("subscription-userinfo") ?: response.header("Subscription-Userinfo")
-                )
-
-                val body = response.body?.string() ?: error("响应内容为空")
-                // Overwrite the EXISTING file without creating a duplicate ID!
-                val file = getProfilesDir(context).resolve("$id.yaml")
-                file.writeText(body)
-
-                val existing = getProfiles(context).find { it.id == id }
-                val item = ProfileItem(
-                    id = id,
-                    name = name,
-                    url = url,
-                    file = file,
-                    lastUpdated = System.currentTimeMillis(),
-                    scriptEnabled = existing?.scriptEnabled ?: false,
-                    scriptIds = existing?.scriptIds ?: emptyList(),
-                    autoUpdate = existing?.autoUpdate ?: false,
-                    autoUpdateInterval = existing?.autoUpdateInterval ?: 1440,
-                    uploadBytes = userInfo?.upload ?: (existing?.uploadBytes ?: 0L),
-                    downloadBytes = userInfo?.download ?: (existing?.downloadBytes ?: 0L),
-                    totalBytes = userInfo?.total ?: (existing?.totalBytes ?: 0L),
-                    expireTimestamp = userInfo?.expire ?: (existing?.expireTimestamp ?: 0L)
-                )
-                saveProfileMetadata(context, item)
-                Log.i(TAG, "Successfully overwritten existing profile id=$id ($name)")
-                item
-            }
-        }
+    suspend fun updateManagedSubscription(context: Context, id: String): Result<ProfileItem> = withContext(Dispatchers.IO) {
+        try {
+            val existing = getProfiles(context).firstOrNull { it.id == id } ?: error("找不到要更新的配置")
+            SubscriptionManager.update(context, existing)
+            Result.success(getProfiles(context, forceReload = true).first { it.id == id })
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { Result.failure(IllegalArgumentException(SubscriptionManager.safeFailure(failure))) }
     }
+
 
     fun saveLocalProfile(context: Context, name: String, content: String): ProfileItem {
         val id = java.util.UUID.randomUUID().toString()
@@ -284,23 +211,13 @@ object ConfigManager {
         return item
     }
 
-    fun importProfileFromUri(context: Context, uri: android.net.Uri): Result<ProfileItem> = runCatching {
-        val contentResolver = context.contentResolver
-        var displayName = "本地配置-${System.currentTimeMillis() % 1000}"
-        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIdx != -1) {
-                    val fName = cursor.getString(nameIdx)
-                    if (!fName.isNullOrBlank()) {
-                        displayName = fName.removeSuffix(".yaml").removeSuffix(".yml").removeSuffix(".txt")
-                    }
-                }
-            }
-        }
-        val content = contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
-            ?: error("无法读取文件内容")
-        saveLocalProfile(context, displayName, content)
+    internal fun readProfileDraft(context: Context, uri: android.net.Uri): SourceDraft {
+        val resolver = context.contentResolver
+        val displayName = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            ?.substringBeforeLast('.')?.take(100)?.takeIf { it.isNotBlank() } ?: "本地配置"
+        val content = resolver.openInputStream(uri)?.use { readBounded(it) } ?: error("无法读取文件内容")
+        return SourceDraft(displayName, content, remote = false)
     }
 
     @Volatile
@@ -317,27 +234,28 @@ object ConfigManager {
         }
 
         val dir = getProfilesDir(context)
-        val files = dir.listFiles { f -> f.extension == "yaml" } ?: emptyArray()
+        val ids = dir.listFiles { f -> f.extension in setOf("yaml", "subscription") || f.name.endsWith(".subscription.bak") }
+            .orEmpty().map { it.name.removeSuffix(".bak").substringBeforeLast('.') }.distinct()
         val prefs = context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE)
-
-        val items = files.map { file ->
-            val id = file.nameWithoutExtension
-            val name = prefs.getString("${id}_name", file.nameWithoutExtension) ?: file.nameWithoutExtension
-            val url = prefs.getString("${id}_url", null)
-            val updated = prefs.getLong("${id}_updated", file.lastModified())
+        val store = SubscriptionStore(context)
+        val items = ids.mapNotNull { id ->
+            val pointer = runCatching { store.head(id) }.getOrNull()
+            val managed = pointer != null
+            val file = if (pointer == null) dir.resolve("$id.yaml") else
+                runCatching { store.versionFile(id, pointer.versionId) }.getOrNull() ?: return@mapNotNull null
+            if (!file.isFile) return@mapNotNull null
+            val name = prefs.getString("${id}_name", pointer?.name ?: id) ?: id
+            val url = if (managed) null else prefs.getString("${id}_url", null)
+            val updated = pointer?.updatedAt ?: prefs.getLong("${id}_updated", file.lastModified())
             val scriptEnabled = prefs.getBoolean("${id}_script_enabled", false)
-            val scriptIdsRaw = prefs.getString("${id}_script_ids", "") ?: ""
-            val scriptIds = if (scriptIdsRaw.isBlank()) emptyList() else scriptIdsRaw.split(",").filter { it.isNotBlank() }
+            val scriptIds = prefs.getString("${id}_script_ids", "").orEmpty().split(",").filter { it.isNotBlank() }
             val autoUpdate = prefs.getBoolean("${id}_auto_update", false)
             val autoUpdateInterval = prefs.getInt("${id}_auto_update_interval", 1440)
-            val uploadBytes = prefs.getLong("${id}_upload_bytes", 0L)
-            val downloadBytes = prefs.getLong("${id}_download_bytes", 0L)
-            val totalBytes = prefs.getLong("${id}_total_bytes", 0L)
-            val expireTimestamp = prefs.getLong("${id}_expire_timestamp", 0L)
-            ProfileItem(
-                id, name, url, file, updated, scriptEnabled, scriptIds, autoUpdate, autoUpdateInterval,
-                uploadBytes, downloadBytes, totalBytes, expireTimestamp
-            )
+            val info = parseSubscriptionUserInfo(pointer?.userInfo)
+            fun quota(field: String, value: Long?): Long = if (managed) value ?: 0L else prefs.getLong("${id}_$field", 0L)
+            ProfileItem(id, name, url, file, updated, scriptEnabled, scriptIds, autoUpdate, autoUpdateInterval,
+                quota("upload_bytes", info?.upload), quota("download_bytes", info?.download), quota("total_bytes", info?.total),
+                quota("expire_timestamp", info?.expire), managed, pointer?.hasRemoteSources ?: (url != null))
         }
 
         val orderRaw = prefs.getString("custom_profile_order", null)
@@ -393,7 +311,13 @@ object ConfigManager {
         invalidateProfilesCache()
     }
 
-    fun deleteProfile(context: Context, id: String) {
+    internal fun hasProfile(context: Context, id: String): Boolean {
+        val directory = getProfilesDir(context)
+        return directory.resolve("$id.yaml").isFile || directory.resolve("$id.subscription").isFile
+    }
+
+    internal fun deleteProfile(context: Context, id: String) {
+        SubscriptionStore(context).delete(id)
         val file = getProfilesDir(context).resolve("$id.yaml")
         if (file.exists()) file.delete()
         val prefs = context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE)

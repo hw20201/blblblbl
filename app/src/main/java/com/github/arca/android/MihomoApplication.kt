@@ -24,7 +24,9 @@ class MihomoApplication : Application() {
             (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager)
                 .runningAppProcesses?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName
         }
-        if (processName == "$packageName:draft_diagnostics") return
+        val inspector = "$packageName:subscription_validation"
+        if (processName == "$packageName:draft_diagnostics" || processName == inspector ||
+            processName?.startsWith("$inspector:") == true) return
         runCatching {
             android.system.Os.setenv("GODEBUG", "cpu.all=off", true)
         }

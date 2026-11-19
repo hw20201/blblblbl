@@ -45,6 +45,12 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".data.subscription.SubscriptionValidationService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":subscription_validation" />
+
         <!-- VPN Service -->
         <service
             android:name=".service.MihomoVpnService"

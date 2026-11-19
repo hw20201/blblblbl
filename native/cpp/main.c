@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
 
 #include "bridge_helper.h"
 #include "libclash.h"
@@ -22,6 +24,45 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeInit(JNIEnv *env, jobject t
     char* _git_version = make_String(GIT_VERSION);
 
     coreInit(_home, _version_name, _git_version, sdk_version);
+}
+
+static void *read_inspection_asset(AAssetManager *manager, const char *name, int *length) {
+    AAsset *asset = AAssetManager_open(manager, name, AASSET_MODE_STREAMING);
+    if (!asset) return NULL;
+    off64_t size = AAsset_getLength64(asset);
+    void *bytes = NULL;
+    if (size > 0 && size <= 32 * 1024 * 1024) {
+        bytes = malloc((size_t)size);
+        for (size_t offset = 0; bytes && offset < (size_t)size;) {
+            int count = AAsset_read(asset, (char *)bytes + offset, (size_t)size - offset);
+            if (count <= 0) {
+                free(bytes);
+                bytes = NULL;
+                break;
+            }
+            offset += (size_t)count;
+        }
+    }
+    AAsset_close(asset);
+    if (bytes) *length = (int)size;
+    return bytes;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_github_kr328_clash_core_bridge_SubscriptionInspection_nativeInspect(JNIEnv *env, jobject thiz,
+                                                                             jstring text, jstring mode, jobject assets) {
+    scoped_string _text = get_string(text);
+    scoped_string _mode = get_string(mode);
+    if (!_text || !_mode || !assets) return NULL;
+    AAssetManager *manager = AAssetManager_fromJava(env, assets);
+    if (!manager) return NULL;
+    int site_size = 0, mmdb_size = 0;
+    void *site = read_inspection_asset(manager, "geosite.dat", &site_size);
+    void *mmdb = read_inspection_asset(manager, "Country.mmdb", &mmdb_size);
+    scoped_string response = site && mmdb ? inspectSubscription(_text, _mode, site, site_size, mmdb, mmdb_size) : NULL;
+    free(site);
+    free(mmdb);
+    return response ? new_string(response) : NULL;
 }
 
 JNIEXPORT void JNICALL

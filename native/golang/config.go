@@ -5,10 +5,29 @@ import "C"
 
 import (
 	"runtime"
+	"runtime/debug"
 	"unsafe"
 
 	"cfa/native/config"
+	"cfa/native/subscription"
+	"github.com/metacubex/mihomo/component/geodata"
+	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
 )
+
+//export inspectSubscription
+func inspectSubscription(text, mode C.c_string, site unsafe.Pointer, siteSize C.int, mmdb unsafe.Pointer, mmdbSize C.int) *C.char {
+	// This entry is called exclusively by the permissionless validation process.
+	log.SetLevel(log.SILENT)
+	debug.SetMemoryLimit(192 * 1024 * 1024)
+	if site == nil || mmdb == nil || siteSize <= 0 || mmdbSize <= 0 || siteSize > 32*1024*1024 || mmdbSize > 32*1024*1024 {
+		return C.CString(subscription.InspectJSON("", "auto"))
+	}
+	// APK-owned bytes need no app directory or source-controlled filesystem path.
+	constant.SetHomeDir("/arca-offline-inspection")
+	geodata.SetInspectionAssets(C.GoBytes(site, siteSize), C.GoBytes(mmdb, mmdbSize))
+	return C.CString(subscription.InspectJSON(C.GoString(text), C.GoString(mode)))
+}
 
 type remoteValidCallback struct {
 	callback unsafe.Pointer

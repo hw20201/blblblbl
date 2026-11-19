@@ -4,9 +4,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 
-import android.content.ClipDescription
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -44,11 +41,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.github.arca.android.data.ConfigManager
 import com.github.arca.android.data.ProfileItem
+import com.github.arca.android.data.subscription.SourceDraft
+import com.github.arca.android.data.subscription.SubscriptionManager
+import com.github.arca.android.data.subscription.SubscriptionAggregator
+import com.github.arca.android.data.subscription.readBounded
+import kotlinx.coroutines.CancellationException
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
-import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import androidx.compose.ui.graphics.Shape
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -99,16 +100,15 @@ fun ProfilesScreen(
     selectedProfileId: String?,
     onBack: (() -> Unit)? = null,
     onSelectProfile: (ProfileItem) -> Unit,
-    onAddSubscription: (name: String, url: String) -> Unit,
     onUpdateProfile: (ProfileItem) -> Unit,
     onDeleteProfile: (ProfileItem) -> Unit,
-    onRefreshSubscription: (ProfileItem) -> Unit = onUpdateProfile,
-    onImportLocalFile: (() -> Unit)? = null,
+    onRefreshSubscription: suspend (ProfileItem) -> Unit = { onUpdateProfile(it) },
     onReorderProfiles: ((List<ProfileItem>) -> Unit)? = null,
     onNavigateToOverride: ((ProfileItem) -> Unit)? = null,
     /** Pull-to-refresh: updates every remote subscription; suspends until all finish. */
     onRefreshAllSubscriptions: (suspend () -> Unit)? = null,
-    embeddedPanel: Boolean = false
+    embeddedPanel: Boolean = false,
+    onProfileImported: (ProfileItem) -> Unit = onUpdateProfile
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -131,25 +131,18 @@ fun ProfilesScreen(
 
     // File Picker for replacing profile
     var targetReplacingProfile by remember { mutableStateOf<ProfileItem?>(null) }
+    var replacement by remember { mutableStateOf<Pair<ProfileItem, SourceDraft>?>(null) }
+    var sourcesProfile by remember { mutableStateOf<ProfileItem?>(null) }
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         val target = targetReplacingProfile
-        if (uri != null && target != null) {
-            runCatching {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val content = stream.bufferedReader().readText()
-                    ConfigManager.saveProfileContent(context, target.id, content)
-                    AppNotice.show("已成功替换配置文件内容")
-                    val updated = target.copy(lastUpdated = System.currentTimeMillis())
-                    onUpdateProfile(updated)
-                    if (target.id == selectedProfileId) {
-                        onSelectProfile(updated)
-                    }
-                }
-            }.onFailure {
-                AppNotice.show("读取本地文件失败: ${it.message}")
-            }
+        if (uri != null && target != null) scope.launch {
+            try {
+                val draft = withContext(Dispatchers.IO) { ConfigManager.readProfileDraft(context, uri) }
+                replacement = target to draft
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { AppNotice.error("文件读取失败，请检查大小和 UTF-8 编码") }
         }
         targetReplacingProfile = null
     }
@@ -388,7 +381,7 @@ fun ProfilesScreen(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = if (item.url != null) "订阅" else "本地",
+                                            text = if (item.canRefresh) "订阅" else if (item.managed) "托管" else "本地",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = LoonTextSecondary
@@ -404,7 +397,7 @@ fun ProfilesScreen(
                                 }
 
                                 // Quick Refresh Button (for remote subscriptions)
-                                if (item.url != null) {
+                                if (item.canRefresh) {
                                     val rotation by rememberInfiniteTransition().animateFloat(
                                         initialValue = 0f,
                                         targetValue = 360f,
@@ -419,8 +412,8 @@ fun ProfilesScreen(
                                                 haptic.impact()
                                                 refreshingProfileId = item.id
                                                 scope.launch {
-                                                    runCatching { onRefreshSubscription(item) }
-                                                    refreshingProfileId = null
+                                                    try { onRefreshSubscription(item) }
+                                                    finally { refreshingProfileId = null }
                                                 }
                                             }
                                         },
@@ -527,11 +520,7 @@ fun ProfilesScreen(
     // 1. Add Subscription Sheet (Cupertino Style)
     // =========================================================================
     if (showAddSheet) {
-        ProfileAddSheet(
-            onDismissRequest = { showAddSheet = false },
-            onImportLocalFile = onImportLocalFile,
-            onAddSubscription = onAddSubscription
-        )
+        SubscriptionImportSheet(onDismiss = { showAddSheet = false }, onImported = onProfileImported)
     }
 
     // =========================================================================
@@ -575,14 +564,19 @@ fun ProfilesScreen(
                         CupertinoDivider()
                     }
 
-                    if (target.url != null) {
+                    if (target.managed) {
+                        CupertinoCell(title = "来源与版本", icon = Icons.Default.Layers, iconBg = IosBlue,
+                            onClick = { actionSheetProfile = null; sourcesProfile = target })
+                        CupertinoDivider()
+                    }
+                    if (target.canRefresh) {
                         CupertinoCell(
                             title = "立即更新订阅",
                             icon = Icons.Default.CloudSync,
                             iconBg = IosGreen,
                             onClick = {
                                 actionSheetProfile = null
-                                onRefreshSubscription(target)
+                                scope.launch { onRefreshSubscription(target) }
                             }
                         )
                         CupertinoDivider()
@@ -665,6 +659,21 @@ fun ProfilesScreen(
                 }
             }
         }
+    }
+
+    sourcesProfile?.let { target ->
+        SubscriptionSourcesSheet(target, onDismiss = { sourcesProfile = null }, onChanged = onUpdateProfile)
+    }
+    replacement?.let { (target, draft) ->
+        SubscriptionImportSheet(
+            onDismiss = { replacement = null }, initial = draft,
+            onImported = { updated -> onUpdateProfile(updated); AppNotice.success("配置已保存，连接时使用新版本") },
+            onCommit = { _, preview, standalone, _ ->
+                val content = if (standalone) preview.sources.single().inspection.complete
+                    else SubscriptionAggregator.generate(preview.sources).yaml
+                SubscriptionManager.replace(context, target, content)
+            }
+        )
     }
 
     // =========================================================================
@@ -832,7 +841,7 @@ fun ProfilesScreen(
 
         LaunchedEffect(target) {
             yamlText = withContext(Dispatchers.IO) {
-                runCatching { target.file.readText() }.getOrDefault("")
+                runCatching { target.file.inputStream().use { readBounded(it) } }.getOrDefault("")
             }
         }
 
@@ -864,23 +873,13 @@ fun ProfilesScreen(
                             .clip(RoundedCornerShape(10.dp))
                             .background(IosBlue)
                             .clickable {
-                                val ok = ConfigManager.saveProfileContent(context, target.id, yamlText)
-                                if (ok) {
-                                    AppNotice.show("配置内容已保存")
-                                    val updated = target.copy(lastUpdated = System.currentTimeMillis())
-                                    onUpdateProfile(updated)
-                                    if (target.id == selectedProfileId) {
-                                        onSelectProfile(updated)
-                                    }
-                                    yamlEditorProfile = null
-                                } else {
-                                    AppNotice.show("保存失败")
-                                }
+                                replacement = target to SourceDraft(target.name, yamlText, remote = false)
+                                yamlEditorProfile = null
                             },
                         color = IosBlue
                     ) {
                         Text(
-                            text = "保存并应用",
+                            text = "检查并保存",
                             color = Color.White,
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold,
@@ -1000,189 +999,5 @@ private fun ProfilesPanelSurface(
         GlassSurface(modifier = modifier, shape = shape) { content() }
     } else {
         Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun ProfileAddSheet(
-    onDismissRequest: () -> Unit,
-    onImportLocalFile: (() -> Unit)?,
-    onAddSubscription: (String, String) -> Unit
-) {
-    val context = LocalContext.current
-    val haptic = rememberIosHaptic()
-    var subName by remember { mutableStateOf("") }
-    var subUrl by remember { mutableStateOf("") }
-    val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
-
-    LaunchedEffect(Unit) {
-        // Smart auto-detect URL from clipboard
-        if (clipboard?.hasPrimaryClip() == true) {
-            val clipData = clipboard.primaryClip
-            if (clipData != null && clipData.itemCount > 0) {
-                val clipText = clipData.getItemAt(0).text?.toString()?.trim() ?: ""
-                if (clipText.startsWith("http://") || clipText.startsWith("https://")) {
-                    subUrl = clipText
-                    if (subName.isBlank()) {
-                        subName = runCatching {
-                            java.net.URI(clipText).host?.substringBefore(".") ?: ""
-                        }.getOrDefault("")
-                    }
-                }
-            }
-        }
-    }
-
-    GlassModalBottomSheet(
-        onDismissRequest = { onDismissRequest() },
-        containerColor = LoonBg,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        dragHandle = { BottomSheetDefaults.DragHandle() }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 16.dp)
-        ) {
-            Text(
-                text = "添加配置",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = LoonTextPrimary,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Text(
-                text = "粘贴订阅链接，或导入本地 YAML 文件",
-                fontSize = 12.5.sp,
-                color = LoonTextSecondary,
-                modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
-            )
-
-            // Quick Import Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Local File Import
-                GlassSurface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(54.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .iosPressable {
-                            onDismissRequest()
-                            onImportLocalFile?.invoke()
-                        }
-                        .testTag("profile-add-local-file"),
-                    shape = RoundedCornerShape(12.dp),
-                    accent = IosBlue,
-                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
-                    surfaceAlphaScale = 0.88f
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.UploadFile, contentDescription = null, tint = IosBlue, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("本地文件导入", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
-                    }
-                }
-
-                // Clipboard Paste
-                GlassSurface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(54.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .iosPressable {
-                            if (clipboard?.hasPrimaryClip() == true) {
-                                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
-                                if (text.isNotBlank()) {
-                                    subUrl = text
-                                    AppNotice.show("已粘贴剪贴板内容")
-                                }
-                            }
-                        }
-                        .testTag("profile-add-clipboard"),
-                    shape = RoundedCornerShape(12.dp),
-                    accent = IosGreen,
-                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
-                    surfaceAlphaScale = 0.88f
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, tint = IosGreen, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("从剪贴板粘贴", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Input fields: light outlined fields on the glass, no dark slabs.
-            val fieldColors = TextFieldDefaults.colors(
-                focusedContainerColor = LoonTextPrimary.copy(alpha = 0.07f),
-                unfocusedContainerColor = LoonTextPrimary.copy(alpha = 0.05f),
-                focusedIndicatorColor = IosBlue.copy(alpha = 0.8f),
-                unfocusedIndicatorColor = Color.Transparent,
-                focusedTextColor = LoonTextPrimary,
-                unfocusedTextColor = LoonTextPrimary,
-                cursorColor = IosBlue
-            )
-            TextField(
-                value = subUrl,
-                onValueChange = { subUrl = it },
-                modifier = Modifier.fillMaxWidth().testTag("profile-add-url"),
-                label = { Text("订阅链接", fontSize = 12.sp) },
-                placeholder = { Text("https://…", fontSize = 13.5.sp, color = LoonTextMuted) },
-                colors = fieldColors,
-                shape = RoundedCornerShape(14.dp),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            TextField(
-                value = subName,
-                onValueChange = { subName = it },
-                modifier = Modifier.fillMaxWidth().testTag("profile-add-name"),
-                label = { Text("备注名称（选填）", fontSize = 12.sp) },
-                colors = fieldColors,
-                shape = RoundedCornerShape(14.dp),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Button(
-                onClick = {
-                    haptic.impact()
-                    onAddSubscription(subName.trim(), subUrl.trim())
-                    onDismissRequest()
-                },
-                enabled = subUrl.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("profile-add-submit"),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = IosBlue,
-                    contentColor = Color.White,
-                    disabledContainerColor = IosBlue.copy(alpha = 0.28f),
-                    disabledContentColor = Color.White.copy(alpha = 0.55f)
-                )
-            ) {
-                Text("下载并保存配置", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.navigationBarsPadding())
-        }
     }
 }
