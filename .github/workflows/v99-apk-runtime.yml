@@ -73,11 +73,11 @@ jobs:
           adb="$ANDROID_HOME/platform-tools/adb"
           adb_dev=("$adb" -P "$ARCA_ADB_PORT" -s "$ARCA_ADB_SERIAL")
           avd=ArcaV99
-          printf 'no\n' | avdmanager create avd --force --name "$avd" --package "$SYSTEM_IMAGE"
+          printf 'no\n' | avdmanager create avd --force --name "$avd" --package "$SYSTEM_IMAGE" --device pixel_5
           "$adb" -P "$ARCA_ADB_PORT" start-server
           "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port "${ARCA_ADB_SERIAL#emulator-}" \
             -accel on -cores 3 -memory 3072 -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu swiftshader_indirect > "$ARCA_SMOKE_ROOT/evidence/emulator.txt" 2>&1 &
+            -no-metrics -gpu swiftshader -feature -Vulkan > "$ARCA_SMOKE_ROOT/evidence/emulator.txt" 2>&1 &
           emu_pid=$!
           finish() {
             rc=$?
@@ -98,9 +98,7 @@ jobs:
             sleep 3
           done
           test "$("${adb_dev[@]}" shell getprop sys.boot_completed | tr -d '\r')" = 1
-          "${adb_dev[@]}" shell wm size 1080x2340
-          "${adb_dev[@]}" shell wm density 440
-          "${adb_dev[@]}" shell 'getprop ro.build.fingerprint; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.hw_timeout_multiplier; getconf PAGE_SIZE' \
+          "${adb_dev[@]}" shell 'getprop ro.build.fingerprint; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.hw_timeout_multiplier; getconf PAGE_SIZE; wm size; wm density' \
             | tee "$ARCA_SMOKE_ROOT/evidence/android.txt"
           "${adb_dev[@]}" shell getprop ro.product.cpu.abilist | tr -d '\r' | grep -Eq '(^|,)arm64-v8a(,|$)'
           python3 scripts/runtime/smoke-v99-apk.py "$ARCA_SMOKE_ROOT/Arca-v99-arm64-v8a.apk" "$APK_SHA256" "$SOURCE_SHA"
