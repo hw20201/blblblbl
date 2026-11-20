@@ -197,7 +197,9 @@ class GlassWallpaperScrollTest {
         assertEquals(PixelCopy.SUCCESS, result.get())
         val pixels = buildList {
             val xEnd = minOf(11, bitmap.width)
-            val yStart = minOf(90, bitmap.height / 4)
+            // Start below the dashboard top-edge blur (PageScrollEdge: header + 28dp),
+            // which only appears once scrolled and would otherwise tint the sampled edge.
+            val yStart = minOf(160, bitmap.height / 4)
             val yEnd = maxOf(yStart, bitmap.height - minOf(100, bitmap.height / 4))
             for (y in yStart until yEnd step 4) for (x in 2 until xEnd step 2) add(bitmap.getPixel(x, y))
         }
