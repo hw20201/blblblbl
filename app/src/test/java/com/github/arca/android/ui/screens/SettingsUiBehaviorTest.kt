@@ -63,15 +63,12 @@ class SettingsUiBehaviorTest {
     }
 
 
-    @Test fun dedicatedGlassSettingsEntryAndTuningScreenExposeLiveOverridesAndReset() {
-        val scroll = ScrollState(0)
-        val editorVisible = androidx.compose.runtime.mutableStateOf(false)
-        val config = androidx.compose.runtime.mutableStateOf(GlassSettings(
+    @Test fun compatibilityGlassEditorExposesLiveOverridesAndReset() {
+        val config = mutableStateOf(GlassSettings(
             glasmioFrosted = com.github.arca.android.ui.glass.GlasmioFrostedTuning(blurRadiusDp = 0f)
         ))
         val hapticsEnabled = mutableStateOf(true)
         var hapticTicks = 0
-        var navigated = false
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
                 CompositionLocalProvider(
@@ -80,42 +77,19 @@ class SettingsUiBehaviorTest {
                     LocalHapticFeedbackPerformer provides { hapticTicks++ }
                 ) {
                     ProvideGlassTheme {
-                        if (editorVisible.value) {
-                            val rootBackdrop = rememberArcaGlasmioBackdrop()
-                            NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop, recordGlasmioBackdropSource = true) {
-                                GlassEffectsScreen(
-                                    settings = config.value,
-                                    onSettingsChanged = { config.value = it },
-                                    onBack = { editorVisible.value = false }
-                                )
-                            }
-                        } else {
-                            val rootBackdrop = rememberArcaGlasmioBackdrop()
-                            NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop) {
-                                SettingsScreen(
-                                    scrollState = scroll, tunStack = TunStack.DEFAULT,
-                                    bootOnStartup = false, allowLan = false, fakeIpEnabled = true,
-                                    onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
-                                    onNavigateToConfigurationCenter = {}, onNavigateToLogs = {},
-                                    onNavigateToGlassEffects = {
-                                        navigated = true
-                                        editorVisible.value = true
-                                    }
-                                )
-                            }
+                        val rootBackdrop = rememberArcaGlasmioBackdrop()
+                        NexusGlassBackground(sharedGlasmioBackdrop = rootBackdrop, recordGlasmioBackdropSource = true) {
+                            GlassEffectsScreen(
+                                settings = config.value,
+                                onSettingsChanged = { config.value = it },
+                                onBack = {}
+                            )
                         }
                     }
                 }
             }
         }
         compose.waitForIdle()
-        compose.onNodeWithTag("settings-glass-effects-entry")
-            .assertExists()
-            .performScrollTo()
-            .assertHasClickAction()
-            .performClick()
-        compose.waitForIdle()
-        compose.runOnIdle { assertTrue("settings row opens dedicated editor", navigated) }
 
         compose.onNodeWithTag("glass-effects-live-lens").assertExists()
         compose.onNodeWithTag("glass-glasmio-no-blur").assertDoesNotExist()
@@ -277,6 +251,14 @@ class SettingsUiBehaviorTest {
         assertEquals("Settings title capsule remains left aligned within the header", 20f, titleLeft, 1f)
         compose.onNodeWithText("设置").assertExists()
         compose.onNodeWithText("网络与核心").assertExists()
+        compose.onNodeWithTag("settings-glass-effects-entry").assertDoesNotExist()
+        val networkHeader = compose.onNodeWithTag("settings-group-header-network-core")
+        networkHeader.performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("settings-tun-stack-entry").assertDoesNotExist()
+        networkHeader.performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("settings-tun-stack-entry").assertExists()
         compose.onNodeWithTag("settings-scroll").performTouchInput { swipeUp() }
         compose.waitForIdle()
         compose.runOnIdle { assertTrue("settings content should scroll continuously", scroll.value > 0) }

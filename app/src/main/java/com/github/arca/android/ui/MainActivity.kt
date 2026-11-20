@@ -1200,9 +1200,13 @@ class MainActivity : ComponentActivity() {
                             onNavigateToConnections = { currentSubScreen = SubScreen.CONNECTIONS },
                             onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                             onNavigateToDns = { currentSubScreen = SubScreen.DNS },
-                            onNavigateToGlassEffects = { currentSubScreen = SubScreen.GLASS_EFFECTS },
                             appearanceDetailContent = {
                                 AppearanceScreen(
+                                    glassSettings = glassSettings,
+                                    onGlassSettingsChanged = { updated ->
+                                        glassSettings = updated.clamped()
+                                        settingsManager.glassSettings = glassSettings
+                                    },
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
                                     wallpaperSettings = GlassDefaults.wallpaper,
@@ -1223,24 +1227,6 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onBack = {},
                                     listState = appearanceListState,
-                                    embeddedPanel = true
-                                )
-                            },
-                            glassEffectsDetailContent = {
-                                GlassEffectsScreen(
-                                    settings = glassSettings,
-                                    onSettingsChanged = { updated ->
-                                        glassSettings = updated.clamped()
-                                        settingsManager.glassSettings = glassSettings
-                                    },
-                                    wallpaperSettings = GlassDefaults.wallpaper,
-                                    onWallpaperSettingsChanged = { value ->
-                                        GlassDefaults.wallpaper = value
-                                        settingsManager.glassWallpaperSettings = value
-                                    },
-                                    wallpaperScene = overlayWallpaperScene,
-                                    onBack = {},
-                                    scrollState = glassEffectsScrollState,
                                     embeddedPanel = true
                                 )
                             },
@@ -1705,6 +1691,11 @@ class MainActivity : ComponentActivity() {
                             )
                             SubScreen.APPEARANCE -> {
                                 AppearanceScreen(
+                                    glassSettings = glassSettings,
+                                    onGlassSettingsChanged = { updated ->
+                                        glassSettings = updated.clamped()
+                                        settingsManager.glassSettings = glassSettings
+                                    },
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
                                     wallpaperSettings = GlassDefaults.wallpaper,

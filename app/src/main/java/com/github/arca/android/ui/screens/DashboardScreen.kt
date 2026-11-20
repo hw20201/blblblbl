@@ -314,9 +314,6 @@ fun DashboardScreen(
     val isDarkTheme = LocalLoonColors.current.isDark
     val quietPageColor = if (isDarkTheme) Color(0xFF101114) else Color(0xFFF2F2F5)
     val pageBackdrop = rememberArcaGlasmioBackdrop(enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-    val topBlurReveal by remember(scrollState) {
-        derivedStateOf { (scrollState.value / 96f).coerceIn(0f, 1f) }
-    }
     // With glass enabled the shared backdrop already provides the colour field, so the screen
     // itself must stay transparent or it would paint over it.
     val topBgBrush = if (GlassDefaults.enabled) {
@@ -374,8 +371,7 @@ fun DashboardScreen(
                     modeControl = {
                         DashboardModeControl(
                             currentMode = currentMode,
-                            onModeSelected = onModeSelected,
-                            lens = titleScene
+                            onModeSelected = onModeSelected
                         )
                     }
                 )
@@ -643,20 +639,14 @@ fun DashboardScreen(
 
             } // Only scrolling content belongs to the recorded scene.
 
-            // Match Settings: only the pinned top edge samples scrolled content.
-            if (pageBackdrop != null && topBlurReveal > 0f) {
-                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                    .height(headerInset + 48.dp)
-                    .graphicsLayer { alpha = topBlurReveal }
-                    .settingsMorphTopBackdropBlur(pageBackdrop)
-                    .testTag("dashboard-top-glasmio-blur"))
-            }
-            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(headerInset + 48.dp)
-                .background(Brush.verticalGradient(
-                    0f to quietPageColor.copy(alpha = 1f - 0.04f * topBlurReveal),
-                    0.64f to quietPageColor.copy(alpha = 1f - 0.10f * topBlurReveal),
-                    1f to Color.Transparent
-                )))
+            MainPageScrollEdge(
+                backdrop = pageBackdrop,
+                headerHeight = headerInset,
+                background = quietPageColor,
+                tag = "dashboard-top-glasmio-blur",
+                modifier = Modifier.align(Alignment.TopCenter),
+                scrollOffsetPx = { scrollState.value }
+            )
             // Header: unboxed title & mode selector, with restrained scroll blur.
             Column(
                 modifier = Modifier

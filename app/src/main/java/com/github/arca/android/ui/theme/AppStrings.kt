@@ -355,6 +355,15 @@ object AppStrings {
     // `{n}`, `{name}`, `{msg}` are placeholders filled in by the call site.
     // ---------------------------------------------------------------------
     private val zhExtra = mapOf(
+        "settings_expand" to "展开", "settings_collapse" to "收起",
+        "settings_state_expanded" to "已展开", "settings_state_collapsed" to "已收起",
+        "settings_theme_group_subtitle" to "选择界面的明暗风格",
+        "settings_wallpaper_group_subtitle" to "主色、配色收藏与缓慢色彩波动",
+        "settings_language_group_subtitle" to "选择应用显示语言",
+        "appearance_motion_title" to "跟手动态",
+        "appearance_motion_subtitle" to "快捷卡片的倾斜幅度、最大倾角与回正速度",
+        "appearance_node_layout_title" to "策略与节点排版",
+        "appearance_node_layout_subtitle" to "节点列数与分组图标",
         "back" to "返回",
         "logs_title" to "核心实时日志",
         "logs_count" to "共 {n} 条记录",
@@ -443,6 +452,15 @@ object AppStrings {
     )
 
     private val enExtra = mapOf(
+        "settings_expand" to "Expand", "settings_collapse" to "Collapse",
+        "settings_state_expanded" to "Expanded", "settings_state_collapsed" to "Collapsed",
+        "settings_theme_group_subtitle" to "Choose the app's light or dark appearance",
+        "settings_wallpaper_group_subtitle" to "Accent colors, saved palettes, and slow color flow",
+        "settings_language_group_subtitle" to "Choose the app display language",
+        "appearance_motion_title" to "Follow Motion",
+        "appearance_motion_subtitle" to "Shortcut card tilt, maximum angle, and return speed",
+        "appearance_node_layout_title" to "Strategy and Node Layout",
+        "appearance_node_layout_subtitle" to "Node columns and group icons",
         "back" to "Back",
         "logs_title" to "Core Live Logs",
         "logs_count" to "{n} records",
@@ -531,6 +549,15 @@ object AppStrings {
     )
 
     private val ruExtra = mapOf(
+        "settings_expand" to "Развернуть", "settings_collapse" to "Свернуть",
+        "settings_state_expanded" to "Развернуто", "settings_state_collapsed" to "Свернуто",
+        "settings_theme_group_subtitle" to "Выберите светлое или темное оформление",
+        "settings_wallpaper_group_subtitle" to "Акцентные цвета, палитры и плавная смена цвета",
+        "settings_language_group_subtitle" to "Выберите язык интерфейса приложения",
+        "appearance_motion_title" to "Динамика отклика",
+        "appearance_motion_subtitle" to "Наклон карточек, максимальный угол и скорость возврата",
+        "appearance_node_layout_title" to "Раскладка стратегий и узлов",
+        "appearance_node_layout_subtitle" to "Количество столбцов и значки групп",
         "back" to "Назад",
         "logs_title" to "Живой журнал ядра",
         "logs_count" to "Записей: {n}",

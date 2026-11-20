@@ -45,7 +45,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.glass.FROSTED_SELECTED_GLASS_TINT
-import com.github.arca.android.ui.glass.PageScrollEdge
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
 import com.github.arca.android.ui.glass.PageTitleGlass
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
@@ -174,6 +175,8 @@ fun ProxiesScreen(
     val titleScene = rememberNavigationLens()
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
+    val pageBackdrop = rememberArcaGlasmioBackdrop(enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+    val activeScrollState = if (isListMode) listModeState else activeTabState
 
     Box(
         modifier = Modifier
@@ -183,6 +186,7 @@ fun ProxiesScreen(
         Box(
             modifier = Modifier.fillMaxSize()
                 .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
+                .recordArcaGlasmioBackdropSource(pageBackdrop)
         ) {
         // =====================================================================
         // MODE 1: TABS VIEW (High-Performance, Butter Smooth)
@@ -386,9 +390,19 @@ fun ProxiesScreen(
         }
     }
 
-        // The quiet header shares the solid page background; its title stays unframed.
+        MainPageScrollEdge(
+            backdrop = pageBackdrop,
+            headerHeight = headerInset,
+            background = colors.bg,
+            tag = "policy-top-glasmio-blur",
+            modifier = Modifier.align(Alignment.TopCenter),
+            scrollOffsetPx = {
+                if (activeScrollState.firstVisibleItemIndex > 0) Int.MAX_VALUE
+                else activeScrollState.firstVisibleItemScrollOffset
+            }
+        )
+        // Titles and actions stay sharp above the shared scroll-edge blur.
         Column(Modifier.onSizeChanged { headerHeightPx = it.height }.fillMaxWidth()
-            .then(if (quietPages) Modifier.background(colors.bg) else Modifier)
             .statusBarsPadding()
             .padding(horizontal = 20.dp).padding(top = 12.dp)
             ) {

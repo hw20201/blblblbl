@@ -9,6 +9,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,21 +33,21 @@ import com.github.arca.android.ui.theme.*
 internal fun DashboardModeControl(
     currentMode: TunnelMode,
     onModeSelected: (TunnelMode) -> Unit,
-    lens: NavigationLensState,
     modifier: Modifier = Modifier
 ) {
     val modes = remember { listOf(TunnelMode.RULE, TunnelMode.GLOBAL, TunnelMode.DIRECT) }
     val selectedIndex = modes.indexOf(currentMode).coerceAtLeast(0)
     val lang = LocalAppLanguage.current
     val optics = remember { NavigationLensOpticsState(selectedIndex.toFloat()) }
+    val trackScene = rememberNavigationLens()
     var dragPosition by remember { mutableStateOf<Float?>(null) }
     var selectionPulse by remember { mutableIntStateOf(0) }
     val chooseWithHaptic = rememberHapticValueAction<TunnelMode> { mode ->
-        selectionPulse++
         onModeSelected(mode)
     }
     val select: (Int) -> Unit = { index ->
         val mode = modes[index.coerceIn(modes.indices)]
+        selectionPulse++
         if (mode != currentMode) chooseWithHaptic(mode)
     }
     val useGlass = GlassDefaults.enabled
@@ -58,6 +59,8 @@ internal fun DashboardModeControl(
     ) {
         Box(
             Modifier.matchParentSize()
+                // The lens samples only its own track, never the page recording this control.
+                .then(if (useGlass) Modifier.recordNavigationScene(trackScene) else Modifier)
                 .background(LoonCard, CircleShape)
                 .border(1.dp, LoonCardBorder, CircleShape)
         )
@@ -65,18 +68,13 @@ internal fun DashboardModeControl(
             NavigationLens(
                 selectedSlot = selectedIndex,
                 slotCount = modes.size,
-                lens = lens,
+                lens = trackScene,
                 modifier = Modifier.matchParentSize(),
                 selectionPulse = selectionPulse,
                 dragPosition = dragPosition,
                 optics = optics,
                 lensTestTag = "mode-selection-lens",
-                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
-                solidFill = if (LocalLoonColors.current.isDark) {
-                    androidx.compose.ui.graphics.Color(0xFF263B55)
-                } else {
-                    androidx.compose.ui.graphics.Color(0xFFE6F0FF)
-                }
+                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
             )
             NavigationLensContent(
                 modifier = Modifier.matchParentSize(),
@@ -115,7 +113,7 @@ private fun ModeLabels(
                         selected = mode == selected,
                         role = Role.RadioButton,
                         interactionSource = null,
-                        indication = null,
+                        indication = ripple(color = LoonBlue),
                         onClick = { onSelected(index) }
                     ),
                 contentAlignment = Alignment.Center

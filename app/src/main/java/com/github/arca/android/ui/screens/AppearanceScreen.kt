@@ -24,6 +24,9 @@ import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassSettings
+import com.github.arca.android.ui.glass.LocalGlassSettings
+import com.github.arca.android.ui.glass.GlassTuningGroup
 import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.GlassWallpaperPicker
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
@@ -44,7 +47,9 @@ fun AppearanceScreen(
     wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
     onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = { GlassDefaults.wallpaper = it },
     listState: LazyListState = rememberLazyListState(),
-    embeddedPanel: Boolean = false
+    embeddedPanel: Boolean = false,
+    glassSettings: GlassSettings = LocalGlassSettings.current,
+    onGlassSettingsChanged: (GlassSettings) -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsManager = remember { SettingsManager(context) }
@@ -92,7 +97,7 @@ fun AppearanceScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item(key = "appearance-theme-mode") {
-                CupertinoGroupedSection(title = AppStrings.get("settings_theme", lang)) {
+                AppearanceSettingsGroup("appearance-theme-group", AppStrings.get("settings_theme", lang), AppStrings.get("settings_theme_group_subtitle", lang)) {
                     themes.forEachIndexed { index, (mode, label) ->
                         CupertinoCell(
                             modifier = Modifier.testTag("appearance-theme-${mode.name.lowercase()}"),
@@ -113,8 +118,10 @@ fun AppearanceScreen(
             }
 
             if (GlassDefaults.enabled) item(key = "appearance-wallpaper") {
-                CupertinoGroupedSection(
+                AppearanceSettingsGroup(
+                    tag = "appearance-wallpaper-group",
                     title = if (lang == "zh") "液态玻璃壁纸" else "Liquid-glass wallpaper",
+                    subtitle = AppStrings.get("settings_wallpaper_group_subtitle", lang),
                     footer = if (lang == "zh") "只保留直纹褶皱；三种主色柔和混合，色彩波动可关闭。" else "Straight fluted ribs only, blend three colors, and turn slow color flow off anytime."
                 ) {
                     Column(Modifier.fillMaxWidth().padding(12.dp).testTag("appearance-wallpaper-controls")) {
@@ -124,7 +131,7 @@ fun AppearanceScreen(
             }
 
             item(key = "appearance-language") {
-                CupertinoGroupedSection(title = AppStrings.get("settings_language", lang)) {
+                AppearanceSettingsGroup("appearance-language-group", AppStrings.get("settings_language", lang), AppStrings.get("settings_language_group_subtitle", lang)) {
                     langs.forEachIndexed { index, (code, label) ->
                         CupertinoCell(
                             modifier = Modifier.testTag("appearance-language-${code.lowercase()}"),
@@ -149,8 +156,20 @@ fun AppearanceScreen(
                 }
             }
 
+            item(key = "appearance-follow-motion") {
+                AppearanceSettingsGroup(
+                    tag = "appearance-motion-group",
+                    title = AppStrings.get("appearance_motion_title", lang),
+                    subtitle = AppStrings.get("appearance_motion_subtitle", lang),
+                    initiallyExpanded = false
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        FollowMotionControls(glassSettings, onGlassSettingsChanged)
+                    }
+                }
+            }
             item(key = "appearance-node-layout") {
-                CupertinoGroupedSection(title = "策略与节点排版") {
+                AppearanceSettingsGroup("appearance-node-layout-group", AppStrings.get("appearance_node_layout_title", lang), AppStrings.get("appearance_node_layout_subtitle", lang)) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
@@ -196,3 +215,32 @@ fun AppearanceScreen(
     }
 
  }
+
+/** The same disclosure surface and motion as the main settings groups. */
+@Composable
+private fun AppearanceSettingsGroup(
+    tag: String,
+    title: String,
+    subtitle: String,
+    footer: String? = null,
+    initiallyExpanded: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    GlassTuningGroup(
+        title = title,
+        subtitle = subtitle,
+        tag = tag,
+        initiallyExpanded = initiallyExpanded,
+        modifier = Modifier.padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 8.dp)
+    ) {
+        content()
+        if (footer != null) Text(
+            footer,
+            color = LoonTextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}

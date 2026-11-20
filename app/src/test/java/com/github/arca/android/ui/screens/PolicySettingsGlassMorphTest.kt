@@ -20,6 +20,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -322,10 +323,9 @@ class PolicySettingsGlassMorphTest {
     }
 
     @Test
-    fun appearanceGlassAndDnsRowsOpenMorphPanelsAndKeepTheirExistingSaveAndBackCallbacks() {
+    fun appearanceMotionAndDnsRowsKeepTheirExistingSaveAndBackCallbacks() {
         val theme = mutableStateOf(ThemeMode.DARK)
         val glass = mutableStateOf(GlassSettings(glasmioFrosted = GlasmioFrostedTuning(blurRadiusDp = 0f)))
-        val glassScrollState = ScrollState(0)
         val dnsListState = LazyListState(0)
         val fakeIp = mutableStateOf(true)
         var fallbackNavigationCount = 0
@@ -337,10 +337,11 @@ class PolicySettingsGlassMorphTest {
                 onTunStackChanged = {}, onBootOnStartupChanged = {}, onAllowLanChanged = {},
                 onNavigateToConfigurationCenter = {}, onNavigateToLogs = {},
                 onNavigateToAppearance = { fallbackNavigationCount++ },
-                onNavigateToGlassEffects = { fallbackNavigationCount++ },
                 onNavigateToDns = { fallbackNavigationCount++ },
                 appearanceDetailContent = {
                     AppearanceScreen(
+                        glassSettings = glass.value,
+                        onGlassSettingsChanged = { glass.value = it },
                         themeMode = theme.value,
                         onThemeModeChanged = { theme.value = it },
                         onLanguageChanged = {},
@@ -349,15 +350,6 @@ class PolicySettingsGlassMorphTest {
                         showGroupIcons = true,
                         onShowGroupIconsChanged = {},
                         onBack = {},
-                        embeddedPanel = true
-                    )
-                },
-                glassEffectsDetailContent = {
-                    GlassEffectsScreen(
-                        settings = glass.value,
-                        onSettingsChanged = { glass.value = it },
-                        onBack = {},
-                        scrollState = glassScrollState,
                         embeddedPanel = true
                     )
                 },
@@ -386,24 +378,15 @@ class PolicySettingsGlassMorphTest {
         compose.waitForIdle()
         compose.onNodeWithTag("settings-detail-page").assertDoesNotExist()
 
-        compose.onNodeWithTag("settings-glass-effects-entry").performScrollTo().performClick()
+        compose.onNodeWithTag("settings-glass-effects-entry").assertDoesNotExist()
+        compose.onNodeWithTag("settings-appearance-entry").performScrollTo().performClick()
         compose.waitForIdle()
-        assertSettingsMorphTopBlur()
-        assertScrollEdgeViewport()
-        compose.onNodeWithTag("glass-effects-scroll").assertExists()
-        compose.onNodeWithTag("glass-effects-pinned-header").assertDoesNotExist()
-        compose.runOnIdle {
-            glassScrollState.dispatchRawDelta((glassScrollState.maxValue - glassScrollState.value).toFloat())
-            assertEquals("the scroll reaches its actual content end", glassScrollState.maxValue, glassScrollState.value)
-        }
+        compose.onNodeWithTag("appearance-scroll-content").performScrollToNode(hasTestTag("appearance-motion-group"))
+        compose.onNodeWithTag("appearance-motion-group").performClick()
         compose.waitForIdle()
-        val glassPanelBottom = compose.onNodeWithTag("settings-detail-page").fetchSemanticsNode().boundsInRoot.bottom
-        val wallpaperCardBottom = compose.onNodeWithTag("glass-wallpaper-group").fetchSemanticsNode().boundsInRoot.bottom
-        val resetButtonBottom = compose.onNodeWithTag("glass-effects-reset-all").fetchSemanticsNode().boundsInRoot.bottom
-        assertTrue("the final glass settings card must be fully scrollable above the morph panel edge", wallpaperCardBottom <= glassPanelBottom - 32f)
-        assertTrue("the reset action must retain a clear bottom tail", resetButtonBottom <= glassPanelBottom - 32f)
-        compose.onNodeWithTag("glass-effects-reset-all").performClick()
-        compose.runOnIdle { assertEquals(GlassSettings.DEFAULT, glass.value) }
+        compose.onNodeWithTag("glass-motion-max-tilt").performScrollTo()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(10f) }
+        compose.runOnIdle { assertEquals(10f, glass.value.motion.maxTiltDegrees, 0f) }
         compose.onNodeWithTag("settings-detail-back").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("settings-detail-page").assertDoesNotExist()

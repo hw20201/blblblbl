@@ -15,6 +15,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.Surface
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.github.arca.android.ui.theme.LoonCard
+import com.github.arca.android.ui.theme.LocalLoonColors
+import com.github.arca.android.ui.components.cardDepth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.ui.theme.LoonTextPrimary
 import com.github.arca.android.ui.theme.LoonTextSecondary
+import com.github.arca.android.ui.theme.LocalAppLanguage
+import com.github.arca.android.ui.theme.AppStrings
 import com.github.arca.android.ui.components.rememberHapticAction
 
 /** A capsule header that morphs downward into a settings panel using the existing glass renderer. */
@@ -41,34 +51,34 @@ internal fun GlassTuningGroup(
     tag: String,
     lens: NavigationLensState? = null,
     initiallyExpanded: Boolean = false,
+    modifier: Modifier = Modifier,
+    headerTag: String = tag,
+    leading: (@Composable () -> Unit)? = null,
+    contentPadding: PaddingValues = PaddingValues(start = 16.dp, end = 16.dp, bottom = 14.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     var expanded by rememberSaveable(tag) { mutableStateOf(initiallyExpanded) }
     val toggleExpanded = rememberHapticAction { expanded = !expanded }
-    NavigationGlassSurface(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("$tag-panel"),
-        lens = lens,
-        shape = RoundedCornerShape(24.dp),
-        cornerRadius = 24.dp,
-        strength = LensStrength.STANDARD,
-        surfaceCategory = GlassSurfaceCategory.LARGE_PANELS,
-        frosted = true
-    ) {
+    val shape = RoundedCornerShape(GlassRadius.card)
+    val language = LocalAppLanguage.current
+    val groupContent: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)
                     .glassTouchRipple()
-                    .clickable { toggleExpanded() }
-                    .testTag(tag)
+                    .clickable(role = Role.Button, onClick = toggleExpanded)
+                    .semantics { stateDescription = AppStrings.get(if (expanded) "settings_state_expanded" else "settings_state_collapsed", language) }
+                    .testTag(headerTag)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                leading?.invoke()
                 Column(Modifier.weight(1f)) {
                     Text(title, color = LoonTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     Text(subtitle, color = LoonTextSecondary, fontSize = 11.sp, lineHeight = 14.sp)
                 }
-                Text(if (expanded) "收起" else "展开", color = LoonTextSecondary, fontSize = 12.sp)
+                Text(AppStrings.get(if (expanded) "settings_collapse" else "settings_expand", language), color = LoonTextSecondary, fontSize = 12.sp)
             }
             AnimatedVisibility(
                 visible = expanded,
@@ -83,10 +93,31 @@ internal fun GlassTuningGroup(
                 )
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(contentPadding),
                     content = content
                 )
             }
         }
+    }
+    // Quiet pages use the same raised card as the main Settings groups. The content and
+    // disclosure animation are shared with legacy glass tuning on older devices.
+    if (GlassDefaults.quietPages || !GlassDefaults.enabled) {
+        Surface(
+            modifier = modifier.fillMaxWidth()
+                .cardDepth(shape, LocalLoonColors.current.isDark, 2.dp).testTag("$tag-panel"),
+            shape = shape,
+            color = LoonCard,
+            content = groupContent
+        )
+    } else {
+        NavigationGlassSurface(
+            modifier = modifier.fillMaxWidth().testTag("$tag-panel"),
+            lens = lens,
+            shape = shape,
+            cornerRadius = GlassRadius.card,
+            strength = LensStrength.STANDARD,
+            surfaceCategory = GlassSurfaceCategory.LARGE_PANELS,
+            frosted = true
+        ) { groupContent() }
     }
 }

@@ -309,18 +309,7 @@ fun GlassEffectsScreen(
                 tag = "glass-motion-group",
                 lens = wallpaperScene
             ) {
-                GlassSlider("倾斜幅度", safe.motion.tiltGain, GlassMotionTuning.MIN_TILT_GAIN..GlassMotionTuning.MAX_TILT_GAIN,
-                    "${"%.2f".format(java.util.Locale.ROOT, safe.motion.tiltGain)}×", "glass-motion-gain") {
-                    onSettingsChanged(safe.copy(motion = safe.motion.copy(tiltGain = it)).clamped())
-                }
-                GlassSlider("最大倾角", safe.motion.maxTiltDegrees, GlassMotionTuning.MIN_MAX_TILT_DEGREES..GlassMotionTuning.MAX_MAX_TILT_DEGREES,
-                    "${"%.1f".format(java.util.Locale.ROOT, safe.motion.maxTiltDegrees)}°", "glass-motion-max-tilt") {
-                    onSettingsChanged(safe.copy(motion = safe.motion.copy(maxTiltDegrees = it)).clamped())
-                }
-                GlassSlider("回正平滑", safe.motion.smoothing, GlassMotionTuning.MIN_SMOOTHING..GlassMotionTuning.MAX_SMOOTHING,
-                    "${"%.2f".format(java.util.Locale.ROOT, safe.motion.smoothing)}", "glass-motion-smoothing") {
-                    onSettingsChanged(safe.copy(motion = safe.motion.copy(smoothing = it)).clamped())
-                }
+                FollowMotionControls(safe, onSettingsChanged)
             }
             GlassTuningGroup(
                 title = "液态玻璃壁纸",
@@ -404,4 +393,22 @@ private fun GlassSlider(label: String, value: Float, range: ClosedFloatingPointR
             )
         }
     }
+}
+
+/** Live motion preferences are independent of the removed glass settings entry. */
+@Composable
+internal fun FollowMotionControls(settings: GlassSettings, onSettingsChanged: (GlassSettings) -> Unit) {
+    val safe = settings.clamped()
+                GlassSlider("倾斜幅度", safe.motion.tiltGain, GlassMotionTuning.MIN_TILT_GAIN..GlassMotionTuning.MAX_TILT_GAIN,
+                    "${"%.2f".format(java.util.Locale.ROOT, safe.motion.tiltGain)}×", "glass-motion-gain") {
+                    onSettingsChanged(safe.copy(motion = safe.motion.copy(tiltGain = it)).clamped())
+                }
+                GlassSlider("最大倾角", safe.motion.maxTiltDegrees, GlassMotionTuning.MIN_MAX_TILT_DEGREES..GlassMotionTuning.MAX_MAX_TILT_DEGREES,
+                    "${"%.1f".format(java.util.Locale.ROOT, safe.motion.maxTiltDegrees)}°", "glass-motion-max-tilt") {
+                    onSettingsChanged(safe.copy(motion = safe.motion.copy(maxTiltDegrees = it)).clamped())
+                }
+                GlassSlider("回正平滑", safe.motion.smoothing, GlassMotionTuning.MIN_SMOOTHING..GlassMotionTuning.MAX_SMOOTHING,
+                    "${"%.2f".format(java.util.Locale.ROOT, safe.motion.smoothing)}", "glass-motion-smoothing") {
+                    onSettingsChanged(safe.copy(motion = safe.motion.copy(smoothing = it)).clamped())
+                }
 }

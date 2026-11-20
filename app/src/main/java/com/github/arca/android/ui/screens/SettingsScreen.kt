@@ -103,10 +103,8 @@ fun SettingsScreen(
     onNavigateToConnections: () -> Unit = {},
     onNavigateToAppearance: () -> Unit = {},
     onNavigateToDns: () -> Unit = {},
-    onNavigateToGlassEffects: () -> Unit = {},
     glassScene: NavigationLensState? = null,
     appearanceDetailContent: (@Composable () -> Unit)? = null,
-    glassEffectsDetailContent: (@Composable () -> Unit)? = null,
     dnsDetailContent: (@Composable () -> Unit)? = null,
     connectionsDetailContent: (@Composable () -> Unit)? = null,
     logsDetailContent: (@Composable () -> Unit)? = null,
@@ -145,9 +143,6 @@ fun SettingsScreen(
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
     val quietPageColor = if (LocalLoonColors.current.isDark) Color(0xFF101114) else Color(0xFFF2F2F5)
     val pageBackdrop = rememberArcaGlasmioBackdrop(enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-    val topBlurReveal by remember(scrollState) {
-        derivedStateOf { (scrollState.value / 96f).coerceIn(0f, 1f) }
-    }
     Box(Modifier.fillMaxSize().background(quietPageColor)) {
         CompositionLocalProvider(
             LocalOverscrollConfiguration provides null,
@@ -405,25 +400,6 @@ fun SettingsScreen(
                         onClick = { openSettingsDetail(SettingsDetailPage.PANEL_SPEED) }
                     )
                 }
-                SeparatedRow(
-                    SeparatedRowPosition.Middle,
-                    modifier = Modifier
-                        .graphicsLayer { alpha = if (hiddenSettingsDetailSource == SettingsDetailPage.GLASS_EFFECTS) 0f else 1f }
-                        .onGloballyPositioned { settingsDetailBounds[SettingsDetailPage.GLASS_EFFECTS] = it.boundsInWindow(); settingsDetailRadius[SettingsDetailPage.GLASS_EFFECTS] = SeparatedRowPosition.Middle }
-                ) {
-                    CupertinoCell(
-                        modifier = Modifier.testTag("settings-glass-effects-entry"),
-                        title = "玻璃效果",
-                        subtitle = "折射、色散、部位覆盖与跟手倾斜",
-                        icon = Icons.Default.AutoAwesome,
-                        iconBg = AppPalette.iconLavender,
-                        showChevron = true,
-                        onClick = {
-                            if (glassEffectsDetailContent != null) openSettingsDetail(SettingsDetailPage.GLASS_EFFECTS)
-                            else onNavigateToGlassEffects()
-                        }
-                    )
-                }
                 SeparatedRow(SeparatedRowPosition.Middle) {
                     CupertinoCell(title = "触感反馈", subtitle = "立即应用于界面交互", trailing = {
                         ArcaGlasmioSwitch(checked = hapticEnabled, onCheckedChange = { enabled ->
@@ -518,28 +494,16 @@ fun SettingsScreen(
             }
         }
         }
-        // The live page is sampled only at this pinned top edge; the title stays plain text.
-        // The blur fades in as rows pass beneath the header and dissolves into the calm page.
-        if (pageBackdrop != null && topBlurReveal > 0f) {
-            Box(
-                Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                    .height(headerInset + 24.dp)
-                    .graphicsLayer { alpha = topBlurReveal }
-                    .settingsMorphTopBackdropBlur(pageBackdrop)
-                    .testTag("settings-top-glasmio-blur")
-            )
-        }
-        Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(headerInset + 24.dp)
-                .background(Brush.verticalGradient(listOf(
-                    quietPageColor.copy(alpha = 1f - 0.32f * topBlurReveal),
-                    quietPageColor.copy(alpha = 0.82f - 0.32f * topBlurReveal),
-                    Color.Transparent
-                )))
+        MainPageScrollEdge(
+            backdrop = pageBackdrop,
+            headerHeight = headerInset,
+            background = quietPageColor,
+            tag = "settings-top-glasmio-blur",
+            modifier = Modifier.align(Alignment.TopCenter),
+            scrollOffsetPx = { scrollState.value }
         )
         Box(
             modifier = Modifier.fillMaxWidth()
-                .background(quietPageColor.copy(alpha = if (topBlurReveal > 0f) 0.96f else 1f))
                 .onSizeChanged { headerHeightPx = it.height }
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
@@ -636,7 +600,6 @@ fun SettingsScreen(
                 onMipsCongestionControllerChanged = onMipsCongestionControllerChanged,
                 onClose = { activeSettingsDetail = null },
                 appearanceContent = appearanceDetailContent,
-                glassEffectsContent = glassEffectsDetailContent,
                 dnsContent = dnsDetailContent,
                 connectionsContent = connectionsDetailContent,
                 logsContent = logsDetailContent,
@@ -693,60 +656,28 @@ private fun SettingsGroup(
     accent: Color,
     content: @Composable SeparatedSectionScope.() -> Unit
 ) {
-    val shape = RoundedCornerShape(GlassRadius.card)
-    val dark = LocalLoonColors.current.isDark
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-            .cardDepth(shape, dark, if (dark) 3.dp else 4.dp)
-            .testTag("settings-group-$tag"),
-        shape = shape,
-        color = LoonCard
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            Box(Modifier.fillMaxWidth().height(64.dp).testTag("settings-group-header-$tag")) {
-                SettingsGroupHeaderContent(title, description, icon, accent, false)
-            }
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                color = LoonSeparator,
-                thickness = 0.5.dp
-            )
-            Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                SeparatedSectionScope.content()
+    com.github.arca.android.ui.glass.GlassTuningGroup(
+        title = title,
+        subtitle = description,
+        tag = "settings-group-$tag",
+        headerTag = "settings-group-header-$tag",
+        initiallyExpanded = true,
+        modifier = Modifier.padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 4.dp),
+        leading = {
+            Box(
+                Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(accent.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
             }
         }
+    ) {
+        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = LoonSeparator, thickness = 0.5.dp)
+        SeparatedSectionScope.content()
     }
 }
 
-@Composable
-private fun SettingsGroupHeaderContent(
-    title: String,
-    description: String,
-    icon: ImageVector,
-    accent: Color,
-    glass: Boolean
-) {
-    Row(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
-                .background(accent.copy(alpha = if (glass) .16f else .12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
-        }
-        Spacer(Modifier.width(11.dp))
-        Column(verticalArrangement = Arrangement.Center) {
-            Text(title, color = if (glass) glassTextPrimary else LoonTextPrimary,
-                fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Spacer(Modifier.height(1.dp))
-            Text(description, color = if (glass) glassTextSecondary else LoonTextSecondary,
-                fontSize = 11.sp, maxLines = 1)
-        }
-    }
-}
 
 /**
  * The row a panel grows from, drawn by the row's own component with the row's own arguments, so its icon, title,
