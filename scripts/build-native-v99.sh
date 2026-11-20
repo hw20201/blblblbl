@@ -31,6 +31,7 @@ PATCHES=(
   "$ROOT/native/patches/mihomo-borrowed-fd.patch"
   "$ROOT/native/patches/mihomo-proxy-only-traffic.patch"
   "$ROOT/native/patches/mihomo-nowhere-v99.patch"
+  "$ROOT/native/patches/mihomo-inspection-assets.patch"
 )
 PATCH_KEY=$(for core_patch in "${PATCHES[@]}"; do sha256sum "$core_patch" | cut -d ' ' -f 1; done | sha256sum | cut -d ' ' -f 1)
 SOURCE="$BUILD/mihomo-$PATCH_KEY"
@@ -73,7 +74,7 @@ printf '#define GIT_VERSION v1.19.33_nw3_5d965f6_native_v99\n#define make_Str(x)
 "$CC" -std=c11 -fPIC -shared -O2 -I"$ROOT/native/cpp" -I"$ROOT/native/golang" -I"$ABI_OUT" \
   -Wl,-z,max-page-size=16384 -Wl,-soname,libbridge.so -Wl,--no-undefined \
   -o "$ABI_OUT/libbridge.so" "$ROOT/native/cpp/main.c" "$ROOT/native/cpp/jni_helper.c" \
-  "$ROOT/native/cpp/bridge_helper.c" "$ROOT/native/golang/trace.c" -L"$ABI_OUT" -lclash -llog
+  "$ROOT/native/cpp/bridge_helper.c" "$ROOT/native/golang/trace.c" -L"$ABI_OUT" -lclash -llog -landroid
 for so in "$ABI_OUT/libclash.so" "$ABI_OUT/libbridge.so"; do
   "$TOOL/llvm-readelf" -lW "$so" | awk '/ LOAD / { found=1; if ($NF != "0x4000") bad=1 } END { exit (!found || bad) }'
 done
