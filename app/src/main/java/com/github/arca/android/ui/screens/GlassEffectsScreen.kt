@@ -353,7 +353,8 @@ fun GlassEffectsScreen(
                 lens = titleScene,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                     .testTag("glass-effects-title-capsule"),
-                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA
+                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA,
+                plainTitle = true
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("glass-settings-back")) {

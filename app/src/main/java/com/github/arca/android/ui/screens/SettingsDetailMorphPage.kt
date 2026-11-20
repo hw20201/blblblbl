@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -329,15 +330,18 @@ private fun SettingsDetailOption(
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(16.dp)
-    GlassSurface(
+    val dark = com.github.arca.android.ui.theme.LocalLoonColors.current.isDark
+    val fill = if (selected) {
+        if (dark) Color(0xFF2B3D58) else Color(0xFFE6F0FF)
+    } else {
+        if (dark) Color(0xFF2A2E37) else Color(0xFFF4F5F8)
+    }
+    Box(
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 72.dp)
             .clip(shape)
+            .background(fill, shape)
             .clickable(onClick = onClick)
-            .testTag(tag),
-        shape = shape,
-        accent = if (selected) IosBlue else null,
-        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
-        surfaceAlphaScale = if (selected) 1f else 0.78f
+            .testTag(tag)
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),

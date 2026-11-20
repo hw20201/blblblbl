@@ -49,7 +49,7 @@ import org.robolectric.annotation.Config
 class ImmersiveGlassSettingsScrollTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun appearanceScrollsContinuouslyBehindPinnedFrostedTitle() {
+    @Test fun appearanceScrollsContinuouslyBehindPinnedPlainTitle() {
         val appearanceListState = LazyListState()
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
@@ -81,7 +81,8 @@ class ImmersiveGlassSettingsScrollTest {
         }
 
         val scroll = compose.onNodeWithTag("appearance-scroll-content")
-        val title = compose.onNodeWithTag("navigation-title-capsule")
+        compose.onNodeWithTag("navigation-title-capsule").assertDoesNotExist()
+        val title = compose.onNodeWithTag("navigation-title-plain")
         val header = compose.onNodeWithTag("appearance-pinned-header")
         scroll.assertExists()
         title.assertIsDisplayed()
@@ -105,7 +106,7 @@ class ImmersiveGlassSettingsScrollTest {
         compose.waitForIdle()
         assertTrue("revealing a later setting should advance the page scroll", appearanceListState.firstVisibleItemIndex > firstVisibleItemBefore)
         val titleAfter = title.fetchSemanticsNode().boundsInRoot
-        assertEquals("the title capsule stays pinned while content scrolls", titleBefore.top, titleAfter.top, 1f)
+        assertEquals("the plain title stays pinned while content scrolls", titleBefore.top, titleAfter.top, 1f)
         title.assertIsDisplayed()
     }
 

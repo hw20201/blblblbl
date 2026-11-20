@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
+import com.github.arca.android.ui.theme.LoonCard
+import com.github.arca.android.ui.theme.LoonTertiaryBg
 
 /**
  * Low-cost self-developed glass for dense, repeated surfaces (proxy node capsules, notices).
@@ -34,7 +36,13 @@ fun LightGlassSurface(
     tokens: GlassTokens = LocalGlassTokens.current,
     content: @Composable BoxScope.() -> Unit
 ) {
-    Box(modifier.clip(shape).lightGlass(shape, tokens, selected, accent), content = content)
+    Box(
+        modifier.clip(shape).then(
+            if (GlassDefaults.quietPages) Modifier.background(if (selected) LoonTertiaryBg else LoonCard, shape)
+            else Modifier.lightGlass(shape, tokens, selected, accent)
+        ),
+        content = content
+    )
 }
 
 /** Neutral frost used for the selected node; matches the strategy-group capsule in the reference UI. */

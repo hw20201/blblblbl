@@ -34,7 +34,6 @@ import kotlinx.coroutines.flow.StateFlow
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
-import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -317,10 +316,10 @@ fun RequestLogsScreen(
                             Spacer(Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = LoonCard.copy(alpha = .72f),
-                                border = androidx.compose.foundation.BorderStroke(0.75.dp, Color.White.copy(alpha = .68f)),
+                                color = LoonCard,
                                 modifier = Modifier
                                     .weight(1f)
+                                    .cardDepth(RoundedCornerShape(14.dp), LocalLoonColors.current.isDark, 2.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .iosPressable {
                                         haptic.selection()
@@ -507,7 +506,7 @@ fun RequestLogsScreen(
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                    solidFill = LoonTertiaryBg
                 ) {
                     Text(
                         text = req.rawMessage,

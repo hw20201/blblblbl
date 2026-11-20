@@ -22,6 +22,8 @@ import com.github.arca.android.ui.theme.LoonThemeColors
  */
 object GlassDefaults {
     var enabled by mutableStateOf(true)
+    // Plain page backgrounds and shallow card depth; floating controls keep their optics.
+    var quietPages by mutableStateOf(true)
     var palette by mutableStateOf(GlassPalettes.CREAM)
     var wallpaper by mutableStateOf(GlassWallpaperSettings())
 }

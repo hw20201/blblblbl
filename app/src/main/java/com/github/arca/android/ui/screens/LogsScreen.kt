@@ -308,54 +308,49 @@ fun LogsScreen(
                 .testTag("logs-console-area")
         ) {
             if (filteredLogs.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.45f)
-                        .align(Alignment.TopCenter)
-                        .testTag("logs-console-empty-state-zone"),
-                    contentAlignment = Alignment.BottomCenter
+                LogsPanelSurface(
+                    modifier = Modifier.fillMaxSize().testTag("logs-console-empty-state-zone"),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(bottom = 10.dp).testTag("logs-console-empty-state"),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(LoonCard),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.testTag("logs-console-empty-state"),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Terminal,
-                                contentDescription = null,
-                                tint = LoonTextSecondary,
-                                modifier = Modifier.size(32.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(LoonTertiaryBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Terminal,
+                                    contentDescription = null,
+                                    tint = LoonTextSecondary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = if (logs.isEmpty()) "暂无核心日志" else "无匹配日志",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = LoonTextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (logs.isEmpty()) "启动 VPN 后，底层核心输出将实时记录在此" else "请尝试调整筛选级别或搜索关键词",
+                                fontSize = 12.5.sp,
+                                color = LoonTextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = if (logs.isEmpty()) "暂无核心日志" else "无匹配日志",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LoonTextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (logs.isEmpty()) "启动 VPN 后，底层核心输出将实时记录在此" else "请尝试调整筛选级别或搜索关键词",
-                            fontSize = 12.5.sp,
-                            color = LoonTextSecondary
-                        )
                     }
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.55f)
-                        .align(Alignment.BottomCenter)
-                        .testTag("logs-console-future-logs-space")
-                )
             } else {
                 LogsPanelSurface(
                     modifier = Modifier.fillMaxSize().testTag("logs-console-log-viewport"),

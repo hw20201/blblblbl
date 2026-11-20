@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -60,6 +61,9 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.glass.GlassRadius
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
+import io.github.neoruaa.glasmio.glass.progressiveBlurBackdrop
 import com.github.arca.android.ui.glass.glassTextPrimary
 import com.github.arca.android.ui.glass.glassTextSecondary
 import com.github.arca.android.ui.theme.*
@@ -136,25 +140,30 @@ fun SettingsScreen(
     }
 
     val titleScene = rememberNavigationLens()
-    // The title capsule keeps its small Arca liquid lens; this display list is separate from
-    // the single shared Glasmio backdrop used by the main material surfaces.
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
-    Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
-        CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+    val quietPageColor = if (LocalLoonColors.current.isDark) Color(0xFF101114) else Color(0xFFF2F2F5)
+    val pageBackdrop = rememberArcaGlasmioBackdrop(enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+    val topBlurReveal by remember(scrollState) {
+        derivedStateOf { (scrollState.value / 96f).coerceIn(0f, 1f) }
+    }
+    Box(Modifier.fillMaxSize().background(quietPageColor)) {
+        CompositionLocalProvider(
+            LocalOverscrollConfiguration provides null,
+            LocalQuietSeparatedRows provides true
+        ) {
         Column(
             modifier = Modifier.fillMaxSize()
                 .then(if (GlassDefaults.enabled)
                     Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
-                .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
+                .background(quietPageColor)
+                .recordArcaGlasmioBackdropSource(pageBackdrop)
                 .testTag("settings-scroll")
                 .bounceOverscroll(allowBottom = false)
                 .verticalScroll(scrollState)
                 .padding(top = headerInset + 20.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()))
         ) {
-            SettingsGroupHeader("network-core", "网络与核心", "连接基础、启动与局域网共享", Icons.Default.VpnKey, IosBlue)
-            Spacer(Modifier.height(8.dp))
-            CupertinoSeparatedSection {
+            SettingsGroup("network-core", "网络与核心", "连接基础、启动与局域网共享", Icons.Default.VpnKey, IosBlue) {
                 SeparatedRow(
                     SeparatedRowPosition.First,
                     modifier = Modifier
@@ -237,9 +246,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            SettingsGroupHeader("network-tun", "网络与 TUN", "隧道协议、地址族与网络参数", Icons.Default.Public, AppPalette.iconTeal)
-            Spacer(Modifier.height(8.dp))
-            CupertinoSeparatedSection {
+            SettingsGroup("network-tun", "网络与 TUN", "隧道协议、地址族与网络参数", Icons.Default.Public, AppPalette.iconTeal) {
                 SeparatedRow(SeparatedRowPosition.First) {
                     CupertinoCell(title = "IPv6", subtitle = AppStrings.get("settings_ipv6_desc", lang), trailing = {
                         ArcaGlasmioSwitch(checked = ipv6Enabled, onCheckedChange = { enabled ->
@@ -288,9 +295,7 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(20.dp))
-            SettingsGroupHeader("routing-services", "分流与服务", "配置资源、DNS 与规则入口", Icons.Default.FolderZip, AppPalette.iconPurple)
-            Spacer(Modifier.height(8.dp))
-            CupertinoSeparatedSection {
+            SettingsGroup("routing-services", "分流与服务", "配置资源、DNS 与规则入口", Icons.Default.FolderZip, AppPalette.iconPurple) {
                 SeparatedRow(
                     SeparatedRowPosition.First,
                     modifier = Modifier
@@ -333,10 +338,8 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Settings controls stay compact; only the five major groups receive a spacious glass header.
-            SettingsGroupHeader("preferences-debug", "个性化与调试", "外观、交互反馈与调试工具", Icons.Default.Palette, AppPalette.iconPink)
-            Spacer(Modifier.height(8.dp))
-            CupertinoSeparatedSection {
+            // Each group shares one raised outline; its controls stay flat and compact.
+            SettingsGroup("preferences-debug", "个性化与调试", "外观、交互反馈与调试工具", Icons.Default.Palette, AppPalette.iconPink) {
                 SeparatedRow(
                     SeparatedRowPosition.First,
                     modifier = Modifier
@@ -484,9 +487,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            SettingsGroupHeader("maintenance-about", "维护与关于", "应用与核心版本、维护操作", Icons.Default.SystemUpdate, AppPalette.iconGreen)
-            Spacer(Modifier.height(8.dp))
-            CupertinoSeparatedSection {
+            SettingsGroup("maintenance-about", "维护与关于", "应用与核心版本、维护操作", Icons.Default.SystemUpdate, AppPalette.iconGreen) {
                 SeparatedRow(SeparatedRowPosition.First) {
                     CupertinoCell(
                         title = "应用版本",
@@ -516,8 +517,28 @@ fun SettingsScreen(
             }
         }
         }
+        // The live page is sampled only at this pinned top edge; the title stays plain text.
+        // The blur fades in as rows pass beneath the header and dissolves into the calm page.
+        if (pageBackdrop != null && topBlurReveal > 0f) {
+            Box(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                    .height(headerInset + 24.dp)
+                    .graphicsLayer { alpha = topBlurReveal }
+                    .settingsMorphTopBackdropBlur(pageBackdrop)
+                    .testTag("settings-top-glasmio-blur")
+            )
+        }
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(headerInset + 24.dp)
+                .background(Brush.verticalGradient(listOf(
+                    quietPageColor.copy(alpha = 1f - 0.32f * topBlurReveal),
+                    quietPageColor.copy(alpha = 0.82f - 0.32f * topBlurReveal),
+                    Color.Transparent
+                )))
+        )
         Box(
             modifier = Modifier.fillMaxWidth()
+                .background(quietPageColor.copy(alpha = if (topBlurReveal > 0f) 0.96f else 1f))
                 .onSizeChanged { headerHeightPx = it.height }
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
@@ -525,11 +546,14 @@ fun SettingsScreen(
                 .zIndex(1f)
                 .testTag("settings-title-header")
         ) {
-            PageTitleGlass(titleScene, modifier = Modifier.testTag("settings-title-capsule"),
-                frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA) {
-                Text(AppStrings.get("settings_title", lang), color = LoonTextPrimary,
-                    fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
-            }
+            Text(
+                AppStrings.get("settings_title", lang),
+                modifier = Modifier.testTag("settings-title-capsule"),
+                color = LoonTextPrimary,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.6).sp
+            )
         }
     }
 
@@ -558,6 +582,7 @@ fun SettingsScreen(
         settingsTopBackdropBlur = false,
         settingsBottomCloseFade = false,
         panelSurfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.LARGE_PANELS,
+        raisedPanel = true,
         sourceCornerRadius = 12.dp,
         sourceCorners = settingsMorphPage?.let { page ->
             settingsDetailRadius[page]?.let { pos ->
@@ -659,22 +684,35 @@ internal fun settingsSectionLens(
 
 
 @Composable
-private fun SettingsGroupHeader(
+private fun SettingsGroup(
     tag: String,
     title: String,
     description: String,
     icon: ImageVector,
-    accent: Color
+    accent: Color,
+    content: @Composable SeparatedSectionScope.() -> Unit
 ) {
-    val modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(62.dp)
-        .testTag("settings-group-header-$tag")
-    if (GlassDefaults.enabled) {
-        GlassSurface(modifier = modifier, shape = RoundedCornerShape(GlassRadius.card), accent = accent) {
-            SettingsGroupHeaderContent(title, description, icon, accent, true)
-        }
-    } else {
-        Surface(modifier = modifier, shape = RoundedCornerShape(GlassRadius.card), color = LoonCard) {
-            SettingsGroupHeaderContent(title, description, icon, accent, false)
+    val shape = RoundedCornerShape(GlassRadius.card)
+    val dark = LocalLoonColors.current.isDark
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            .cardDepth(shape, dark, if (dark) 3.dp else 4.dp)
+            .testTag("settings-group-$tag"),
+        shape = shape,
+        color = LoonCard
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().height(64.dp).testTag("settings-group-header-$tag")) {
+                SettingsGroupHeaderContent(title, description, icon, accent, false)
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                color = LoonSeparator,
+                thickness = 0.5.dp
+            )
+            Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                SeparatedSectionScope.content()
+            }
         }
     }
 }

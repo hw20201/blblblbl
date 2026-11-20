@@ -108,8 +108,8 @@ class ConfigurationCenterScreenTest {
             }
         }
         compose.onNodeWithText("配置中心").assertExists()
-        compose.onAllNodesWithTag("navigation-title-capsule").assertCountEquals(1)
-        compose.onAllNodesWithTag("navigation-title-plain").assertCountEquals(0)
+        compose.onAllNodesWithTag("navigation-title-capsule").assertCountEquals(0)
+        compose.onAllNodesWithTag("navigation-title-plain").assertCountEquals(1)
         val pinnedHeaderBottom = compose.onNodeWithTag("configuration-center-pinned-header")
             .fetchSemanticsNode().boundsInRoot.bottom
         val firstSectionTop = compose.onNodeWithTag("configuration-center-section-header-0")

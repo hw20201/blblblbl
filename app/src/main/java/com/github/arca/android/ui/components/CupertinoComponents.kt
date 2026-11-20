@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextField
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Clear
@@ -140,6 +141,7 @@ fun CupertinoGroupedSection(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val displayHeader = header ?: title
+    val sectionShape = RoundedCornerShape(14.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -156,7 +158,7 @@ fun CupertinoGroupedSection(
             )
         }
 
-        if (GlassDefaults.enabled) {
+        if (GlassDefaults.enabled && !GlassDefaults.quietPages) {
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(GlassRadius.section)
@@ -170,14 +172,9 @@ fun CupertinoGroupedSection(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(
-                        width = 0.5.dp,
-                        color = LoonCardBorder,
-                        shape = RoundedCornerShape(14.dp)
-                    ),
+                    .cardDepth(sectionShape, LocalLoonColors.current.isDark, 2.dp),
                 color = LoonCard,
-                shape = RoundedCornerShape(14.dp)
+                shape = sectionShape
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -225,7 +222,7 @@ fun CupertinoSeparatedSection(
                 modifier = Modifier.padding(start = 14.dp, bottom = 6.dp)
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (LocalQuietSeparatedRows.current) 1.dp else gap)) {
             SeparatedSectionScope.content()
         }
         if (!footer.isNullOrBlank()) {
@@ -247,6 +244,8 @@ val SeparatedInnerRadius = 4.dp
 val SeparatedRowGap = 2.dp
 
 object SeparatedSectionScope
+
+val LocalQuietSeparatedRows = androidx.compose.runtime.staticCompositionLocalOf { GlassDefaults.quietPages }
 
 /** Position of a row inside a separated group, which decides which corners stay large. */
 enum class SeparatedRowPosition { Only, First, Middle, Last }
@@ -273,12 +272,16 @@ fun SeparatedSectionScope.SeparatedRow(
     content: @Composable () -> Unit
 ) {
     val shape = separatedRowShape(position)
-    if (GlassDefaults.enabled) {
-        GlassSurface(modifier = modifier.fillMaxWidth(), shape = shape) {
+    when {
+        LocalQuietSeparatedRows.current -> Surface(
+            modifier = modifier.fillMaxWidth(),
+            color = LoonCard,
+            shape = shape
+        ) { Column(Modifier.fillMaxWidth()) { content() } }
+        GlassDefaults.enabled -> GlassSurface(modifier = modifier.fillMaxWidth(), shape = shape) {
             Column(Modifier.fillMaxWidth()) { content() }
         }
-    } else {
-        Surface(
+        else -> Surface(
             modifier = modifier.fillMaxWidth().clip(shape).border(0.5.dp, LoonCardBorder, shape),
             color = LoonCard,
             shape = shape
@@ -490,7 +493,7 @@ fun CupertinoNavBar(
     frosted: Boolean = false,
     titleFrostedFillAlpha: Float = DEFAULT_PAGE_TITLE_FILL_ALPHA,
     titleLens: NavigationLensState? = null,
-    showTitleCapsule: Boolean = true
+    showTitleCapsule: Boolean = false
 ) {
     val haptic = rememberIosHaptic()
     val effectiveTitleFillAlpha = if (frosted) {
@@ -504,7 +507,7 @@ fun CupertinoNavBar(
     Box(modifier = modifier.fillMaxWidth().testTag("navigation-bar-transparent-row")) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
+                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 48.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -563,7 +566,7 @@ fun CupertinoNavBar(
                             }
                         }
                     }
-                    if (showTitleCapsule) {
+                    if (showTitleCapsule && !GlassDefaults.quietPages) {
                         PageTitleGlass(
                             lens = titleLens ?: rememberNavigationLens(),
                             modifier = Modifier.widthIn(max = 240.dp).testTag("navigation-title-capsule"),
@@ -597,10 +600,13 @@ fun ShortcutSearchField(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(18.dp)
+    val quiet = GlassDefaults.quietPages
+    val container = if (quiet) LoonCard else LoonCard.copy(alpha = .72f)
     TextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(placeholder, color = LoonTextMuted, fontSize = 13.sp) },
+        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, lineHeight = 20.sp),
+        placeholder = { Text(placeholder, color = LoonTextSecondary, fontSize = 13.sp, lineHeight = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingIcon = {
             Icon(Icons.Default.Search, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(18.dp))
         },
@@ -614,8 +620,8 @@ fun ShortcutSearchField(
         singleLine = true,
         shape = shape,
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = LoonCard.copy(alpha = .72f),
-            unfocusedContainerColor = LoonCard.copy(alpha = .72f),
+            focusedContainerColor = container,
+            unfocusedContainerColor = container,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
             focusedTextColor = LoonTextPrimary,
@@ -624,8 +630,9 @@ fun ShortcutSearchField(
         ),
         modifier = modifier
             .fillMaxWidth()
-            .height(50.dp)
-            .border(1.dp, Color.White.copy(alpha = .72f), shape)
+            .heightIn(min = 56.dp)
+            .then(if (quiet) Modifier.cardDepth(shape, LocalLoonColors.current.isDark, 1.dp)
+                else Modifier.border(1.dp, Color.White.copy(alpha = .72f), shape))
             .testTag("shortcut-search-field")
     )
 }

@@ -875,7 +875,8 @@ class MainActivity : ComponentActivity() {
             palette = glassPalette,
             backdropRecorder = if (GlassDefaults.enabled) Modifier.recordNavigationScene(cardScene) else Modifier,
             sharedGlasmioBackdrop = rootGlasmioBackdrop,
-            recordGlasmioBackdropSource = true
+            recordGlasmioBackdropSource = true,
+            quietBackdrop = true
         ) {
         Box(
             modifier = Modifier

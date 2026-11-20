@@ -48,7 +48,6 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
-import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import androidx.compose.ui.graphics.Shape
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -194,54 +193,58 @@ fun ProfilesScreen(
                     .bounceOverscroll(),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 32.dp)
+                ProfilesPanelSurface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(LoonTertiaryBg),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = null,
-                            tint = IosBlue,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "暂无配置文件",
-                        color = LoonTextPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "点击右上角 + 按钮添加远程订阅链接或导入本地 YAML 配置文件",
-                        color = LoonTextSecondary,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(0.5.dp, LoonCardBorder, RoundedCornerShape(12.dp))
-                            .iosPressable { showAddSheet = true },
-                        color = LoonCard
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(LoonTertiaryBg),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = IosBlue, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("添加首个配置", color = IosBlue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = IosBlue,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "暂无配置文件",
+                            color = LoonTextPrimary,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "点击右上角 + 按钮添加远程订阅链接或导入本地 YAML 配置文件",
+                            color = LoonTextSecondary,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(0.5.dp, LoonCardBorder, RoundedCornerShape(12.dp))
+                                .iosPressable { showAddSheet = true },
+                            color = LoonCard
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, tint = IosBlue, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("添加首个配置", color = IosBlue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -469,8 +472,7 @@ fun ProfilesScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(Color.White.copy(alpha = if (LocalLoonColors.current.isDark) .06f else .48f))
-                                        .border(0.75.dp, Color.White.copy(alpha = .72f), RoundedCornerShape(10.dp))
+                                        .background(LoonTertiaryBg)
                                         .padding(10.dp)
                                 ) {
                                     Row(
@@ -1079,9 +1081,7 @@ internal fun ProfileAddSheet(
                         }
                         .testTag("profile-add-local-file"),
                     shape = RoundedCornerShape(12.dp),
-                    accent = IosBlue,
-                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
-                    surfaceAlphaScale = 0.88f
+                    accent = IosBlue
                 ) {
                     Row(
                         modifier = Modifier
@@ -1112,9 +1112,7 @@ internal fun ProfileAddSheet(
                         }
                         .testTag("profile-add-clipboard"),
                     shape = RoundedCornerShape(12.dp),
-                    accent = IosGreen,
-                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
-                    surfaceAlphaScale = 0.88f
+                    accent = IosGreen
                 ) {
                     Row(
                         modifier = Modifier
