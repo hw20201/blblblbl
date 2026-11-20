@@ -47,7 +47,7 @@ func TestPartialDiagnosticsAreRedactedAndLineMapped(t *testing.T) {
 	if len(p.Nodes) != 1 || len(p.Diagnostics) != 2 {
 		t.Fatalf("unexpected counts: %+v", p)
 	}
-	if p.Diagnostics[0].Line != 2 || p.Diagnostics[1].Code != "core_required" {
+	if p.Diagnostics[0].Line != 2 || p.Diagnostics[1].Line != 3 || p.Diagnostics[1].Code != "uri" {
 		t.Fatal(p.Diagnostics)
 	}
 	output, _ := json.Marshal(p.Diagnostics)

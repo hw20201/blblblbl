@@ -53,13 +53,14 @@ jobs:
           cd "$CORE"
           go test -race -p=2 -json ./pkg/nowhere/... -count=1 -timeout=4m > "$GITHUB_WORKSPACE/build_output/core-protocol.jsonl"
           go test -race -p=2 -json ./adapter ./adapter/outbound ./common/convert -run Nowhere -count=1 -timeout=4m > "$GITHUB_WORKSPACE/build_output/core-adapter.jsonl"
-      - name: Native TUN regression and core vet
+      - name: Native TUN and subscription import regression and vet
         run: |
           set -euo pipefail
+          export ARCA_TEST_ASSETS="$PWD/app/src/main/assets"
           MODFILE="$PWD/native/build-v99/native.go.mod"
           cd native/golang
-          go test -race -p=2 -mod=readonly -modfile="$MODFILE" -tags 'with_gvisor cmfa' -json ./tun -count=1 -timeout=4m > "$GITHUB_WORKSPACE/build_output/native-tun.jsonl"
-          go vet -p=2 -mod=readonly -modfile="$MODFILE" -tags 'with_gvisor cmfa' ./tun
+          go test -race -p=2 -mod=readonly -modfile="$MODFILE" -tags 'with_gvisor cmfa' -json ./tun ./subscription -count=1 -timeout=4m > "$GITHUB_WORKSPACE/build_output/native-tun.jsonl"
+          go vet -p=2 -mod=readonly -modfile="$MODFILE" -tags 'with_gvisor cmfa' ./tun ./subscription
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,10 +1,17 @@
 package com.github.arca.android.data.subscription
 
+import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.github.arca.android.data.ConfigManager
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,6 +67,38 @@ class SubscriptionValidatorInstrumentedTest {
             "ss://YWVzLTEyOC1nY206Zml4dHVyZQ@127.0.0.1:443#AfterCancel", "uri") }
         assertTrue(result.usable)
         assertEquals(1, result.nodes.size)
+    }
+
+    @Test
+    fun nowhereShareSurvivesPreviewAggregationAndSave(): Unit = runBlocking {
+        check(context.packageName.endsWith(".coretest.v98"))
+        val uri = "nowhere://11111111111111111111111111111111@test.example.com:12345?net=udp&morph=1#Test%20Nowhere"
+        val inputs = listOf(uri, Base64.encodeToString(uri.toByteArray(), Base64.NO_WRAP))
+        for (input in inputs) {
+            val preview = SubscriptionManager.preview(context, listOf(SourceDraft("Nowhere fixture", input)))
+            assertEquals(0, preview.rejected)
+            assertEquals(1, preview.nodes)
+            val node = preview.sources.single().inspection.nodes.single()
+            assertEquals("nowhere", node.type)
+            assertEquals("Test Nowhere", node.name)
+            assertEquals("test.example.com", node.data["server"]?.jsonPrimitive?.contentOrNull)
+            assertEquals(12345, node.data["port"]?.jsonPrimitive?.int)
+            assertEquals("11111111111111111111111111111111", node.data["password"]?.jsonPrimitive?.contentOrNull)
+            assertEquals("udp", node.data["network"]?.jsonPrimitive?.contentOrNull)
+            assertEquals(true, node.data["morph"]?.jsonPrimitive?.boolean)
+            val profile = SubscriptionManager.create(context, "Nowhere fixture", preview, false, false)
+            try {
+                assertNull(profile.url)
+                assertEquals(1, SubscriptionManager.state(context, profile.id)?.current?.nodeCount)
+                val saved = ConfigManager.getProfiles(context, forceReload = true).single { it.id == profile.id }
+                val checked = SubscriptionValidator.inspect(context, saved.file.readText(), "yaml")
+                assertTrue(checked.completeValid)
+                assertTrue(checked.diagnostics.isEmpty())
+                assertEquals(node.data - "name", checked.nodes.single().data - "name")
+            } finally {
+                SubscriptionManager.delete(context, profile.id)
+            }
+        }
     }
 
     @Test

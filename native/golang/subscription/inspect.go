@@ -224,16 +224,6 @@ func (p *Preview) addNode(mapping map[string]any, index, line int, fromURI bool)
 	if fromURI {
 		normalizeConversion(mapping)
 	}
-	if kind == "nowhere" {
-		// No protocol or share-link schema is invented by task three.
-		if proxy, err := adapter.ParseProxy(mapping); err == nil {
-			_ = proxy.Close()
-			p.Nodes = append(p.Nodes, Node{index, line, name, kind, mapping})
-		} else {
-			p.fail(index, line, "core_required", "需要含 Nowhere 原生适配器的核心；格式转换不能补充协议能力")
-		}
-		return
-	}
 	proxy, err := adapter.ParseProxy(mapping)
 	if err != nil {
 		code := "parameters"
@@ -297,7 +287,12 @@ func decode64(text string) ([]byte, error) {
 func convertLine(line string) ([]map[string]any, string, string) {
 	scheme := strings.ToLower(strings.SplitN(line, "://", 2)[0])
 	if scheme == "nowhere" {
-		return nil, "core_required", "Nowhere 分享格式等待任务一交付；已有原生核心可先导入 YAML"
+		// Keep v99's query handling and defaults identical to native Nowhere imports.
+		converted, err := convert.ConvertsV2Ray([]byte(line))
+		if err != nil || len(converted) != 1 {
+			return nil, "uri", "Nowhere 分享链接格式或参数无效"
+		}
+		return converted, "", ""
 	}
 	allowed := map[string]string{
 		"ss": "plugin,udp-over-tcp,uot", "ssr": "",
