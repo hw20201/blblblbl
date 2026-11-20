@@ -1,0 +1,55 @@
+--- a/component/geodata/geodata.go
++++ b/component/geodata/geodata.go
+@@ -7,11 +7,24 @@
+ 	C "github.com/metacubex/mihomo/constant"
+ )
+ 
++// Bundled bytes are supplied only in Arca's disposable, permissionless inspector.
++// The ordinary VPN process never sets these fields.
++var inspectionGeoSite, inspectionMMDB []byte
++
++func SetInspectionAssets(geoSite, mmdb []byte) {
++	inspectionGeoSite, inspectionMMDB = geoSite, mmdb
++}
++
+ type loader struct {
+ 	LoaderImplementation
+ }
+ 
+ func (l *loader) LoadGeoSite(list string) ([]*router.Domain, error) {
++	if len(inspectionGeoSite) != 0 {
++		implementation, err := getGeoDataLoaderImplementation("standard")
++		if err != nil { return nil, err }
++		return implementation.LoadSiteByBytes(inspectionGeoSite, list)
++	}
+ 	return l.LoadSiteByPath(C.GeositeName, list)
+ }
+ 
+--- a/component/geodata/init.go
++++ b/component/geodata/init.go
+@@ -91,6 +91,13 @@
+ 	geoSiteEnable.Store(true)
+ 	initGeoSiteMutex.Lock()
+ 	defer initGeoSiteMutex.Unlock()
++	if len(inspectionGeoSite) != 0 {
++		if !initGeoSite {
++			if err := Verify(C.GeositeName); err != nil { return err }
++			initGeoSite = true
++		}
++		return nil
++	}
+ 	if _, err := os.Stat(C.Path.GeoSite()); os.IsNotExist(err) {
+ 		log.Infoln("Can't find GeoSite.dat, start download")
+ 		if err := downloadToPath(GeoSiteUrl(), C.Path.GeoSite()); err != nil {
+@@ -118,6 +125,11 @@
+ 	geoIpEnable.Store(true)
+ 	initGeoIPMutex.Lock()
+ 	defer initGeoIPMutex.Unlock()
++	if len(inspectionMMDB) != 0 {
++		if GeodataMode() { return fmt.Errorf("inspection requires bundled MMDB mode") }
++		mmdb.LoadFromBytes(inspectionMMDB)
++		return nil
++	}
+ 	if GeodataMode() {
+ 		if _, err := os.Stat(C.Path.GeoIP()); os.IsNotExist(err) {
+ 			log.Infoln("Can't find GeoIP.dat, start download")

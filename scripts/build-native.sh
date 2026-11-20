@@ -26,7 +26,7 @@ cd "$ROOT/native/golang"
 echo '[native] Preparing pinned Mihomo v1.19.33 source'
 SOURCE=$(go mod download -json github.com/metacubex/mihomo@v1.19.33 | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["Dir"])')
 # Re-prepare only when the exact local patches change. Never alter the shared module cache.
-PATCH_KEY=$(sha256sum "$ROOT/native/patches/mihomo-borrowed-fd.patch" "$ROOT/native/patches/mihomo-proxy-only-traffic.patch" | sha256sum | cut -d ' ' -f 1)
+PATCH_KEY=$(sha256sum "$ROOT/native/patches/mihomo-borrowed-fd.patch" "$ROOT/native/patches/mihomo-proxy-only-traffic.patch" "$ROOT/native/patches/mihomo-inspection-assets.patch" | sha256sum | cut -d ' ' -f 1)
 if [[ ! -f "$BUILD/mihomo/.arca-patch-$PATCH_KEY" ]]; then
   # Check the resolved path before removing an earlier, private prepared tree.
   TARGET=$(realpath -m "$BUILD/mihomo")
@@ -36,6 +36,7 @@ if [[ ! -f "$BUILD/mihomo/.arca-patch-$PATCH_KEY" ]]; then
   chmod -R u+w "$TARGET"
   patch -d "$TARGET" -p1 < "$ROOT/native/patches/mihomo-borrowed-fd.patch"
   patch -d "$TARGET" -p1 < "$ROOT/native/patches/mihomo-proxy-only-traffic.patch"
+  patch -d "$TARGET" -p1 < "$ROOT/native/patches/mihomo-inspection-assets.patch"
   touch "$TARGET/.arca-patch-$PATCH_KEY"
 fi
 cp go.mod "$BUILD/native.go.mod"
@@ -54,7 +55,7 @@ echo '[native] Building checked JNI bridge'
 "$CC" -std=c11 -fPIC -shared -O2 -I"$ROOT/native/cpp" -I"$ROOT/native/golang" -I"$ABI_OUT" \
   -Wl,-z,max-page-size=16384 -Wl,-soname,libbridge.so -Wl,--no-undefined \
   -o "$ABI_OUT/libbridge.so" "$ROOT/native/cpp/main.c" "$ROOT/native/cpp/jni_helper.c" \
-  "$ROOT/native/cpp/bridge_helper.c" "$ROOT/native/golang/trace.c" -L"$ABI_OUT" -lclash -llog
+  "$ROOT/native/cpp/bridge_helper.c" "$ROOT/native/golang/trace.c" -L"$ABI_OUT" -lclash -llog -landroid
 for so in "$ABI_OUT/libclash.so" "$ABI_OUT/libbridge.so"; do
   "$TOOL/llvm-readelf" -lW "$so" | awk '/ LOAD / { found=1; if ($NF != "0x4000") bad=1 } END { exit (!found || bad) }'
 done

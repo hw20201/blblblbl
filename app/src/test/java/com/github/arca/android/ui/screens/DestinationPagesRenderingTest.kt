@@ -57,8 +57,8 @@ class DestinationPagesRenderingTest {
             ProfileItem("local", "Local backup.yaml", null, File("/tmp/backup.yaml"), 1_700_000_000_000L)
         )
         show {
-            ProfilesScreen(profiles, "remote", onBack = {}, onSelectProfile = {}, onAddSubscription = { _, _ -> },
-                onUpdateProfile = {}, onDeleteProfile = {}, onRefreshSubscription = {}, onImportLocalFile = {},
+            ProfilesScreen(profiles, "remote", onBack = {}, onSelectProfile = {},
+                onUpdateProfile = {}, onDeleteProfile = {}, onRefreshSubscription = {},
                 onReorderProfiles = {}, onNavigateToOverride = {})
         }
         compose.onNodeWithText("Tokyo · nodes.yaml").assertIsDisplayed()

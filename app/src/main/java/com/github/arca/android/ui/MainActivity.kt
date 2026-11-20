@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -40,6 +39,9 @@ import com.github.arca.android.core.ClashCore
 import com.github.arca.android.core.SingleFlightRefresh
 import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.data.*
+import com.github.arca.android.data.subscription.SourceDraft
+import com.github.arca.android.data.subscription.SubscriptionManager
+import com.github.arca.android.data.subscription.SubscriptionUpdate
 import com.github.arca.android.service.MihomoVpnService
 import com.github.arca.android.service.VpnState
 import androidx.compose.animation.*
@@ -78,11 +80,14 @@ import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
 import com.github.arca.android.ui.screens.*
 import com.github.arca.android.ui.theme.LoonBg
 import com.github.arca.android.ui.theme.MihomoTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
@@ -791,39 +796,46 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val profileImportLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.GetContent()
-        ) { uri ->
-            if (uri != null) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val res = ConfigManager.importProfileFromUri(this@MainActivity, uri)
-                    withContext(Dispatchers.Main) {
-                        if (res.isSuccess) {
-                            val imported = res.getOrNull()
-                            reloadProfiles()
-                            AppNotice.show("成功导入配置: ${imported?.name}")
-                        } else {
-                            AppNotice.show("导入失败: ${res.exceptionOrNull()?.message}", long = true)
-                        }
-                    }
-                }
+        val profileImported: (ProfileItem) -> Unit = { imported ->
+            reloadProfiles()
+            AppNotice.success("已导入：${imported.name}")
+        }
+        suspend fun refreshProfile(profile: ProfileItem): SubscriptionUpdate? {
+            return try {
+                SubscriptionManager.update(this@MainActivity, profile)
+            } catch (cancelled: TimeoutCancellationException) {
+                if (!currentCoroutineContext().isActive) throw cancelled
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
             }
         }
-
-        val launchProfileImport: () -> Unit = {
-            profileImportLauncher.launch("*/*")
+        val refreshSubscription: suspend (ProfileItem) -> Unit = { profile ->
+            val result = refreshProfile(profile)
+            reloadProfiles()
+            val retained = result?.sources?.count { it.retained } ?: 0
+            when {
+                result == null -> AppNotice.error("更新未完成，当前版本未替换")
+                retained > 0 -> AppNotice.info("$retained 个来源沿用旧版，可在来源管理查看原因")
+                result.changed -> AppNotice.success("订阅已更新")
+                else -> AppNotice.info("订阅内容未变化")
+            }
         }
-        val addProfileSubscription: (String, String) -> Unit = { name, url ->
+        val refreshAllSubscriptions: suspend () -> Unit = {
+            val targets = profiles.filter { it.canRefresh }
+            if (targets.isEmpty()) AppNotice.info("没有可更新的远程订阅") else {
+                val retained = targets.count { profile -> refreshProfile(profile)?.sources?.none { it.retained } != true }
+                reloadProfiles()
+                if (retained == 0) AppNotice.success("已检查 ${targets.size} 个订阅")
+                else AppNotice.info("${targets.size - retained} 个正常，$retained 个保留了旧内容")
+            }
+        }
+        val deleteProfile: (ProfileItem) -> Unit = { profile ->
             lifecycleScope.launch {
-                val isNowhere = NowhereLink.hasScheme(url)
-                val res = ConfigManager.importProfileLink(this@MainActivity, url, name)
-                if (res.isSuccess) {
-                    reloadProfiles()
-                    AppNotice.show(if (isNowhere) "Nowhere 配置已导入" else "订阅添加成功")
-                } else {
-                    val prefix = if (isNowhere) "导入失败" else "下载失败"
-                    AppNotice.show("$prefix: ${res.exceptionOrNull()?.message}", long = true)
-                }
+                SubscriptionManager.delete(this@MainActivity, profile.id)
+                reloadProfiles()
             }
         }
 
@@ -949,8 +961,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onQuickImportLocalFile = launchProfileImport,
-                                onQuickAddSubscription = addProfileSubscription,
+                                onQuickProfileImported = profileImported,
                                 rules = parsedProfile.rules,
                                 fakeIpEnabled = fakeIpEnabled,
                                 onFakeIpEnabledChanged = { enabled ->
@@ -1305,38 +1316,11 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         },
-                                        onAddSubscription = addProfileSubscription,
-                                        onUpdateProfile = { profile ->
-                                            reloadProfiles()
-                                            if (selectedProfileId == profile.id) parseActiveProfile()
-                                        },
-                                        onRefreshSubscription = { profile ->
-                                            if (profile.url != null) lifecycleScope.launch {
-                                                val result = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url)
-                                                if (result.isSuccess) {
-                                                    reloadProfiles()
-                                                    AppNotice.show("订阅更新成功")
-                                                } else AppNotice.show("更新失败: ${result.exceptionOrNull()?.message}", long = true)
-                                            }
-                                        },
-                                        onRefreshAllSubscriptions = {
-                                            val remote = profiles.filter { !it.url.isNullOrBlank() }
-                                            if (remote.isEmpty()) AppNotice.info("没有可更新的远程订阅") else {
-                                                var failed = 0
-                                                for (profile in remote) {
-                                                    val result = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url!!)
-                                                    if (result.isFailure) failed++
-                                                }
-                                                reloadProfiles()
-                                                if (failed == 0) AppNotice.success("已更新 ${remote.size} 个订阅")
-                                                else AppNotice.error("${remote.size - failed} 个成功，$failed 个更新失败")
-                                            }
-                                        },
-                                        onDeleteProfile = { profile ->
-                                            ConfigManager.deleteProfile(this@MainActivity, profile.id)
-                                            reloadProfiles()
-                                        },
-                                        onImportLocalFile = launchProfileImport,
+                                        onProfileImported = profileImported,
+                                        onUpdateProfile = { reloadProfiles() },
+                                        onRefreshSubscription = refreshSubscription,
+                                        onRefreshAllSubscriptions = refreshAllSubscriptions,
+                                        onDeleteProfile = deleteProfile,
                                         onReorderProfiles = { newOrderList ->
                                             profiles = newOrderList
                                             ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
@@ -1567,46 +1551,11 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
-                                    onAddSubscription = addProfileSubscription,
-                                    onUpdateProfile = { profile ->
-                                        reloadProfiles()
-                                        if (selectedProfileId == profile.id) {
-                                            parseActiveProfile()
-                                        }
-                                    },
-                                    onRefreshSubscription = { profile ->
-                                        if (profile.url != null) {
-                                            lifecycleScope.launch {
-                                                val res = ConfigManager.updateSubscription(this@MainActivity, profile.id, profile.name, profile.url)
-                                                if (res.isSuccess) {
-                                                    reloadProfiles()
-                                                    AppNotice.show("订阅更新成功")
-                                                } else {
-                                                    AppNotice.show("更新失败: ${res.exceptionOrNull()?.message}", long = true)
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onRefreshAllSubscriptions = {
-                                        val remote = profiles.filter { !it.url.isNullOrBlank() }
-                                        if (remote.isEmpty()) {
-                                            AppNotice.info("没有可更新的远程订阅")
-                                        } else {
-                                            var failed = 0
-                                            for (p in remote) {
-                                                val res = ConfigManager.updateSubscription(this@MainActivity, p.id, p.name, p.url!!)
-                                                if (res.isFailure) failed++
-                                            }
-                                            reloadProfiles()
-                                            if (failed == 0) AppNotice.success("已更新 ${remote.size} 个订阅")
-                                            else AppNotice.error("${remote.size - failed} 个成功，$failed 个更新失败")
-                                        }
-                                    },
-                                    onDeleteProfile = { profile ->
-                                        ConfigManager.deleteProfile(this@MainActivity, profile.id)
-                                        reloadProfiles()
-                                    },
-                                    onImportLocalFile = launchProfileImport,
+                                    onProfileImported = profileImported,
+                                    onUpdateProfile = { reloadProfiles() },
+                                    onRefreshSubscription = refreshSubscription,
+                                    onRefreshAllSubscriptions = refreshAllSubscriptions,
+                                    onDeleteProfile = deleteProfile,
                                     onReorderProfiles = { newOrderList ->
                                         profiles = newOrderList
                                         ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
@@ -1827,23 +1776,13 @@ class MainActivity : ComponentActivity() {
             // One-click import confirmation (clash://install-config).
             val incomingLink by pendingSubscriptionLink.collectAsState()
             incomingLink?.let { link ->
-                SubscriptionImportDialog(
-                    link = link,
-                    onDismiss = { pendingSubscriptionLink.value = null },
-                    onConfirm = { name ->
-                        pendingSubscriptionLink.value = null
-                        lifecycleScope.launch {
-                            AppNotice.info("正在下载订阅…")
-                            val res = ConfigManager.downloadSubscription(this@MainActivity, link.url, name)
-                            if (res.isSuccess) {
-                                reloadProfiles()
-                                AppNotice.success("订阅已导入：${res.getOrNull()?.name}")
-                            } else {
-                                AppNotice.error("导入失败：${res.exceptionOrNull()?.message}")
-                            }
-                        }
-                    }
-                )
+                key(link) {
+                    SubscriptionImportSheet(
+                        onDismiss = { pendingSubscriptionLink.value = null },
+                        onImported = profileImported,
+                        initial = SourceDraft(link.name, link.url, remote = true)
+                    )
+                }
             }
             val incomingNowhereLink by pendingNowhereLink.collectAsState()
             incomingNowhereLink?.let { link ->

@@ -117,8 +117,7 @@ internal fun DashboardShortcutActionPanel(
     trafficMetrics: StateFlow<TrafficMetrics>,
     coreVersion: String,
     onClose: () -> Unit,
-    onImportLocalFile: (() -> Unit)? = null,
-    onAddSubscription: (String, String) -> Unit = { _, _ -> },
+    onProfileImported: (ProfileItem) -> Unit = {},
     isPanelActive: Boolean = true,
     /** Hoisted so the morph overlay can pin the API entry outside this panel's animated body. */
     ipConfigEntry: IpConfigEntryState = remember { IpConfigEntryState() }
@@ -198,7 +197,7 @@ internal fun DashboardShortcutActionPanel(
                         val isSelected = profile.id == selectedProfileId
                         QuickRow(
                             title = profile.name,
-                            subtitle = if (isSelected) "当前使用" else profile.url ?: "本地配置",
+                            subtitle = if (isSelected) "当前使用" else if (profile.canRefresh) "远程订阅" else "本地配置",
                             trailing = if (isSelected) "当前" else "切换",
                             selected = isSelected,
                             onClick = { if (!isSelected) { onSelectProfile(profile); onClose() } }
@@ -370,10 +369,9 @@ internal fun DashboardShortcutActionPanel(
         }
     }
     if (showAddProfileSheet) {
-        ProfileAddSheet(
-            onDismissRequest = { showAddProfileSheet = false },
-            onImportLocalFile = onImportLocalFile,
-            onAddSubscription = onAddSubscription
+        SubscriptionImportSheet(
+            onDismiss = { showAddProfileSheet = false },
+            onImported = onProfileImported
         )
     }
 }
