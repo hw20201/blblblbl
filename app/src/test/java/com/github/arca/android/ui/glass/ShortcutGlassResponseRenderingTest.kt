@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -41,6 +42,8 @@ import kotlin.math.roundToInt
 class ShortcutGlassResponseRenderingTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @After fun reset() { GlassDefaults.quietPages = true }
+
     @Test fun api35RuntimeShaderEdgeTracksDrawOnlySceneChanges() = verify()
 
     @Test
@@ -48,6 +51,7 @@ class ShortcutGlassResponseRenderingTest {
     fun api31RestrainedRimEdgeTracksDrawOnlySceneChanges() = verify()
 
     private fun verify() {
+        GlassDefaults.quietPages = false // 
         val phase = mutableFloatStateOf(0f)
         var compositions = 0
         var origin = Offset.Zero

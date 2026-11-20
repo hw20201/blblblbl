@@ -60,12 +60,14 @@ class GlassWallpaperScrollTest {
 
     private val oldWallpaper = GlassDefaults.wallpaper
     private val oldGlassEnabled = GlassDefaults.enabled
+    private val oldQuietPages = GlassDefaults.quietPages
 
     @After fun restoreGlassSettings() { restoreGlobals() }
 
     @Test fun dashboardShortcutCardsScrollWithoutMovingTheWallpaper() {
         val scroll = ScrollState(0)
         GlassDefaults.enabled = true
+        GlassDefaults.quietPages = false // quiet pages drop the wallpaper; these tests measure the fixed wallpaper
         GlassDefaults.wallpaper = fixedTestWallpaper
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
@@ -117,6 +119,7 @@ class GlassWallpaperScrollTest {
 
     @Test fun configurationPageScrollsWithoutMovingTheWallpaper() {
         GlassDefaults.enabled = true
+        GlassDefaults.quietPages = false // quiet pages drop the wallpaper; these tests measure the fixed wallpaper
         GlassDefaults.wallpaper = fixedTestWallpaper
         val scroll = ScrollState(0)
         compose.setContent {
@@ -152,6 +155,7 @@ class GlassWallpaperScrollTest {
 
     @Test fun nestedLazyListScrollLeavesWallpaperFixedAndWithoutShowingEdges() {
         GlassDefaults.enabled = true
+        GlassDefaults.quietPages = false // quiet pages drop the wallpaper; these tests measure the fixed wallpaper
         GlassDefaults.wallpaper = fixedTestWallpaper
         lateinit var lazyState: LazyListState
         compose.setContent {
@@ -211,6 +215,7 @@ class GlassWallpaperScrollTest {
     private fun restoreGlobals() {
         GlassDefaults.wallpaper = oldWallpaper
         GlassDefaults.enabled = oldGlassEnabled
+        GlassDefaults.quietPages = oldQuietPages
     }
 
     companion object {

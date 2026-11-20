@@ -47,11 +47,13 @@ class ShortcutLiftRenderingTest {
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        GlassDefaults.quietPages = true
     }
 
     @Test fun liftChangesBevelOnlyAndZeroLiftMatchesOriginalIdle() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        GlassDefaults.quietPages = false // 
         val refraction = mutableStateOf(ShortcutRefraction())
         val explicitRefraction = mutableStateOf(false)
         val centerText = "OPTICAL CENTER"

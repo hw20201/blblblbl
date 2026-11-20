@@ -52,7 +52,7 @@ class UpstreamUiRestorationTest {
             }
         }
         val theme = File(root, "com/github/arca/android/ui/theme/Theme.kt").readText()
-        assertTrue(theme.contains("bg = Color(0xFFF2F2F7)"))
+        assertTrue(theme.contains("bg = Color(0xFFF2F2F5)"))
         assertTrue(theme.contains("card = Color(0xFFFFFFFF)"))
         assertTrue(theme.contains("card = Color(0xFF1C1C1E)"))
     }

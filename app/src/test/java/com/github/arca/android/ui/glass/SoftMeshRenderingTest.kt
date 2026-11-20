@@ -54,6 +54,7 @@ class SoftMeshRenderingTest {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
         GlassDefaults.wallpaper = GlassWallpaperSettings()
+        GlassDefaults.quietPages = true
     }
 
     @Test fun api35ActualDashboardMovesThroughCardsAndAgslDock() = verify(false)
@@ -72,6 +73,7 @@ class SoftMeshRenderingTest {
         var compositions = 0
         var foreground = 0
         GlassDefaults.enabled = true
+        GlassDefaults.quietPages = false // 
         // This suite measures the animated SoftMesh renderer, independent of the app's
         // newly enabled saved Fluted wallpaper.
         GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)

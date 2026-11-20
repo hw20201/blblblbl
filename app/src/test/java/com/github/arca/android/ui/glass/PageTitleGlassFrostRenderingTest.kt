@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.ui.theme.MihomoTheme
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -37,7 +38,10 @@ import org.robolectric.annotation.GraphicsMode
 class PageTitleGlassFrostRenderingTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @After fun reset() { GlassDefaults.quietPages = true }
+
     @Test fun titleFillRemainsTranslucentAgainstTheLightGlassBackdrop() {
+        GlassDefaults.quietPages = false // frosted title path is bypassed on quiet pages by design
         assertTrue("frosted title alpha must let the backdrop show through",
             FROSTED_PAGE_TITLE_FILL_ALPHA in 0.30f..0.50f)
         val backdrop = Color(0xFF253B55)

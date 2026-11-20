@@ -28,6 +28,7 @@ class GlassThemeRegressionTest {
     fun resetGlassGlobals() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        GlassDefaults.quietPages = true
     }
 
     @Test
@@ -105,6 +106,7 @@ class GlassThemeRegressionTest {
     ) {
         GlassDefaults.enabled = enabled
         GlassDefaults.palette = selected
+        GlassDefaults.quietPages = false // palette->loon bridge is bypassed on quiet pages by design
         var observedLoon: LoonThemeColors? = null
         var observedPalette: GlassPaletteSpec? = null
         var observedOnSurface: Color? = null

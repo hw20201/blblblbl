@@ -54,6 +54,7 @@ class ShortcutFrostedDepthRenderingTest {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
         GlassDefaults.wallpaper = GlassWallpaperSettings()
+        GlassDefaults.quietPages = true
     }
 
     @Test fun api35LightDashboard() = verify(false)
@@ -73,6 +74,7 @@ class ShortcutFrostedDepthRenderingTest {
         var compositions = 0
         var foreground = 0
         GlassDefaults.enabled = true
+        GlassDefaults.quietPages = false // 
         // Exercise the SoftMesh-backed shortcut material, not the product's Fluted wallpaper.
         GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = GlassPalettes.CREAM

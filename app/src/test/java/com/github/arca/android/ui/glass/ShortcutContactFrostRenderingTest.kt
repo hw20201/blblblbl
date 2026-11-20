@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.ui.theme.MihomoTheme
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -41,12 +42,16 @@ import java.util.concurrent.atomic.AtomicInteger
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ShortcutContactFrostRenderingTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @After fun reset() { GlassDefaults.quietPages = true }
+
     @Test fun lightContactLiftRelease() = render(false)
     @Test fun darkContactLiftRelease() = render(true)
     @Test @Config(sdk = [31], qualifiers = "w400dp-h800dp-mdpi")
     fun api31NativeFrost() = render(false)
 
     private fun render(dark: Boolean) {
+        GlassDefaults.quietPages = false // 
         val separation = mutableFloatStateOf(0f)
         val frostEnabled = mutableStateOf(true)
         var card = Rect.Zero

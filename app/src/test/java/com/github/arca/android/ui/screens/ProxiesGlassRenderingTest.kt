@@ -45,6 +45,7 @@ class ProxiesGlassRenderingTest {
     @After fun resetGlass() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
+        GlassDefaults.quietPages = true
     }
 
     @Test fun draftPolicyTitleStaysPinnedWhileNodesScrollBehindIt() {
@@ -82,6 +83,7 @@ class ProxiesGlassRenderingTest {
     @Test fun strategyCardsRenderAndRemainSelectableInLightDarkAndEveryColumnCount() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.BLUE
+        GlassDefaults.quietPages = false // glasmio material tags only exist on the glass branch, not quiet cards
         val dark = mutableStateOf(false)
         val columns = mutableIntStateOf(2)
         val mode = mutableStateOf("TABS")
