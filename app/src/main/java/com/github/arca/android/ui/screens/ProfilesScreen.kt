@@ -1022,10 +1022,13 @@ internal fun ProfileAddSheet(
             val clipData = clipboard.primaryClip
             if (clipData != null && clipData.itemCount > 0) {
                 val clipText = clipData.getItemAt(0).text?.toString()?.trim() ?: ""
-                if (clipText.startsWith("http://") || clipText.startsWith("https://")) {
+                if (clipText.startsWith("http://") || clipText.startsWith("https://") ||
+                    com.github.arca.android.data.NowhereLink.hasScheme(clipText)) {
                     subUrl = clipText
                     if (subName.isBlank()) {
-                        subName = runCatching {
+                        subName = if (com.github.arca.android.data.NowhereLink.hasScheme(clipText)) {
+                            com.github.arca.android.data.NowhereLink.parse(clipText)?.name.orEmpty()
+                        } else runCatching {
                             java.net.URI(clipText).host?.substringBefore(".") ?: ""
                         }.getOrDefault("")
                     }
@@ -1145,8 +1148,8 @@ internal fun ProfileAddSheet(
                 value = subUrl,
                 onValueChange = { subUrl = it },
                 modifier = Modifier.fillMaxWidth().testTag("profile-add-url"),
-                label = { Text("订阅链接", fontSize = 12.sp) },
-                placeholder = { Text("https://…", fontSize = 13.5.sp, color = LoonTextMuted) },
+                label = { Text("订阅或 Nowhere 链接", fontSize = 12.sp) },
+                placeholder = { Text("https://… / nowhere://…", fontSize = 13.5.sp, color = LoonTextMuted) },
                 colors = fieldColors,
                 shape = RoundedCornerShape(14.dp),
                 singleLine = true

@@ -158,18 +158,25 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* optional handler */ }
 
-    /** Link handed over by clash://install-config; confirmed by the user before downloading. */
+    /** Link imports are confirmed before downloading or saving a node. */
     private val pendingSubscriptionLink = kotlinx.coroutines.flow.MutableStateFlow<SubscriptionLink?>(null)
+    private val pendingNowhereLink = kotlinx.coroutines.flow.MutableStateFlow<NowhereLink?>(null)
 
     private fun handleIncomingIntent(intent: android.content.Intent?) {
         val data = intent?.data ?: return
         val scheme = data.scheme?.lowercase() ?: return
-        if (scheme !in SubscriptionLinkParser.SCHEMES) return
-        val link = SubscriptionLinkParser.parse(data)
-        if (link == null) {
-            AppNotice.error("无法识别订阅链接：仅支持 HTTPS 订阅地址")
-        } else {
+        if (scheme == NowhereLink.SCHEME) {
+            pendingSubscriptionLink.value = null
+            val link = NowhereLink.parse(data.toString())
+            pendingNowhereLink.value = link
+            if (link == null) AppNotice.error("Nowhere 节点链接无效，请检查密钥、地址和参数")
+        } else if (scheme in SubscriptionLinkParser.SCHEMES) {
+            pendingNowhereLink.value = null
+            val link = SubscriptionLinkParser.parse(data)
             pendingSubscriptionLink.value = link
+            if (link == null) AppNotice.error("无法识别订阅链接：仅支持 HTTPS 订阅地址")
+        } else {
+            return
         }
         // Do not re-trigger the import on rotation / recreation.
         intent?.data = null
@@ -808,12 +815,14 @@ class MainActivity : ComponentActivity() {
         }
         val addProfileSubscription: (String, String) -> Unit = { name, url ->
             lifecycleScope.launch {
-                val res = ConfigManager.downloadSubscription(this@MainActivity, url, name)
+                val isNowhere = NowhereLink.hasScheme(url)
+                val res = ConfigManager.importProfileLink(this@MainActivity, url, name)
                 if (res.isSuccess) {
                     reloadProfiles()
-                    AppNotice.show("订阅添加成功")
+                    AppNotice.show(if (isNowhere) "Nowhere 配置已导入" else "订阅添加成功")
                 } else {
-                    AppNotice.show("下载失败: ${res.exceptionOrNull()?.message}", long = true)
+                    val prefix = if (isNowhere) "导入失败" else "下载失败"
+                    AppNotice.show("$prefix: ${res.exceptionOrNull()?.message}", long = true)
                 }
             }
         }
@@ -1829,6 +1838,25 @@ class MainActivity : ComponentActivity() {
                             if (res.isSuccess) {
                                 reloadProfiles()
                                 AppNotice.success("订阅已导入：${res.getOrNull()?.name}")
+                            } else {
+                                AppNotice.error("导入失败：${res.exceptionOrNull()?.message}")
+                            }
+                        }
+                    }
+                )
+            }
+            val incomingNowhereLink by pendingNowhereLink.collectAsState()
+            incomingNowhereLink?.let { link ->
+                NowhereImportDialog(
+                    link = link,
+                    onDismiss = { pendingNowhereLink.value = null },
+                    onConfirm = { name ->
+                        pendingNowhereLink.value = null
+                        lifecycleScope.launch {
+                            val res = ConfigManager.importNowhereLink(this@MainActivity, link, name)
+                            if (res.isSuccess) {
+                                reloadProfiles()
+                                AppNotice.success("Nowhere 配置已导入")
                             } else {
                                 AppNotice.error("导入失败：${res.exceptionOrNull()?.message}")
                             }
