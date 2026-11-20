@@ -112,9 +112,9 @@ class GlassWallpaperScrollTest {
         val cardTopAfter = compose.onNodeWithTag("shortcut-card-节点").fetchSemanticsNode().boundsInRoot.top
         assertTrue("shortcut cards should move with the scrolling page content", cardTopAfter < cardTopBefore - 100f)
         val wallpaperAfter = captureWallpaperEdge(quiet = true)
-        assertEquals("dashboard hides the saved wallpaper behind the quiet background",
-            listOf(Color(0xFFF2F2F5).toArgb()), wallpaperAfter.distinct())
-        assertEquals("scrolling dashboard content must not change the quiet background", wallpaperBefore, wallpaperAfter)
+        assertTrue("scrolling dashboard content must not change the quiet background",
+            wallpaperBefore.size == wallpaperAfter.size &&
+                wallpaperBefore.zip(wallpaperAfter).all { (before, after) -> matchesQuietPixel(before, after) })
         restoreGlobals()
     }
 
@@ -210,13 +210,19 @@ class GlassWallpaperScrollTest {
         }
         bitmap.recycle()
         if (quiet) {
-            assertEquals("quiet background covers the viewport edge",
-                listOf(Color(0xFFF2F2F5).toArgb()), pixels.distinct())
+            // Native edge compositing can round the quiet background down by one channel step.
+            assertTrue("quiet background covers the viewport edge: ${pixels.distinct()}",
+                pixels.isNotEmpty() && pixels.all { matchesQuietPixel(it, Color(0xFFF2F2F5).toArgb()) })
         } else {
             assertTrue("test wallpaper should be visible in the sampled edge", pixels.distinct().size > 8)
         }
         return pixels
     }
+
+    private fun matchesQuietPixel(actual: Int, expected: Int): Boolean =
+        (actual ushr 24) == (expected ushr 24) && listOf(16, 8, 0).all { shift ->
+            kotlin.math.abs(((actual ushr shift) and 0xFF) - ((expected ushr shift) and 0xFF)) <= 1
+        }
 
     private fun restoreGlobals() {
         GlassDefaults.wallpaper = oldWallpaper
