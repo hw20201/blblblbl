@@ -59,7 +59,6 @@ class PanelMorphSequenceCaptureTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val oldGlassEnabled = GlassDefaults.enabled
     private val oldPalette = GlassDefaults.palette
-    private val oldWallpaper = GlassDefaults.wallpaper
 
     private enum class Page(val directory: String, val source: String, val panel: String, val close: String) {
         DASHBOARD("dashboard", "shortcut-profiles", "shortcut-panel-profiles-sheet", "shortcut-panel-close"),
@@ -70,7 +69,6 @@ class PanelMorphSequenceCaptureTest {
         compose.mainClock.autoAdvance = true
         GlassDefaults.enabled = oldGlassEnabled
         GlassDefaults.palette = oldPalette
-        GlassDefaults.wallpaper = oldWallpaper
     }
 
     @Test fun dashboardFast() = captureNormal(Page.DASHBOARD, PanelAnimationSpeed.FAST)
@@ -83,7 +81,6 @@ class PanelMorphSequenceCaptureTest {
     private fun mount(page: Page, speed: PanelAnimationSpeed) {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
-        GlassDefaults.wallpaper = GlassWallpaperSettings()
         val fixedMeshTime = mutableFloatStateOf(24f)
         val scroll = ScrollState(0)
         val shortcuts = listOf("nodes", "profiles", "rules", "request_logs")

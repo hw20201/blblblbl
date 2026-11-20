@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,8 +26,6 @@ import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassSettings
 import com.github.arca.android.ui.glass.LocalGlassSettings
 import com.github.arca.android.ui.glass.GlassTuningGroup
-import com.github.arca.android.ui.glass.GlassWallpaperSettings
-import com.github.arca.android.ui.glass.GlassWallpaperPicker
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.glass.recordNavigationScene
 import com.github.arca.android.ui.glass.rememberNavigationLens
@@ -44,8 +41,6 @@ fun AppearanceScreen(
     nodeColumns: Int,
     onNodeColumnsChanged: (Int) -> Unit,
     onBack: () -> Unit,
-    wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
-    onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = { GlassDefaults.wallpaper = it },
     listState: LazyListState = rememberLazyListState(),
     embeddedPanel: Boolean = false,
     glassSettings: GlassSettings = LocalGlassSettings.current,
@@ -76,9 +71,7 @@ fun AppearanceScreen(
     ReportSettingsDetailScrollOffset {
         if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else listState.firstVisibleItemScrollOffset
     }
-    // The old verticalScroll eagerly composed every section, including the wallpaper editor's
-    // animated canvas and two 108-cell color grids. Keep the same one-surface scroll behavior, but
-    // compose lower settings only when approached; this bounds entry work to the visible sections.
+    // Compose lower settings only as they approach the viewport.
     Box(
         Modifier.fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
@@ -92,7 +85,7 @@ fun AppearanceScreen(
             state = listState,
             contentPadding = PaddingValues(
                 top = if (embeddedPanel) (edgeInsets?.top ?: 8.dp) else headerInset + 24.dp,
-                bottom = if (embeddedPanel) (edgeInsets?.bottom ?: 24.dp) else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp
+                bottom = if (embeddedPanel) (edgeInsets?.bottom ?: 24.dp) else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -113,19 +106,6 @@ fun AppearanceScreen(
                             onClick = { onThemeModeChanged(mode) }
                         )
                         if (index < themes.lastIndex) CupertinoIndentedDivider(startIndent = 16.dp)
-                    }
-                }
-            }
-
-            if (GlassDefaults.enabled) item(key = "appearance-wallpaper") {
-                AppearanceSettingsGroup(
-                    tag = "appearance-wallpaper-group",
-                    title = if (lang == "zh") "液态玻璃壁纸" else "Liquid-glass wallpaper",
-                    subtitle = AppStrings.get("settings_wallpaper_group_subtitle", lang),
-                    footer = if (lang == "zh") "只保留直纹褶皱；三种主色柔和混合，色彩波动可关闭。" else "Straight fluted ribs only, blend three colors, and turn slow color flow off anytime."
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp).testTag("appearance-wallpaper-controls")) {
-                        GlassWallpaperPicker(wallpaperSettings, onWallpaperSettingsChanged)
                     }
                 }
             }

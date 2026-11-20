@@ -53,7 +53,6 @@ class SoftMeshRenderingTest {
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
-        GlassDefaults.wallpaper = GlassWallpaperSettings()
         GlassDefaults.quietPages = true
     }
 
@@ -75,7 +74,6 @@ class SoftMeshRenderingTest {
         GlassDefaults.enabled = true
         GlassDefaults.quietPages = true
         // Quiet pages must suppress even an explicitly injected animated mesh.
-        GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = palette
         compose.setContent {
             MihomoTheme(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) {

@@ -41,8 +41,7 @@ internal fun ProvideSoftMeshMotion(paused: () -> Boolean = { false }, content: @
         content()
         return
     }
-    val wallpaper = GlassDefaults.wallpaper
-    val time = rememberSoftMeshTime(paused, enabled = backgroundUsesAnimatedTime(wallpaper))
+    val time = rememberSoftMeshTime(paused, enabled = !GlassDefaults.quietPages)
     val seed = remember { kotlin.random.Random.nextLong() }
     CompositionLocalProvider(LocalSoftMeshTime provides time, LocalSoftMeshSeed provides seed, LocalSoftMeshPaused provides paused, content = content)
 }
@@ -68,10 +67,6 @@ internal class MeshActiveTime {
 internal fun meshMayAnimate(resumed: Boolean, focused: Boolean, shown: Boolean, animations: Boolean) =
     resumed && focused && shown && animations
 
-/** The fallback blob field moves even when the fluted wallpaper is disabled. */
-internal fun backgroundUsesAnimatedTime(wallpaper: GlassWallpaperSettings): Boolean =
-    !wallpaper.enabled || wallpaperUsesAnimatedFlow(wallpaper)
-
 /** State is read ONLY in drawBehind. No per-frame recomposition of the foreground or layout. */
 @Composable
 internal fun rememberSoftMeshTime(
@@ -81,8 +76,7 @@ internal fun rememberSoftMeshTime(
     LocalSoftMeshTime.current?.let { return it }
     val elapsed = remember { mutableFloatStateOf(0f) }
     val activeTime = remember { MeshActiveTime() }
-    // Do not install observers or launch a frame loop for a static wallpaper. Keep elapsed
-    // remembered at this call site so a later colour/flow change resumes without a jump.
+    // Quiet pages need no frame loop. Preserve elapsed time when motion is re-enabled.
     if (!enabled || LocalInspectionMode.current) {
         activeTime.pause()
         return elapsed

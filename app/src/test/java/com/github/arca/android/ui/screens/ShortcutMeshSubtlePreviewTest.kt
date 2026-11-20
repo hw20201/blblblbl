@@ -57,7 +57,7 @@ class ShortcutMeshSubtlePreviewTest {
         val theme = if (dark) "dark" else "light"
         val mesh = mutableStateOf(false)
         render(dark, mesh = false, seconds = time, meshOverride = mesh)
-        save(screenshot(), out(), "$theme-old-wallpaper-time24-topdown.png")
+        save(screenshot(), out(), "$theme-old-background-time24-topdown.png")
         compose.runOnIdle { mesh.value = true }; compose.waitForIdle()
         save(screenshot(), out(), "$theme-new-organic-mesh-time24-topdown.png")
     }
@@ -123,7 +123,7 @@ class ShortcutMeshSubtlePreviewTest {
         compose.runOnIdle { assertTrue("blank-origin drag remains scrollable", fixture.scroll.value > initial) }
     }
 
-    @Test fun overlapConstraintCaptureIsWallpaperOnlyNotUnderCardRefraction() {
+    @Test fun overlapConstraintCaptureIsBackgroundOnlyNotUnderCardRefraction() {
         val pose = mutableStateOf<ShortcutTouchPreview?>(null)
         val shortcuts = mutableStateOf(listOf("profiles", "nodes", "rules", "request_logs", "ip_test", "core_logs", "plugins", "network_share", "vpn"))
         render(dark = false, mesh = true, preview = pose, shortcutsOverride = shortcuts)
@@ -146,7 +146,7 @@ class ShortcutMeshSubtlePreviewTest {
         }
         val initial = screenshot()
         val visibleIcon = blueIconPixels(probe(initial))
-        assertTrue("the probe must really contain the lower Profiles icon, not just wallpaper", visibleIcon > 25)
+        assertTrue("the probe must really contain the lower Profiles icon, not just background", visibleIcon > 25)
         save(initial, out(), "overlap-before-neighbor-sampling-topdown.png")
         // Align the upper Nodes card over Profiles regardless of which column each occupies.
         // Scale=1 gives zero frost: blur is not the cause. This forced overlap is test-only.
@@ -159,7 +159,7 @@ class ShortcutMeshSubtlePreviewTest {
             nodes.left + overlapDx < profiles.right && nodes.right + overlapDx > profiles.left)
         assertTrue("neighbor tile text region lies within dashboard", profiles.center.y > 0f && profiles.center.y < image.height)
         assertTrue("captured rendered frame has visible content", hasVariance(image))
-        save(image, out(), "overlap-forced-minus80dp-wallpaper-only-topdown.png")
+        save(image, out(), "overlap-forced-minus80dp-background-only-topdown.png")
         compose.runOnIdle { shortcuts.value = shortcuts.value.filterNot { it == "profiles" } }
         compose.waitForIdle()
         // Removing the lower tile can reflow Nodes into the other column. Keep its upper
@@ -181,7 +181,7 @@ class ShortcutMeshSubtlePreviewTest {
         File(out(), "overlap-source-limit-metrics.txt").writeText(
             "Real Dashboard, zero-frost forced pose. Lower icon blue pixels before=$visibleIcon; " +
                 "under upper card=${blueIconPixels(withLowerCard)}. Removing lower card changes upper interior " +
-                "by mean RGB-sum=$difference. Current source is wallpaper-only, not sibling-card refraction.\n")
+                "by mean RGB-sum=$difference. Current source is background-only, not sibling-card refraction.\n")
         // This documents an existing limitation, NOT a passing assertion of true stacked-glass optics.
         assertTrue("upper glass ignores lower-card pixels even with zero frost: $difference", difference <= .5)
         save(without, out(), "overlap-lower-card-removed-same-upper-world-position-topdown.png")

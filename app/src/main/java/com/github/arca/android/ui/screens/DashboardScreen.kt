@@ -357,7 +357,7 @@ fun DashboardScreen(
                     .padding(horizontal = 20.dp)
                     .padding(
                         top = headerInset + 12.dp,
-                        bottom = dashboardScrollContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                        bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                     )
             ) {
 

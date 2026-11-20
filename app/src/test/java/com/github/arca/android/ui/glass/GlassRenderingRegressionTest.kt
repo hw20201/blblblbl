@@ -7,17 +7,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
@@ -109,17 +105,4 @@ class GlassRenderingRegressionTest {
         return output
     }
 
-    @Test
-    fun colorGridExposesSelectionAndUpdatesItOnClick() {
-        compose.setContent {
-            val selected = remember { mutableStateOf(GlassPalettes.CREAM) }
-            MihomoTheme(ThemeMode.LIGHT) {
-                ProvideGlassTheme {
-                    GlassPalettePicker(selected.value, { selected.value = it })
-                }
-            }
-        }
-        val key = GlassPalettes.keyForColor(ThemeColorGrid[20])
-        compose.onNodeWithContentDescription("#${key.substringAfter(':')}").performClick().assertIsSelected()
-    }
 }

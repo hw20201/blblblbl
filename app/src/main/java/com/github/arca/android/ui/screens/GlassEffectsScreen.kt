@@ -37,7 +37,6 @@ import com.github.arca.android.ui.glass.GlassTuningGroup
 import com.github.arca.android.ui.glass.GlassMotionTuning
 import com.github.arca.android.ui.glass.GlassOptics
 import com.github.arca.android.ui.glass.GlassSettings
-import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LensStrength
 import com.github.arca.android.ui.glass.NavigationGlassSurface
@@ -62,8 +61,6 @@ import androidx.compose.ui.geometry.Offset
 fun GlassEffectsScreen(
     settings: GlassSettings,
     onSettingsChanged: (GlassSettings) -> Unit,
-    wallpaperSettings: GlassWallpaperSettings = GlassDefaults.wallpaper,
-    onWallpaperSettingsChanged: (GlassWallpaperSettings) -> Unit = {},
     wallpaperScene: NavigationLensState? = null,
     onBack: () -> Unit,
     scrollState: ScrollState = rememberScrollState(),
@@ -310,18 +307,6 @@ fun GlassEffectsScreen(
                 lens = wallpaperScene
             ) {
                 FollowMotionControls(safe, onSettingsChanged)
-            }
-            GlassTuningGroup(
-                title = "液态玻璃壁纸",
-                subtitle = "壁纸褶皱角度；调整时会自动启用壁纸效果。",
-                tag = "glass-wallpaper-group",
-                lens = wallpaperScene
-            ) {
-                GlassSlider("褶皱角度", wallpaperSettings.ribAngleDegrees,
-                    GlassWallpaperSettings.MIN_RIB_ANGLE_DEGREES..GlassWallpaperSettings.MAX_RIB_ANGLE_DEGREES,
-                    "${"%.1f".format(java.util.Locale.ROOT, wallpaperSettings.ribAngleDegrees)}°", "glass-wallpaper-rib-angle") {
-                    onWallpaperSettingsChanged(wallpaperSettings.copy(enabled = true, ribAngleDegrees = it))
-                }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { onSettingsChanged(GlassSettings.DEFAULT) }, modifier = Modifier.testTag("glass-effects-reset-all")) {

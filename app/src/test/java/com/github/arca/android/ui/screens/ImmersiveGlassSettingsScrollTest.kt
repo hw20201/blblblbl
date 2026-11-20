@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +54,9 @@ class ImmersiveGlassSettingsScrollTest {
 
     @Test fun appearanceScrollsContinuouslyBehindPinnedPlainTitle() {
         val appearanceListState = LazyListState()
+        var navigationBottomPx = 0
         compose.setContent {
+            navigationBottomPx = WindowInsets.navigationBars.getBottom(LocalDensity.current)
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
                 CompositionLocalProvider(LocalAppLanguage provides "zh") {
                     ProvideGlassTheme {
@@ -81,6 +86,11 @@ class ImmersiveGlassSettingsScrollTest {
         }
 
         val scroll = compose.onNodeWithTag("appearance-scroll-content")
+        assertEquals(
+            "Standalone Appearance hides the dock and only needs system navigation plus its detail tail",
+            navigationBottomPx + with(compose.density) { 24.dp.roundToPx() },
+            appearanceListState.layoutInfo.afterContentPadding
+        )
         compose.onNodeWithTag("navigation-title-capsule").assertDoesNotExist()
         val title = compose.onNodeWithTag("navigation-title-plain")
         val header = compose.onNodeWithTag("appearance-pinned-header")

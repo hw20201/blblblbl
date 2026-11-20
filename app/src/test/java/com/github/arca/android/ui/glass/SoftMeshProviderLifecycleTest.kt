@@ -29,18 +29,18 @@ class SoftMeshProviderLifecycleTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private val originalEnabled = GlassDefaults.enabled
-    private val originalWallpaper = GlassDefaults.wallpaper
+    private val originalQuietPages = GlassDefaults.quietPages
 
     @After fun restoreDefaults() {
         GlassDefaults.enabled = originalEnabled
-        GlassDefaults.wallpaper = originalWallpaper
+        GlassDefaults.quietPages = originalQuietPages
     }
 
-    @Test fun staticProviderStartsOnColorChangeFreezesAfterFlowOffAndResumesWithoutJump() {
+    @Test fun quietProviderStartsWhenMeshIsShownFreezesWhenHiddenAndResumesWithoutJump() {
         compose.mainClock.autoAdvance = false
         GlassDefaults.enabled = true
-        // Equal colours are static even though the user's flow preference remains enabled.
-        GlassDefaults.wallpaper = GlassWallpaperSettings()
+        // Quiet pages do not run the mesh timeline.
+        GlassDefaults.quietPages = true
         lateinit var time: State<Float>
         lateinit var view: View
         compose.setContent {
@@ -73,25 +73,22 @@ class SoftMeshProviderLifecycleTest {
         frames(8)
         assertEquals("a focused static provider must not advance its clock", 0f, time.value, 0f)
 
-        val dynamic = GlassWallpaperSettings(
-            colorA = 0xFF15263A.toInt(), colorB = 0xFFB68A62.toInt(), colorC = 0xFF7DB5C8.toInt()
-        )
-        compose.runOnIdle { GlassDefaults.wallpaper = dynamic }
+        compose.runOnIdle { GlassDefaults.quietPages = false }
         frames(8)
-        assertSame("palette edits retain the provider's timeline state", providerTime, time)
-        assertTrue("changing to distinct colours starts the actual provider clock", time.value > 0f)
+        assertSame("quiet-page changes retain the provider's timeline state", providerTime, time)
+        assertTrue("showing the mesh starts the actual provider clock", time.value > 0f)
 
-        compose.runOnIdle { GlassDefaults.wallpaper = dynamic.copy(colorFlow = false) }
+        compose.runOnIdle { GlassDefaults.quietPages = true }
         // Let recomposition and effect cancellation settle before establishing the pause baseline.
         frames(2)
         val frozen = time.value
         frames(12)
-        assertEquals("flow-off remains frozen after the transition settles", frozen, time.value, .0001f)
+        assertEquals("quiet mode remains frozen after the transition settles", frozen, time.value, .0001f)
 
-        compose.runOnIdle { GlassDefaults.wallpaper = dynamic }
+        compose.runOnIdle { GlassDefaults.quietPages = false }
         frames(4)
-        assertSame("re-enabling flow retains accumulated time", providerTime, time)
-        assertTrue("dynamic wallpaper resumes the actual clock", time.value > frozen)
+        assertSame("showing the mesh again retains accumulated time", providerTime, time)
+        assertTrue("visible mesh resumes the actual clock", time.value > frozen)
         assertTrue("the disabled interval is excluded rather than accumulated", time.value - frozen < .5f)
     }
 }

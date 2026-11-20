@@ -1,12 +1,8 @@
 package com.github.arca.android.data
 
 import android.content.Context
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,31 +19,48 @@ class SettingsManagerPaletteTest {
         prefs.edit().clear().commit()
     }
 
-    @Test fun openingSettingsRetiresLegacyThemePalettesAndUsesCustomWallpaper() {
+    @Test fun openingSettingsRetiresLegacyThemePalettePreferences() {
         prefs.edit()
             .putString("glass_palette", "custom:12AB34")
             .putString("glass_saved_palettes_v1", "[]")
-            .putBoolean("glass_wallpaper_enabled", false)
+            .commit()
+
+        SettingsManager(context)
+
+        assertFalse(prefs.contains("glass_palette"))
+        assertFalse(prefs.contains("glass_saved_palettes_v1"))
+    }
+
+    @Test fun openingSettingsClearsAllLegacyWallpaperPreferencesAndPreservesActiveSettings() {
+        val legacyKeys = listOf(
+            "glass_wallpaper_enabled", "glass_wallpaper_mode", "glass_wallpaper_color_a",
+            "glass_wallpaper_color_b", "glass_wallpaper_color_c", "glass_wallpaper_color_flow",
+            "glass_wallpaper_rib_angle", "glass_wallpaper_saved_palettes_v1",
+            "glass_wallpaper_unknown_retired_option"
+        )
+        prefs.edit()
+            .putBoolean(legacyKeys[0], true)
+            .putString(legacyKeys[1], "FLUTED")
+            .putInt(legacyKeys[2], 0xFF15263A.toInt())
+            .putInt(legacyKeys[3], 0xFFB68A62.toInt())
+            .putInt(legacyKeys[4], 0xFF7DB5C8.toInt())
+            .putBoolean(legacyKeys[5], false)
+            .putFloat(legacyKeys[6], 7f)
+            .putString(legacyKeys[7], "[]")
+            .putString(legacyKeys[8], "obsolete")
+            .putString("theme_mode", ThemeMode.DARK.name)
+            .putString("app_language", "en")
+            .putString("glass_settings_v1", "{}")
+            .putString("selected_profile_id", "active-profile")
             .commit()
 
         val settings = SettingsManager(context)
-        assertFalse(prefs.contains("glass_palette"))
-        assertFalse(prefs.contains("glass_saved_palettes_v1"))
-        assertFalse(prefs.contains("glass_wallpaper_enabled"))
-        assertTrue(settings.glassWallpaperSettings.enabled)
-    }
 
-    @Test fun customWallpaperPalettesCanBeSavedReloadedAppliedAndDeleted() {
-        val manager = SettingsManager(context)
-        val custom = GlassWallpaperSettings(
-            colorA = Color.Red.toArgb(), colorB = Color.Green.toArgb(), colorC = Color.Blue.toArgb(), colorFlow = false
-        )
-        val saved = manager.saveWallpaperPalette("evening", custom)
-        assertEquals("evening", saved.single().name)
-        assertEquals(saved, SettingsManager(context).savedWallpaperPalettes)
-        assertEquals(custom.colorB, saved.single().applyTo(GlassWallpaperSettings()).colorB)
-        assertFalse(saved.single().applyTo(GlassWallpaperSettings()).colorFlow)
-        assertTrue(manager.deleteWallpaperPalette("evening").isEmpty())
-        assertTrue(SettingsManager(context).savedWallpaperPalettes.isEmpty())
+        legacyKeys.forEach { key -> assertFalse("retired key remains: $key", prefs.contains(key)) }
+        assertEquals(ThemeMode.DARK, settings.themeMode)
+        assertEquals("en", settings.appLanguage)
+        assertEquals("active-profile", settings.selectedProfileId)
+        assertEquals("{}", prefs.getString("glass_settings_v1", null))
+        assertEquals(ThemeMode.DARK, SettingsManager(context).themeMode)
     }
 }

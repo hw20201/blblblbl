@@ -1379,13 +1379,10 @@ internal val BOTTOM_BAR_HEIGHT = 64.dp
 private val BOTTOM_BAR_WIDTH = 304.dp
 
 internal val BOTTOM_BAR_BOTTOM_MARGIN = 16.dp
+/** Shared scroll tail keeps every main page's final item above the dock with a visible safety gap. */
+internal val MAIN_DOCK_CONTENT_CLEAR_GAP = 16.dp
 internal fun mainDockContentInset(navigationBarsBottom: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
-    BOTTOM_BAR_HEIGHT + BOTTOM_BAR_BOTTOM_MARGIN + navigationBarsBottom
-
-/** Dock-aware scroll tail keeps the final Dashboard card above the dock with a small visible gap. */
-internal val DASHBOARD_DOCK_CLEAR_GAP = 16.dp
-internal fun dashboardScrollContentInset(navigationBarsBottom: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
-    mainDockContentInset(navigationBarsBottom) + DASHBOARD_DOCK_CLEAR_GAP
+    BOTTOM_BAR_HEIGHT + BOTTOM_BAR_BOTTOM_MARGIN + MAIN_DOCK_CONTENT_CLEAR_GAP + navigationBarsBottom
 
 /**
  * Full-height page scene behind the floating dock.

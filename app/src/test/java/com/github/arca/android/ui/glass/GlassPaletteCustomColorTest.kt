@@ -35,7 +35,7 @@ class GlassPaletteCustomColorTest {
         assertEquals(GlassPalettes.MIDNIGHT, GlassPalettes.byKey("midnight"))
     }
 
-    @Test fun gridChoiceReachesLegacyControlsButNotSemanticStateColors() {
+    @Test fun customPaletteReachesLegacyControlsButNotSemanticStateColors() {
         try {
             GlassDefaults.enabled = true
             val blue = GlassPalettes.byKey("custom:19AACC")
@@ -57,8 +57,8 @@ class GlassPaletteCustomColorTest {
         }
     }
 
-    @Test fun blackWhiteAndPaleSwatchesKeepExactStoredRgbWithoutInvisibleControls() {
-        for (color in ThemeColorGrid) {
+    @Test fun blackWhiteAndPaleColorsKeepExactStoredRgbWithoutInvisibleControls() {
+        for (color in listOf(Color.Black, Color.White, Color(0xFFF5E8FF), Color(0xFF19AACC), Color(0xFFDD3366))) {
             val spec = GlassPalettes.byKey(GlassPalettes.keyForColor(color))
             assertEquals(color, spec.accent)
             assertTrue("control accent stays visible for ${spec.key}", spec.uiAccent.luminance() in .15f.. .25f)

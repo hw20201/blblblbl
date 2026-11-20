@@ -134,10 +134,8 @@ fun NexusGlassBackground(
         }
         return
     }
-    val wallpaper = GlassDefaults.wallpaper
-    val animateBackground = backgroundUsesAnimatedTime(wallpaper) && testBackdropId == null
+    val animateBackground = testBackdropId == null
     val seconds = rememberSoftMeshTime(enabled = animateBackground)
-    val wallpaperDrawCache = remember { FlutedWallpaperDrawCache() }
     val seed = LocalSoftMeshSeed.current
     val motion = remember(seed) { SoftMeshMotion(seed ?: Random.nextLong()) }
     val structured = LocalStructuredMeshEnabled.current
@@ -183,33 +181,28 @@ fun NexusGlassBackground(
                     Modifier.recordArcaGlasmioBackdropSource(glasmioLayerBackdrop)
                 else Modifier)
                 .then(if (testBackdropId == null) Modifier.background(base).drawBehind {
-                    // Static wallpaper does not subscribe even to an injected/shared clock.
                     val time = if (animateBackground) seconds.value else 0f
-                    if (wallpaper.enabled) {
-                        drawGlassWallpaper(wallpaper, time, cache = wallpaperDrawCache)
-                    } else {
-                        val diag = kotlin.math.hypot(size.width, size.height)
-                        blobs.forEachIndexed { index, blob ->
-                            val pose = motion.sample(index, time)
-                            val radius = (if (structured) size.minDimension else diag) * blob.radius
-                            val travel = if (custom) 1.5f else 5.0f
-                            val rawX = if (structured) blob.x + (pose.x - .5f) * .20f * travel else pose.x
-                            val rawY = if (structured) blob.y + (pose.y - .5f) * .24f * travel else pose.y
-                            val dockCell = structured && palette.isDark && index in 12..14
-                            val x = if (dockCell) rawX.coerceIn(blob.x - .12f, blob.x + .12f) else rawX
-                            val y = if (dockCell) rawY.coerceIn(.78f, 1.02f) else rawY
-                            translate(size.width * x, size.height * y) {
-                                rotate(pose.rotation, Offset.Zero) {
-                                    val stretchX = if (structured && !custom) 1.22f else 1f
-                                    val stretchY = if (structured && !custom) .82f else 1f
-                                    scale(radius * pose.scaleX * stretchX, radius * pose.scaleY * stretchY, Offset.Zero) {
-                                        drawCircle(brushes[index], radius = 1f, center = Offset.Zero)
-                                    }
+                    val diag = kotlin.math.hypot(size.width, size.height)
+                    blobs.forEachIndexed { index, blob ->
+                        val pose = motion.sample(index, time)
+                        val radius = (if (structured) size.minDimension else diag) * blob.radius
+                        val travel = if (custom) 1.5f else 5.0f
+                        val rawX = if (structured) blob.x + (pose.x - .5f) * .20f * travel else pose.x
+                        val rawY = if (structured) blob.y + (pose.y - .5f) * .24f * travel else pose.y
+                        val dockCell = structured && palette.isDark && index in 12..14
+                        val x = if (dockCell) rawX.coerceIn(blob.x - .12f, blob.x + .12f) else rawX
+                        val y = if (dockCell) rawY.coerceIn(.78f, 1.02f) else rawY
+                        translate(size.width * x, size.height * y) {
+                            rotate(pose.rotation, Offset.Zero) {
+                                val stretchX = if (structured && !custom) 1.22f else 1f
+                                val stretchY = if (structured && !custom) .82f else 1f
+                                scale(radius * pose.scaleX * stretchX, radius * pose.scaleY * stretchY, Offset.Zero) {
+                                    drawCircle(brushes[index], radius = 1f, center = Offset.Zero)
                                 }
                             }
                         }
-                        drawRect(veil)
                     }
+                    drawRect(veil)
                 } else Modifier)
         ) {
             if (testBackdropId != null) {

@@ -3,7 +3,7 @@ package com.github.arca.android.ui.glass
 import org.junit.Assert.*
 import org.junit.Test
 
-class StructuredMeshWallpaperTest {
+class StructuredMeshTest {
     @Test fun defaultLightUsesThreeBroadCalmFieldsInsteadOfFifteenBusyCells() {
         val cells = structuredMeshCells(GlassPalettes.CREAM, IceLavenderMesh)
         assertEquals(3, cells.size)

@@ -25,7 +25,6 @@ object GlassDefaults {
     // Plain page backgrounds and shallow card depth; floating controls keep their optics.
     var quietPages by mutableStateOf(true)
     var palette by mutableStateOf(GlassPalettes.CREAM)
-    var wallpaper by mutableStateOf(GlassWallpaperSettings())
 }
 
 val LocalGlassPalette = staticCompositionLocalOf { GlassPalettes.CREAM }

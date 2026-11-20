@@ -53,7 +53,6 @@ class ShortcutFrostedDepthRenderingTest {
     @After fun reset() {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
-        GlassDefaults.wallpaper = GlassWallpaperSettings()
         GlassDefaults.quietPages = true
     }
 
@@ -76,7 +75,6 @@ class ShortcutFrostedDepthRenderingTest {
         GlassDefaults.enabled = true
         GlassDefaults.quietPages = true
         // An injected mesh clock must not animate the quiet dashboard.
-        GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = GlassPalettes.CREAM
         compose.setContent {
             MihomoTheme(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) {

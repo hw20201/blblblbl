@@ -80,7 +80,7 @@ class DashboardScreenTest {
         compose.onNodeWithTag("traffic-download-total").assertDoesNotExist()
     }
 
-    @Test fun oldTestWallpaperChoicesAreNotShownOnTheUserDashboard() {
+    @Test fun oldTestBackgroundChoicesAreNotShownOnTheUserDashboard() {
         setGlassContent {
             DashboardScreen(
                 scrollState = ScrollState(0),

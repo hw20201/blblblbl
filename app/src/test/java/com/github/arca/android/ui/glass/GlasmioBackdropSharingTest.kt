@@ -58,9 +58,9 @@ class GlasmioBackdropSharingTest {
         var dock: Backdrop? = null
         compose.setContent {
             ProvideGlassTheme {
-                val wallpaper = rememberLayerBackdrop()
+                val background = rememberLayerBackdrop()
                 val page = rememberLayerBackdrop()
-                val parentPageBackdrop = rememberSharedGlassBackdrop(wallpaper, page)
+                val parentPageBackdrop = rememberSharedGlassBackdrop(background, page)
                 ProvideArcaGlasmioBackdrop(parentPageBackdrop) {
                     val providedBackdrop = LocalArcaGlasmioBackdrop.current
                     SideEffect { combined = providedBackdrop }
@@ -92,6 +92,6 @@ class GlasmioBackdropSharingTest {
             }
         }
         compose.waitForIdle()
-        assertNull("main tab rendering needs only the root wallpaper source", source)
+        assertNull("main tab rendering needs only the root background source", source)
     }
 }

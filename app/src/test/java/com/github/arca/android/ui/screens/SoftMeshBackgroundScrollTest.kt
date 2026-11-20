@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
@@ -33,8 +34,8 @@ import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunStack
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.ui.glass.GlassDefaults
-import com.github.arca.android.ui.glass.GlassWallpaperMode
-import com.github.arca.android.ui.glass.GlassWallpaperSettings
+import com.github.arca.android.ui.glass.LocalSoftMeshTime
+import com.github.arca.android.ui.glass.LocalSoftMeshSeed
 import com.github.arca.android.ui.glass.NexusGlassBackground
 import com.github.arca.android.ui.glass.ProvideGlassTheme
 import com.github.arca.android.ui.theme.LocalAppLanguage
@@ -51,14 +52,14 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Regression coverage for the fixed viewport wallpaper behind independently scrolling pages. */
+/** Regression coverage for the fixed viewport background behind independently scrolling pages. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class GlassWallpaperScrollTest {
+class SoftMeshBackgroundScrollTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val fixedTime = mutableFloatStateOf(24f)
 
-    private val oldWallpaper = GlassDefaults.wallpaper
     private val oldGlassEnabled = GlassDefaults.enabled
     private val oldQuietPages = GlassDefaults.quietPages
 
@@ -68,10 +69,9 @@ class GlassWallpaperScrollTest {
         val scroll = ScrollState(0)
         GlassDefaults.enabled = true
         GlassDefaults.quietPages = true // Dashboard now shares the solid quiet-page background.
-        GlassDefaults.wallpaper = fixedTestWallpaper
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
-                CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                CompositionLocalProvider(LocalAppLanguage provides "zh", LocalSoftMeshTime provides fixedTime, LocalSoftMeshSeed provides 734921L) {
                     ProvideGlassTheme {
                         Box(Modifier.fillMaxSize()) {
                             NexusGlassBackground() {
@@ -105,27 +105,26 @@ class GlassWallpaperScrollTest {
         compose.onNodeWithTag("dashboard-scroll").assertExists()
         val card = compose.onNodeWithTag("shortcut-card-节点").assertExists()
         val cardTopBefore = card.fetchSemanticsNode().boundsInRoot.top
-        val wallpaperBefore = captureWallpaperEdge(quiet = true)
+        val backgroundBefore = captureBackgroundEdge(quiet = true)
         compose.runOnIdle { scroll.dispatchRawDelta(240f) }
         compose.waitForIdle()
         assertTrue("the dashboard must actually scroll", scroll.value > 0)
         val cardTopAfter = compose.onNodeWithTag("shortcut-card-节点").fetchSemanticsNode().boundsInRoot.top
         assertTrue("shortcut cards should move with the scrolling page content", cardTopAfter < cardTopBefore - 100f)
-        val wallpaperAfter = captureWallpaperEdge(quiet = true)
+        val backgroundAfter = captureBackgroundEdge(quiet = true)
         assertTrue("scrolling dashboard content must not change the quiet background",
-            wallpaperBefore.size == wallpaperAfter.size &&
-                wallpaperBefore.zip(wallpaperAfter).all { (before, after) -> matchesQuietPixel(before, after) })
+            backgroundBefore.size == backgroundAfter.size &&
+                backgroundBefore.zip(backgroundAfter).all { (before, after) -> matchesQuietPixel(before, after) })
         restoreGlobals()
     }
 
-    @Test fun configurationPageScrollsWithoutMovingTheWallpaper() {
+    @Test fun configurationPageScrollsWithoutMovingTheBackground() {
         GlassDefaults.enabled = true
-        GlassDefaults.quietPages = false // quiet pages drop the wallpaper; these tests measure the fixed wallpaper
-        GlassDefaults.wallpaper = fixedTestWallpaper
+        GlassDefaults.quietPages = false // Exercise the generic mesh at a fixed injected time.
         val scroll = ScrollState(0)
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
-                CompositionLocalProvider(LocalAppLanguage provides "zh") {
+                CompositionLocalProvider(LocalAppLanguage provides "zh", LocalSoftMeshTime provides fixedTime, LocalSoftMeshSeed provides 734921L) {
                     ProvideGlassTheme {
                         NexusGlassBackground() {
                             Box(Modifier.fillMaxWidth().height(480.dp)) {
@@ -143,28 +142,28 @@ class GlassWallpaperScrollTest {
         val scroller = compose.onNodeWithTag("configuration-center-scroll").assertExists()
         val section = compose.onNodeWithTag("configuration-center-section-header-0").assertExists()
         val sectionTopBefore = section.fetchSemanticsNode().boundsInRoot.top
-        val wallpaperBefore = captureWallpaperEdge()
+        val backgroundBefore = captureBackgroundEdge()
         scroller.performTouchInput { swipeUp() }
         compose.waitForIdle()
         val sectionTopAfter = compose.onNodeWithTag("configuration-center-section-header-0").fetchSemanticsNode().boundsInRoot.top
         assertTrue("the configuration page content should move under a real swipe", sectionTopAfter < sectionTopBefore - 20f)
-        val wallpaperAfter = captureWallpaperEdge()
-        assertTrue("the fixed wallpaper must remain visible at the viewport edge", wallpaperAfter.distinct().size > 8)
-        assertEquals("scrolling page content must not translate the wallpaper", wallpaperBefore, wallpaperAfter)
+        val backgroundAfter = captureBackgroundEdge()
+        assertTrue("the fixed background must remain visible at the viewport edge", backgroundAfter.distinct().size > 8)
+        assertEquals("scrolling page content must not translate the background", backgroundBefore, backgroundAfter)
         restoreGlobals()
     }
 
-    @Test fun nestedLazyListScrollLeavesWallpaperFixedAndWithoutShowingEdges() {
+    @Test fun nestedLazyListScrollLeavesBackgroundFixedAndWithoutShowingEdges() {
         GlassDefaults.enabled = true
-        GlassDefaults.quietPages = false // quiet pages drop the wallpaper; these tests measure the fixed wallpaper
-        GlassDefaults.wallpaper = fixedTestWallpaper
+        GlassDefaults.quietPages = false // Exercise the generic mesh at a fixed injected time.
         lateinit var lazyState: LazyListState
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalSoftMeshTime provides fixedTime, LocalSoftMeshSeed provides 734921L) {
                 ProvideGlassTheme {
                     lazyState = rememberLazyListState()
                     NexusGlassBackground() {
-                        LazyColumn(state = lazyState, modifier = Modifier.fillMaxSize().testTag("fixed-wallpaper-lazy-list")) {
+                        LazyColumn(state = lazyState, modifier = Modifier.fillMaxSize().testTag("fixed-background-lazy-list")) {
                             items((0 until 40).toList()) { index ->
                                 androidx.compose.material3.Text(
                                     text = "row $index",
@@ -174,22 +173,23 @@ class GlassWallpaperScrollTest {
                         }
                     }
                 }
+                }
             }
         }
-        compose.onNodeWithTag("fixed-wallpaper-lazy-list").assertExists()
-        val wallpaperBefore = captureWallpaperEdge()
-        compose.onNodeWithTag("fixed-wallpaper-lazy-list").performTouchInput { swipeUp() }
+        compose.onNodeWithTag("fixed-background-lazy-list").assertExists()
+        val backgroundBefore = captureBackgroundEdge()
+        compose.onNodeWithTag("fixed-background-lazy-list").performTouchInput { swipeUp() }
         compose.waitForIdle()
         compose.runOnIdle {
             assertTrue("lazy-list content must scroll vertically", lazyState.firstVisibleItemIndex > 0 || lazyState.firstVisibleItemScrollOffset > 100)
         }
-        val wallpaperAfter = captureWallpaperEdge()
-        assertEquals("nested list scrolling must not translate the wallpaper", wallpaperBefore, wallpaperAfter)
-        assertTrue("the wallpaper must still cover the viewport edge after a long-list scroll", wallpaperAfter.distinct().size > 8)
+        val backgroundAfter = captureBackgroundEdge()
+        assertEquals("nested list scrolling must not translate the background", backgroundBefore, backgroundAfter)
+        assertTrue("the background must still cover the viewport edge after a long-list scroll", backgroundAfter.distinct().size > 8)
         restoreGlobals()
     }
 
-    private fun captureWallpaperEdge(quiet: Boolean = false): List<Int> {
+    private fun captureBackgroundEdge(quiet: Boolean = false): List<Int> {
         compose.waitForIdle()
         val view = compose.activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -198,7 +198,7 @@ class GlassWallpaperScrollTest {
         compose.runOnIdle {
             PixelCopy.request(compose.activity.window, bitmap, { status -> result.set(status); latch.countDown() }, Handler(Looper.getMainLooper()))
         }
-        assertTrue("wallpaper frame capture should complete", latch.await(3, TimeUnit.SECONDS))
+        assertTrue("background frame capture should complete", latch.await(3, TimeUnit.SECONDS))
         assertEquals(PixelCopy.SUCCESS, result.get())
         val pixels = buildList {
             val xEnd = minOf(11, bitmap.width)
@@ -214,7 +214,7 @@ class GlassWallpaperScrollTest {
             assertTrue("quiet background covers the viewport edge: ${pixels.distinct()}",
                 pixels.isNotEmpty() && pixels.all { matchesQuietPixel(it, Color(0xFFF2F2F5).toArgb()) })
         } else {
-            assertTrue("test wallpaper should be visible in the sampled edge", pixels.distinct().size > 8)
+            assertTrue("test background should be visible in the sampled edge", pixels.distinct().size > 8)
         }
         return pixels
     }
@@ -225,19 +225,8 @@ class GlassWallpaperScrollTest {
         }
 
     private fun restoreGlobals() {
-        GlassDefaults.wallpaper = oldWallpaper
         GlassDefaults.enabled = oldGlassEnabled
         GlassDefaults.quietPages = oldQuietPages
     }
 
-    companion object {
-        private val fixedTestWallpaper = GlassWallpaperSettings(
-            enabled = true,
-            mode = GlassWallpaperMode.FLUTED,
-            colorA = Color(0xFF16324F).toArgb(),
-            colorB = Color(0xFF3F88C5).toArgb(),
-            colorC = Color(0xFFE6C79C).toArgb(),
-            colorFlow = false
-        )
-    }
 }

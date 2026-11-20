@@ -55,7 +55,6 @@ class SettingsPanelEdgeMotionCaptureTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val oldGlassEnabled = GlassDefaults.enabled
     private val oldPalette = GlassDefaults.palette
-    private val oldWallpaper = GlassDefaults.wallpaper
 
     private data class Frame(
         val phase: String,
@@ -72,7 +71,6 @@ class SettingsPanelEdgeMotionCaptureTest {
         compose.mainClock.autoAdvance = true
         GlassDefaults.enabled = oldGlassEnabled
         GlassDefaults.palette = oldPalette
-        GlassDefaults.wallpaper = oldWallpaper
     }
 
     @Test fun settingsFastClosesWithUniformEdges() = captureClosing(PanelAnimationSpeed.FAST, 240, 180)
@@ -82,7 +80,6 @@ class SettingsPanelEdgeMotionCaptureTest {
     private fun mount(speed: PanelAnimationSpeed) {
         GlassDefaults.enabled = true
         GlassDefaults.palette = GlassPalettes.CREAM
-        GlassDefaults.wallpaper = GlassWallpaperSettings()
         val fixedMeshTime = mutableFloatStateOf(24f)
         val scroll = ScrollState(0)
         // performScrollTo needs automatic advancement to finish its setup work.

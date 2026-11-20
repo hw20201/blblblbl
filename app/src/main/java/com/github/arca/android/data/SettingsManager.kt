@@ -6,10 +6,7 @@ import com.github.arca.android.ui.components.ShortcutTouchVariant
 import com.github.arca.android.ui.glass.GlassOptics
 import com.github.arca.android.ui.glass.GlassSettings
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
-import com.github.arca.android.ui.glass.GlassWallpaperMode
-import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.ShortcutGlassLevel
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -34,30 +31,9 @@ private const val LEGACY_KEY_SAVED_GLASS_PALETTES = "glass_saved_palettes_v1"
 
 private val glassSettingsJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-@Serializable
-data class SavedWallpaperPalette(
-    val name: String,
-    val colorA: Int,
-    val colorB: Int,
-    val colorC: Int,
-    val colorFlow: Boolean
-) {
-    fun applyTo(settings: GlassWallpaperSettings): GlassWallpaperSettings = settings.copy(
-        enabled = true, colorA = colorA, colorB = colorB, colorC = colorC, colorFlow = colorFlow
-    )
-}
-
 class SettingsManager(context: Context) {
     private companion object {
         const val KEY_GLASS_SETTINGS = "glass_settings_v1"
-        const val KEY_SAVED_WALLPAPER_PALETTES = "glass_wallpaper_palettes_v1"
-        const val KEY_WALLPAPER_MODE = "glass_wallpaper_mode"
-        const val KEY_WALLPAPER_COLOR_A = "glass_wallpaper_color_a"
-        const val KEY_WALLPAPER_COLOR_B = "glass_wallpaper_color_b"
-        const val KEY_WALLPAPER_COLOR_C = "glass_wallpaper_color_c"
-        const val KEY_WALLPAPER_FLOW = "glass_wallpaper_flow"
-        const val KEY_WALLPAPER_RIB_ANGLE = "glass_wallpaper_rib_angle"
-        const val KEY_WALLPAPER_CURVE_SEED = "glass_wallpaper_curve_seed"
         const val KEY_SHORTCUT_GLASS_LEVEL = "shortcut_glass_level"
         const val KEY_SHORTCUT_GLASS_REFRACTION = "shortcut_glass_refraction_dp"
         const val KEY_SHORTCUT_GLASS_DISPERSION = "shortcut_glass_dispersion_dp"
@@ -68,12 +44,13 @@ class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("mihomo_settings", Context.MODE_PRIVATE)
 
     init {
-        // Retire the former built-in background/theme palette picker and its saved presets.
-        prefs.edit()
+        // Remove retired palette and wallpaper preferences without touching active settings.
+        val editor = prefs.edit()
             .remove(LEGACY_KEY_GLASS_PALETTE)
             .remove(LEGACY_KEY_SAVED_GLASS_PALETTES)
-            .remove("glass_wallpaper_enabled")
-            .apply()
+
+        prefs.all.keys.filter { it.startsWith("glass_wallpaper_") }.forEach(editor::remove)
+        editor.apply()
     }
 
     var selectedProfileId: String?
@@ -248,55 +225,6 @@ class SettingsManager(context: Context) {
     var appLanguage: String
         get() = prefs.getString("app_language", "SYSTEM") ?: "SYSTEM"
         set(value) = prefs.edit().putString("app_language", value).apply()
-
-    /** User-saved three-stop palettes for the active custom fluted background. */
-    val savedWallpaperPalettes: List<SavedWallpaperPalette>
-        get() = runCatching {
-            prefs.getString(KEY_SAVED_WALLPAPER_PALETTES, null)
-                ?.let { glassSettingsJson.decodeFromString<List<SavedWallpaperPalette>>(it) }
-                .orEmpty()
-                .filter { it.name.isNotBlank() }
-        }.getOrDefault(emptyList())
-
-    fun saveWallpaperPalette(name: String, settings: GlassWallpaperSettings): List<SavedWallpaperPalette> {
-        val cleanName = name.trim().take(32)
-        require(cleanName.isNotEmpty()) { "Palette name must not be blank" }
-        val updated = savedWallpaperPalettes.toMutableList()
-        val existing = updated.indexOfFirst { it.name.equals(cleanName, ignoreCase = true) }
-        val entry = SavedWallpaperPalette(cleanName, settings.colorA, settings.colorB, settings.colorC, settings.colorFlow)
-        if (existing >= 0) updated[existing] = entry else updated += entry
-        prefs.edit().putString(KEY_SAVED_WALLPAPER_PALETTES, glassSettingsJson.encodeToString(updated)).apply()
-        return updated
-    }
-
-    fun deleteWallpaperPalette(name: String): List<SavedWallpaperPalette> {
-        val updated = savedWallpaperPalettes.filterNot { it.name == name }
-        prefs.edit().putString(KEY_SAVED_WALLPAPER_PALETTES, glassSettingsJson.encodeToString(updated)).apply()
-        return updated
-    }
-
-    /** User-selected three-stop fluted wallpaper; the custom backdrop is always active. */
-    var glassWallpaperSettings: GlassWallpaperSettings
-        get() = GlassWallpaperSettings(
-            // The user's custom fluted background is now the only app background.
-            enabled = true,
-            mode = GlassWallpaperMode.fromKey(prefs.getString(KEY_WALLPAPER_MODE, GlassWallpaperMode.FLUTED.name)),
-            colorA = prefs.getInt(KEY_WALLPAPER_COLOR_A, GlassWallpaperSettings.COLOR_A),
-            colorB = prefs.getInt(KEY_WALLPAPER_COLOR_B, GlassWallpaperSettings.COLOR_B),
-            colorC = prefs.getInt(KEY_WALLPAPER_COLOR_C, GlassWallpaperSettings.COLOR_C),
-            colorFlow = prefs.getBoolean(KEY_WALLPAPER_FLOW, true),
-            ribAngleDegrees = prefs.getFloat(KEY_WALLPAPER_RIB_ANGLE, GlassWallpaperSettings.DEFAULT_RIB_ANGLE_DEGREES)
-        )
-        set(value) {
-            prefs.edit()
-                .putString(KEY_WALLPAPER_MODE, value.mode.name)
-                .putInt(KEY_WALLPAPER_COLOR_A, value.colorA)
-                .putInt(KEY_WALLPAPER_COLOR_B, value.colorB)
-                .putInt(KEY_WALLPAPER_COLOR_C, value.colorC)
-                .putBoolean(KEY_WALLPAPER_FLOW, value.colorFlow)
-                .putFloat(KEY_WALLPAPER_RIB_ANGLE, value.ribAngleDegrees)
-                .apply()
-        }
 
     /** Glass effects live under one typed JSON preference; legacy split keys migrate on first write. */
     var glassSettings: GlassSettings

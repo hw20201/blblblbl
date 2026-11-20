@@ -7,14 +7,19 @@ import org.junit.Test
 /** Pure JVM guard for the shared content inset used above the floating dock. */
 class MainDockContentInsetMathTest {
     @Test
-    fun reservesDockHeightMarginAndSystemNavigationInset() {
-        assertEquals(80.dp, mainDockContentInset(0.dp))
-        assertEquals(104.dp, mainDockContentInset(24.dp))
+    fun reservesDockHeightMarginSafetyGapAndSystemNavigationInset() {
+        assertEquals(96.dp, mainDockContentInset(0.dp))
+        assertEquals(120.dp, mainDockContentInset(24.dp))
+        assertEquals(144.dp, mainDockContentInset(48.dp))
     }
 
     @Test
-    fun dashboardScrollTailIncludesDockAndClearGap() {
-        assertEquals(96.dp, dashboardScrollContentInset(0.dp))
-        assertEquals(120.dp, dashboardScrollContentInset(24.dp))
+    fun contentTailClearsDockTopBySixteenDpForEveryNavigationMode() {
+        listOf(0.dp, 24.dp, 48.dp).forEach { navigationInset ->
+            assertEquals(
+                16.dp,
+                mainDockContentInset(navigationInset) - BOTTOM_BAR_HEIGHT - BOTTOM_BAR_BOTTOM_MARGIN - navigationInset
+            )
+        }
     }
 }

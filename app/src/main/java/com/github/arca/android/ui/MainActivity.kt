@@ -56,7 +56,6 @@ import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LocalGlassSettings
 import com.github.arca.android.ui.glass.GlassPalettes
 import com.github.arca.android.ui.glass.GlassDefaults
-import com.github.arca.android.ui.glass.GlassWallpaperSettings
 import com.github.arca.android.ui.glass.glassPalette
 import com.github.arca.android.ui.glass.NexusGlassBackground
 import com.github.arca.android.ui.glass.ProvideArcaGlasmioBackdrop
@@ -199,9 +198,8 @@ class MainActivity : ComponentActivity() {
         // Pages draw into the system-bar areas; each screen owns its own inset handling.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         settingsManager = SettingsManager(this)
-        // Use the fixed brand glass surface palette; the app backdrop is the saved custom wallpaper.
+        // Use the fixed brand glass surface palette.
         GlassDefaults.palette = GlassPalettes.CREAM
-        GlassDefaults.wallpaper = settingsManager.glassWallpaperSettings
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -1209,11 +1207,6 @@ class MainActivity : ComponentActivity() {
                                     },
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
-                                    wallpaperSettings = GlassDefaults.wallpaper,
-                                    onWallpaperSettingsChanged = { value ->
-                                        GlassDefaults.wallpaper = value
-                                        settingsManager.glassWallpaperSettings = value
-                                    },
                                     onLanguageChanged = { code -> appLanguage = code },
                                     nodeColumns = nodeColumns,
                                     onNodeColumnsChanged = { cols ->
@@ -1680,11 +1673,6 @@ class MainActivity : ComponentActivity() {
                                     glassSettings = updated.clamped()
                                     settingsManager.glassSettings = glassSettings
                                 },
-                                wallpaperSettings = GlassDefaults.wallpaper,
-                                onWallpaperSettingsChanged = { value ->
-                                    GlassDefaults.wallpaper = value
-                                    settingsManager.glassWallpaperSettings = value
-                                },
                                 wallpaperScene = overlayWallpaperScene,
                                 onBack = { currentSubScreen = null },
                                 scrollState = glassEffectsScrollState
@@ -1698,11 +1686,6 @@ class MainActivity : ComponentActivity() {
                                     },
                                     themeMode = currentThemeMode,
                                     onThemeModeChanged = onThemeModeChanged,
-                                    wallpaperSettings = GlassDefaults.wallpaper,
-                                    onWallpaperSettingsChanged = { value ->
-                                        GlassDefaults.wallpaper = value
-                                        settingsManager.glassWallpaperSettings = value
-                                    },
                                     onLanguageChanged = { code -> appLanguage = code },
                                     nodeColumns = nodeColumns,
                                     onNodeColumnsChanged = { cols ->

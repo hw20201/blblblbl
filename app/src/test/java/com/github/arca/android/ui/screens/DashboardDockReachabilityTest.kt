@@ -15,7 +15,7 @@ import com.github.arca.android.data.DashboardShortcuts
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.ui.components.BOTTOM_BAR_BOTTOM_MARGIN
 import com.github.arca.android.ui.components.BOTTOM_BAR_HEIGHT
-import com.github.arca.android.ui.components.DASHBOARD_DOCK_CLEAR_GAP
+import com.github.arca.android.ui.components.MAIN_DOCK_CONTENT_CLEAR_GAP
 import com.github.arca.android.ui.theme.MihomoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -115,7 +115,7 @@ class DashboardDockReachabilityTest {
 
         val lastCard = compose.onNodeWithTag("shortcut-routing").fetchSemanticsNode().boundsInRoot
         val expectedCardHeightPx = with(compose.density) { 118.dp.toPx() }
-        val expectedGapPx = with(compose.density) { DASHBOARD_DOCK_CLEAR_GAP.toPx() }
+        val expectedGapPx = with(compose.density) { MAIN_DOCK_CONTENT_CLEAR_GAP.toPx() }
 
         compose.runOnIdle {
             assertEquals("Scroll should reach the true content end", scrollState.maxValue, scrollState.value)

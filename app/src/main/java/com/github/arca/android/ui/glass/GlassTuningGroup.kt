@@ -65,8 +65,7 @@ internal fun GlassTuningGroup(
         Column(Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)
-                    .glassTouchRipple()
-                    .clickable(role = Role.Button, onClick = toggleExpanded)
+                    .clickable(interactionSource = null, indication = null, role = Role.Button, onClick = toggleExpanded)
                     .semantics { stateDescription = AppStrings.get(if (expanded) "settings_state_expanded" else "settings_state_collapsed", language) }
                     .testTag(headerTag)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
