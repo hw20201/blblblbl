@@ -3,6 +3,7 @@ import android.os.Build
 import androidx.compose.runtime.CompositionLocalProvider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
+import io.github.neoruaa.glasmio.glass.glassBackdropSource
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop as rememberGlasmioLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop as GlasmioLayerBackdrop
