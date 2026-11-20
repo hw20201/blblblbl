@@ -39,7 +39,7 @@ data class LoonThemeColors(
 )
 
 val LightLoonThemeColors = LoonThemeColors(
-    bg = Color(0xFFF2F2F7), // Apple System Grouped Background
+    bg = Color(0xFFF2F2F5), // Quiet grouped background shared with Settings
     card = Color(0xFFFFFFFF), // Apple Secondary System Grouped Background
     cardBorder = Color(0x1A000000), // Clean iOS hairline border
     textPrimary = Color(0xFF000000), // iOS Primary Text
@@ -56,7 +56,7 @@ val LightLoonThemeColors = LoonThemeColors(
 )
 
 val DarkLoonThemeColors = LoonThemeColors(
-    bg = Color(0xFF000000), // True OLED Pure Black
+    bg = Color(0xFF101114), // Quiet dark background shared with Settings
     card = Color(0xFF1C1C1E), // Apple Secondary System Grouped Background
     cardBorder = Color(0x2EFFFFFF), // Clean iOS dark hairline border
     textPrimary = Color(0xFFFFFFFF), // iOS White Text
@@ -87,7 +87,7 @@ fun MihomoTheme(
     }
 
     val palette = resolveGlassPalette(GlassDefaults.palette, isDark)
-    val loonColors = if (GlassDefaults.enabled) palette.toLoonColors()
+    val loonColors = if (GlassDefaults.enabled && !GlassDefaults.quietPages) palette.toLoonColors()
         else if (isDark) DarkLoonThemeColors else LightLoonThemeColors
     val accent = if (GlassDefaults.enabled) palette.uiAccent else LoonOrange
 

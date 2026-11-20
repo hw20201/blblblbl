@@ -38,14 +38,15 @@ fun PageTitleGlass(
     frostedTint: Color? = null,
     shape: Shape = RoundedCornerShape(26.dp),
     cornerRadius: Dp = 26.dp,
+    plainTitle: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
-    if (GlassDefaults.enabled) {
+    if (GlassDefaults.enabled && !GlassDefaults.quietPages && !plainTitle) {
         NavigationGlassSurface(modifier, lens, shape, cornerRadius,
             strength = FROSTED_CAPSULE_LENS_STRENGTH, frosted = true, showRim = showRim,
             frostedFillAlpha = frostedFillAlpha, frostedTint = frostedTint,
             surfaceCategory = GlassSurfaceCategory.TITLE_CAPSULES) {
             Box(Modifier.background(contentTint, shape).padding(contentPadding), content = content)
         }
-    } else Box(modifier.clip(shape).padding(horizontal = 4.dp, vertical = 8.dp), content = content)
+    } else Box(modifier.padding(horizontal = if (plainTitle) 0.dp else 4.dp, vertical = 8.dp), content = content)
 }

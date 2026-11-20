@@ -64,6 +64,9 @@ import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.rememberNavigationLens
 import com.github.arca.android.ui.glass.recordNavigationScene
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
+import android.os.Build
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.NavigationLensGlobalBounds
@@ -81,18 +84,34 @@ data class ShortcutDef(
     val onClick: () -> Unit
 )
 
+internal val ShortcutDef.panelAccent: Color
+    get() = when (id) {
+        "vpn" -> Color(0xFFFF822E)
+        "ip_test" -> Color(0xFF378CFF)
+        "dns" -> Color(0xFF1BA889)
+        else -> Color(0xFF6A82BA)
+    }
+
 @Composable
 private fun DashboardTrafficSummary(
-    isRunning: Boolean,
+    status: VpnState.Status,
+    activeProfileName: String,
+    activeNodeName: String,
     lang: String,
-    trafficMetrics: StateFlow<TrafficMetrics>
+    trafficMetrics: StateFlow<TrafficMetrics>,
+    onToggleVpn: () -> Unit,
+    modeControl: @Composable () -> Unit
 ) {
     val metrics by trafficMetrics.collectAsState()
-    LoonTrafficSummaryCard(
-        uploadTitle = AppStrings.get("traffic_up", lang),
-        uploadSpeed = if (isRunning) metrics.upSpeed else "--",
-        downloadTitle = AppStrings.get("traffic_down", lang),
-        downloadSpeed = if (isRunning) metrics.downSpeed else "--",
+    DashboardConnectionCard(
+        status = status,
+        activeProfileName = activeProfileName,
+        activeNodeName = activeNodeName,
+        lang = lang,
+        uploadSpeed = if (status == VpnState.Status.RUNNING) metrics.upSpeed else "--",
+        downloadSpeed = if (status == VpnState.Status.RUNNING) metrics.downSpeed else "--",
+        onToggleVpn = onToggleVpn,
+        modeControl = modeControl
     )
 }
 
@@ -118,6 +137,7 @@ private fun DashboardShortcutCard(
         lens = lens,
         lensBoundsState = navigationLensBoundsState,
         lensTintTarget = if (item.id == "dns") Color(0xFF22C55E) else null,
+        editorialStyle = true,
         onPickupChanged = onPickupChanged,
         onRestingBoundsChanged = onRestingBoundsChanged,
         onDelete = onDelete,
@@ -292,6 +312,11 @@ fun DashboardScreen(
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
     val isDarkTheme = LocalLoonColors.current.isDark
+    val quietPageColor = if (isDarkTheme) Color(0xFF101114) else Color(0xFFF2F2F5)
+    val pageBackdrop = rememberArcaGlasmioBackdrop(enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+    val topBlurReveal by remember(scrollState) {
+        derivedStateOf { (scrollState.value / 96f).coerceIn(0f, 1f) }
+    }
     // With glass enabled the shared backdrop already provides the colour field, so the screen
     // itself must stay transparent or it would paint over it.
     val topBgBrush = if (GlassDefaults.enabled) {
@@ -320,13 +345,14 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .onGloballyPositioned { dashboardRootCoordinates.set(it) }
-                .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
+                .background(quietPageColor)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
                     .background(topBgBrush)
+                    .recordArcaGlasmioBackdropSource(pageBackdrop)
                     .testTag("dashboard-scroll")
                     .bounceOverscroll(allowBottom = false)
                     // Keep the page viewport full-height behind the translucent dock; reserve clearance in scroll content.
@@ -339,9 +365,19 @@ fun DashboardScreen(
             ) {
 
                 DashboardTrafficSummary(
-                    isRunning = isRunning,
+                    status = vpnState.status,
+                    activeProfileName = activeProfileName,
+                    activeNodeName = activeNodeName,
                     lang = lang,
-                    trafficMetrics = trafficMetrics
+                    trafficMetrics = trafficMetrics,
+                    onToggleVpn = onToggleVpn,
+                    modeControl = {
+                        DashboardModeControl(
+                            currentMode = currentMode,
+                            onModeSelected = onModeSelected,
+                            lens = titleScene
+                        )
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(26.dp))
@@ -607,13 +643,27 @@ fun DashboardScreen(
 
             } // Only scrolling content belongs to the recorded scene.
 
-            PageScrollEdge(titleScene, headerInset, testTag = "dashboard-top-edge-blur") { scrollState.value }
-
-            // Header: ARCA (LOON style) & Mode Selector + iOS Switch
+            // Match Settings: only the pinned top edge samples scrolled content.
+            if (pageBackdrop != null && topBlurReveal > 0f) {
+                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                    .height(headerInset + 48.dp)
+                    .graphicsLayer { alpha = topBlurReveal }
+                    .settingsMorphTopBackdropBlur(pageBackdrop)
+                    .testTag("dashboard-top-glasmio-blur"))
+            }
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(headerInset + 48.dp)
+                .background(Brush.verticalGradient(
+                    0f to quietPageColor.copy(alpha = 1f - 0.04f * topBlurReveal),
+                    0.64f to quietPageColor.copy(alpha = 1f - 0.10f * topBlurReveal),
+                    1f to Color.Transparent
+                )))
+            // Header: unboxed title & mode selector, with restrained scroll blur.
             Column(
                 modifier = Modifier
                     .onSizeChanged { headerHeightPx = it.height }
                     .fillMaxWidth()
+                    // The fading backdrop behind this column supplies contrast. An opaque
+                    // fill here would hide the sampled blur and leave a hard lower edge.
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(top = 12.dp, bottom = 12.dp)
@@ -624,27 +674,16 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PageTitleGlass(titleScene, modifier = Modifier.testTag("dashboard-nexus-title")) { Text(
+                    PageTitleGlass(titleScene, plainTitle = true,
+                        modifier = Modifier.testTag("dashboard-nexus-title")) { Text(
                         text = "ARCA",
-                        color = LoonOrange,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.5.sp
+                        color = LoonTextPrimary,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.6).sp
                     ) }
 
-                    // Top Right iOS Cupertino Switch (aligned directly with ARCA title)
-                    ArcaGlasmioSwitch(
-                        checked = isRunning || isStarting,
-                        onCheckedChange = { onToggleVpn() }
-                    )
                 }
-
-                DashboardModeControl(
-                    currentMode = currentMode,
-                    onModeSelected = onModeSelected,
-                    lens = titleScene,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
             }
             // One shared morph hosts the node selector and every other shortcut action.
             val activePanelShortcut = shortcutPanelDataId?.let { allShortcutMap[it] }
@@ -657,6 +696,10 @@ fun DashboardScreen(
                 sourceSubtitle = activePanelShortcut.subtitle,
                 sourceIcon = activePanelShortcut.icon,
                 lens = glassScene,
+                raisedPanel = true,
+                panelHeight = if (activePanelShortcut.id == "nodes") {
+                    (280 + 52 * mainGroupProxies.size).coerceIn(356, 620).dp
+                } else null,
                 panelTestTag = if (activePanelShortcut.id == "nodes") "quick-node-selector-sheet" else "shortcut-panel-${activePanelShortcut.id}-sheet",
                 contentTestTag = if (activePanelShortcut.id == "nodes") "quick-node-selector-content" else "shortcut-panel-${activePanelShortcut.id}-content",
                 panelSurfaceCategory = if (activePanelShortcut.id == "nodes")
@@ -698,18 +741,40 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = AppStrings.get("quick_node_title", lang),
-                                    fontSize = 19.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = LoonTextPrimary
-                                )
-                                Text(
-                                    text = "策略组: ${mainGroupName.ifBlank { "默认主组" }}",
-                                    fontSize = 12.sp,
-                                    color = LoonTextSecondary
-                                )
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(activePanelShortcut.panelAccent.copy(alpha = 0.11f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .graphicsLayer(scaleX = 0.60f, scaleY = 0.60f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        activePanelShortcut.icon()
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = AppStrings.get("quick_node_title", lang),
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = LoonTextPrimary
+                                    )
+                                    Text(
+                                        text = "${AppStrings.get("dashboard_node_group", lang)}: ${mainGroupName.ifBlank { "--" }}",
+                                        fontSize = 12.sp,
+                                        color = LoonTextSecondary
+                                    )
+                                }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(
@@ -764,15 +829,44 @@ fun DashboardScreen(
                         }
                         if (filteredNodes.isEmpty()) {
                             Box(
-                                modifier = Modifier.fillMaxWidth().height(160.dp)
-                                    .padding(top = nodeEdgeInsets?.top ?: 0.dp),
+                                modifier = Modifier.fillMaxSize()
+                                    .padding(
+                                        top = nodeEdgeInsets?.top ?: 0.dp,
+                                        bottom = nodeEdgeInsets?.bottom ?: 0.dp
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = if (mainGroupProxies.isEmpty()) AppStrings.get("no_nodes_available", lang) else AppStrings.get("no_nodes_matched", lang),
-                                    color = LoonTextSecondary,
-                                    fontSize = 13.sp
-                                )
+                                if (mainGroupProxies.isEmpty()) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.padding(horizontal = 20.dp)
+                                    ) {
+                                        Text(
+                                            text = AppStrings.get("dashboard_nodes_empty_hint", lang),
+                                            color = LoonTextSecondary,
+                                            fontSize = 13.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                        Button(
+                                            onClick = {
+                                                activeShortcutPanelId = null
+                                                onNavigateToProfiles()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = activePanelShortcut.panelAccent
+                                            )
+                                        ) {
+                                            Text(AppStrings.get("dashboard_open_profiles", lang))
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        text = AppStrings.get("dashboard_no_matches_hint", lang),
+                                        color = LoonTextSecondary,
+                                        fontSize = 13.sp
+                                    )
+                                }
                             }
                         } else {
                             LazyColumn(

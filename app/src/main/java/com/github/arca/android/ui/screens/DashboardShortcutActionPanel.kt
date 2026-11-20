@@ -2,6 +2,7 @@ package com.github.arca.android.ui.screens
 
 import android.os.Build
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +56,8 @@ import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.components.ArcaGlasmioSwitch
 import com.github.arca.android.ui.theme.IosBlue
 import com.github.arca.android.ui.theme.LoonBlue
+import com.github.arca.android.ui.theme.LoonCard
+import com.github.arca.android.ui.theme.LoonEditBlueBg
 import com.github.arca.android.ui.theme.LoonTextMuted
 import com.github.arca.android.ui.theme.LoonTextPrimary
 import com.github.arca.android.ui.theme.LoonTextSecondary
@@ -150,10 +154,29 @@ internal fun DashboardShortcutActionPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(shortcut.title, fontSize = 19.sp, fontWeight = FontWeight.Bold,
-                        color = LoonTextPrimary, maxLines = 1)
-                    Text(shortcut.subtitle, fontSize = 12.sp, color = LoonTextSecondary, maxLines = 1)
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(shortcut.panelAccent.copy(alpha = 0.11f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .graphicsLayer(scaleX = 0.60f, scaleY = 0.60f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            shortcut.icon()
+                        }
+                    }
+                    Spacer(Modifier.size(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(shortcut.title, fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                            color = LoonTextPrimary, maxLines = 1)
+                        Text(shortcut.subtitle, fontSize = 12.sp, color = LoonTextSecondary, maxLines = 1)
+                    }
                 }
                 IconButton(onClick = { ipLookupState.cancel(); onClose() }, modifier = Modifier.size(36.dp).testTag("shortcut-panel-close")) {
                     Icon(Icons.Default.Close, contentDescription = "关闭", tint = LoonTextSecondary)
@@ -377,10 +400,16 @@ internal fun DashboardShortcutActionPanel(
 }
 
 @Composable
+private fun quickPanelFill(): Color =
+    if (com.github.arca.android.ui.theme.LocalLoonColors.current.isDark) Color(0xFF2A2E37)
+    else Color(0xFFF4F5F8)
+
+@Composable
 private fun QuickInfoCard(content: @Composable () -> Unit) {
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
+        solidFill = quickPanelFill(),
         surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
     ) {
         Column(
@@ -404,6 +433,7 @@ private fun QuickHint(text: String) {
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
+        solidFill = quickPanelFill(),
         surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
     ) {
         Box(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -420,11 +450,12 @@ private fun QuickRow(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    GlassSurface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        accent = if (selected) IosBlue else null,
-        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) LoonEditBlueBg else LoonCard)
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -445,6 +476,7 @@ private fun QuickAppRow(app: InstalledApp, selected: Boolean, onClick: () -> Uni
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         accent = if (selected) IosBlue else null,
+        solidFill = if (selected) LoonEditBlueBg else quickPanelFill(),
         surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
     ) {
         Row(

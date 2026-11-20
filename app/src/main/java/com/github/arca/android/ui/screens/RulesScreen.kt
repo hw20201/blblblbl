@@ -17,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -32,7 +34,6 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
-import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,6 +48,10 @@ fun RulesScreen(
     val clipboardManager = LocalClipboardManager.current
     val lang = LocalAppLanguage.current
     val haptic = rememberIosHaptic()
+    val density = LocalDensity.current
+    var headerHeightPx by remember { mutableIntStateOf(0) }
+    val initialHeaderHeight = (if (embeddedPanel) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 48.dp
+    val headerHeight = if (headerHeightPx > 0) with(density) { headerHeightPx.toDp() } else initialHeaderHeight
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedBehavior by remember { mutableStateOf("ALL") }
@@ -83,7 +88,7 @@ fun RulesScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("rules-list").bounceOverscroll(),
             contentPadding = PaddingValues(
-                top = (if (embeddedPanel) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 50.dp,
+                top = headerHeight + 12.dp,
                 bottom = 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -126,7 +131,7 @@ fun RulesScreen(
                                     haptic.selection()
                                     selectedFilterType = type
                                 },
-                                color = if (selected) LoonTextPrimary.copy(alpha = if (LocalLoonColors.current.isDark) .22f else .09f) else LoonCard.copy(alpha = .72f),
+                                color = if (selected) LoonTertiaryBg else LoonCard,
                                 shape = RoundedCornerShape(16.dp)
                             ) {
                                 Text(
@@ -143,18 +148,23 @@ fun RulesScreen(
             }
             if (filteredRules.isEmpty()) {
                 item(key = "rules-empty") {
-                    Box(
-                        Modifier.fillMaxWidth().heightIn(min = 240.dp).padding(horizontal = 24.dp),
-                        contentAlignment = Alignment.Center
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.FilterList, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(48.dp))
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = if (rules.isEmpty()) "当前配置未配置任何分流规则\n所有流量将采用默认出站策略" else "未找到符合条件的规则",
-                                color = LoonTextSecondary, fontSize = 13.sp, lineHeight = 20.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                        Box(
+                            Modifier.fillMaxWidth().heightIn(min = 240.dp).padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.FilterList, contentDescription = null, tint = LoonTextMuted, modifier = Modifier.size(48.dp))
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = if (rules.isEmpty()) "当前配置未配置任何分流规则\n所有流量将采用默认出站策略" else "未找到符合条件的规则",
+                                    color = LoonTextSecondary, fontSize = 13.sp, lineHeight = 20.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }
@@ -179,18 +189,19 @@ fun RulesScreen(
                                 Modifier.fillMaxWidth().padding(start = 4.dp, top = if (index == 0) 4.dp else 8.dp, bottom = 1.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(rule.type.uppercase(), color = typeColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.7.sp)
+                                Text(rule.type.uppercase(), color = typeColor, fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.7.sp)
                                 Spacer(Modifier.width(8.dp))
                                 HorizontalDivider(Modifier.weight(1f), color = LoonCardBorder.copy(alpha = 0.6f), thickness = 0.5.dp)
                             }
                         }
                         Surface(
-                            shape = RoundedCornerShape(12.dp), color = LoonCard.copy(alpha = .72f),
-                            border = androidx.compose.foundation.BorderStroke(0.75.dp, Color.White.copy(alpha = .7f)),
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).iosPressable {
-                                haptic.selection()
-                                inspectedRule = Pair(index + 1, rule)
-                            }
+                            shape = RoundedCornerShape(12.dp), color = LoonCard,
+                            modifier = Modifier.fillMaxWidth()
+                                .cardDepth(RoundedCornerShape(12.dp), LocalLoonColors.current.isDark, 2.dp)
+                                .clip(RoundedCornerShape(12.dp)).iosPressable {
+                                    haptic.selection()
+                                    inspectedRule = Pair(index + 1, rule)
+                                }
                         ) {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
@@ -198,14 +209,15 @@ fun RulesScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("#${index + 1}", fontSize = 11.sp, color = LoonTextMuted, fontFamily = FontFamily.Monospace, modifier = Modifier.width(34.dp))
-                                    Text(rule.type, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = typeColor)
+                                    Text("#${index + 1}", fontSize = 11.sp, lineHeight = 16.sp, color = LoonTextMuted, fontFamily = FontFamily.Monospace, modifier = Modifier.width(34.dp))
+                                    Text(rule.type, fontSize = 11.5.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold, color = typeColor)
                                     Spacer(Modifier.width(10.dp))
                                     Text(
                                         text = rule.payload.ifBlank { "MATCH ALL" },
                                         fontSize = if (rule.payload.isBlank()) 12.sp else 13.5.sp,
+                                        lineHeight = if (rule.payload.isBlank()) 18.sp else 20.sp,
                                         fontWeight = if (rule.payload.isBlank()) FontWeight.Normal else FontWeight.Medium,
-                                        color = if (rule.payload.isBlank()) LoonTextMuted else LoonTextPrimary,
+                                        color = if (rule.payload.isBlank()) LoonTextSecondary else LoonTextPrimary,
                                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -224,7 +236,8 @@ fun RulesScreen(
                 }
             }
         }
-        Box(Modifier.align(Alignment.TopCenter).then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())) {
+        Box(Modifier.align(Alignment.TopCenter).onSizeChanged { headerHeightPx = it.height }
+            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())) {
             CupertinoNavBar(
                 title = AppStrings.get("rules_screen_title", lang),
                 subtitle = "${tunnelMode.displayName} · 共 $totalRules 条规则",
@@ -303,7 +316,7 @@ fun RulesScreen(
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                    solidFill = LoonTertiaryBg
                 ) {
                     Text(
                         text = fullRuleText,

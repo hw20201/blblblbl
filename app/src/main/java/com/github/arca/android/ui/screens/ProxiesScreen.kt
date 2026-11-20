@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.testTag
@@ -65,6 +66,10 @@ import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.LightGlassSelectedTint
 import com.github.arca.android.ui.glass.useProxyGroupGlass
 import com.github.arca.android.ui.glass.proxyCardNeedsOuterBorder
+import android.os.Build
+import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.LocalGlassSettings
+import com.github.arca.android.ui.glass.usesGlasmioFrosted
 import com.github.arca.android.ui.theme.*
 
 @Composable
@@ -163,6 +168,8 @@ fun ProxiesScreen(
     }
 
     val lang = LocalAppLanguage.current
+    val colors = LocalLoonColors.current
+    val quietPages = GlassDefaults.quietPages
     val pullState = rememberPullToRefreshState()
     val titleScene = rememberNavigationLens()
     var headerHeightPx by remember { mutableIntStateOf(0) }
@@ -171,7 +178,7 @@ fun ProxiesScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
+            .background(if (quietPages || !GlassDefaults.enabled) colors.bg else Color.Transparent)
     ) {
         Box(
             modifier = Modifier.fillMaxSize()
@@ -379,13 +386,10 @@ fun ProxiesScreen(
         }
     }
 
-        val visibleList = if (isListMode) listModeState else activeTabState
-        PageScrollEdge(titleScene, headerInset, testTag = "policy-top-edge-blur") {
-            if (visibleList.firstVisibleItemIndex > 0) Int.MAX_VALUE else visibleList.firstVisibleItemScrollOffset
-        }
-
-        // Draw the pinned controls in front of the shared scroll edge.
-        Column(Modifier.onSizeChanged { headerHeightPx = it.height }.fillMaxWidth().statusBarsPadding()
+        // The quiet header shares the solid page background; its title stays unframed.
+        Column(Modifier.onSizeChanged { headerHeightPx = it.height }.fillMaxWidth()
+            .then(if (quietPages) Modifier.background(colors.bg) else Modifier)
+            .statusBarsPadding()
             .padding(horizontal = 20.dp).padding(top = 12.dp)
             ) {
             // Top Header
@@ -397,7 +401,7 @@ fun ProxiesScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                PageTitleGlass(titleScene, frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA) { Text(
+                PageTitleGlass(titleScene, plainTitle = true) { Text(
                     text = AppStrings.get("proxies_title", lang),
                     color = LoonTextPrimary,
                     fontSize = 28.sp,
@@ -407,8 +411,9 @@ fun ProxiesScreen(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier.size(48.dp).clip(CircleShape)
-                        .iosPressable(pressedScale = 0.96f, role = Role.Button) {
+                    modifier = Modifier.size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button) {
                         if (selectedGroupName.isNotBlank()) {
                             onHealthCheck(selectedGroupName)
                         } else if (visibleGroups.isNotEmpty()) {
@@ -417,9 +422,11 @@ fun ProxiesScreen(
                     }.testTag("policy-health-check-button"),
                     contentAlignment = Alignment.Center
                 ) {
-                    GlassSurface(Modifier.matchParentSize(), shape = CircleShape,
-                        surfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.TITLE_CAPSULES,
-                        surfaceAlphaScale = 0.9f) {}
+                    GlassSurface(
+                        Modifier.matchParentSize(), shape = CircleShape,
+                        surfaceCategory = GlassSurfaceCategory.TITLE_CAPSULES,
+                        surfaceAlphaScale = 0.9f, honorShape = true
+                    ) {}
                     AnimatedSpeedTestIcon(
                         isTesting = isAnyTesting,
                         tint = LoonTextPrimary,
@@ -430,7 +437,8 @@ fun ProxiesScreen(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 Box(
-                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                    modifier = Modifier.size(48.dp)
+                        .clip(CircleShape)
                         .onGloballyPositioned { policyMoreButtonBounds = it.boundsInWindow() }
                         .iosPressable(pressedScale = 0.96f, role = Role.Button) {
                             hidePolicyMoreSource = true
@@ -440,9 +448,11 @@ fun ProxiesScreen(
                         .testTag("policy-more-button"),
                     contentAlignment = Alignment.Center
                 ) {
-                    GlassSurface(Modifier.matchParentSize(), shape = CircleShape,
-                        surfaceCategory = com.github.arca.android.ui.glass.GlassSurfaceCategory.TITLE_CAPSULES,
-                        surfaceAlphaScale = 0.9f) {}
+                    GlassSurface(
+                        Modifier.matchParentSize(), shape = CircleShape,
+                        surfaceCategory = GlassSurfaceCategory.TITLE_CAPSULES,
+                        surfaceAlphaScale = 0.9f, honorShape = true
+                    ) {}
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "更多设置",
@@ -474,8 +484,19 @@ fun ProxiesScreen(
                             frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA,
                             frostedTint = if (isSelected) FROSTED_SELECTED_GLASS_TINT else null,
                             modifier = Modifier
+                                .then(if (quietPages) {
+                                    val shape = RoundedCornerShape(12.dp)
+                                    Modifier
+                                        .cardDepth(shape, colors.isDark, 1.dp)
+                                        .background(
+                                            if (isSelected) lerp(colors.card, LoonBlue, if (colors.isDark) 0.18f else 0.07f) else colors.card,
+                                            shape
+                                        )
+                                        .then(if (isSelected) Modifier.border(1.dp, LoonBlue.copy(alpha = 0.55f), shape) else Modifier)
+                                } else Modifier)
                                 .clip(RoundedCornerShape(12.dp))
                                 .iosPressable { onSelectGroup(groupName) }
+                                .then(if (quietPages) Modifier.padding(horizontal = 10.dp) else Modifier)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically
@@ -491,7 +512,7 @@ fun ProxiesScreen(
                                 }
                                 Text(
                                     text = groupName,
-                                    color = LoonTextPrimary,
+                                    color = if (quietPages && isSelected) LoonBlue else LoonTextPrimary,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )
@@ -516,6 +537,7 @@ fun ProxiesScreen(
             panelTestTag = "policy-options-panel",
             contentTestTag = "policy-options-content",
             panelHeightFraction = 0.62f,
+            raisedPanel = true,
             motionProfile = ShortcutMorphMotionProfile.QUVEN_MENU,
             sourceCornerRadius = 24.dp,
             sourceContent = {
@@ -589,16 +611,18 @@ private fun LoonGroupHeaderCard(
     onHealthCheck: () -> Unit,
     onToggleExpand: () -> Unit
 ) {
+    val quietPages = GlassDefaults.quietPages
+    val shape = RoundedCornerShape(if (quietPages) 16.dp else 20.dp)
     ProxyGlassCard(
         modifier = Modifier
             .testTag("policy-group-header-$groupName")
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 56.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .then(if (GlassDefaults.enabled) Modifier else Modifier.border(1.dp, LoonCardBorder, RoundedCornerShape(20.dp)))
+            .defaultMinSize(minHeight = if (quietPages) 62.dp else 56.dp)
+            .then(if (quietPages) Modifier else Modifier.clip(shape))
+            .then(if (GlassDefaults.enabled || quietPages) Modifier else Modifier.border(1.dp, LoonCardBorder, shape))
             .clickable { onToggleExpand() },
         color = LoonCard,
-        shape = RoundedCornerShape(20.dp),
+        shape = shape,
     ) {
         Row(
             modifier = Modifier
@@ -632,8 +656,10 @@ private fun LoonGroupHeaderCard(
                     Text(
                         text = groupName,
                         color = LoonTextPrimary,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = if (quietPages) 15.sp else 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
@@ -736,7 +762,16 @@ private fun LoonProxyItemCard(
         else -> "--"
     }
 
-    val cardBg = if (isSelected) SelectedProxyCardFill else LoonCard
+    val quietPages = GlassDefaults.quietPages
+    val colors = LocalLoonColors.current
+    val cardBg = when {
+        quietPages && isSelected -> lerp(colors.card, LoonBlue, if (colors.isDark) 0.18f else 0.07f)
+        quietPages -> colors.card
+        isSelected -> SelectedProxyCardFill
+        else -> LoonCard
+    }
+    val nameColor = if (quietPages) colors.textPrimary else if (isSelected) SelectedProxyCardText else LoonTextPrimary
+    val typeColor = if (quietPages) colors.textSecondary else if (isSelected) SelectedProxyCardMutedText else LoonTextMuted
 
     when (columns) {
         // ---------------------------------------------------------------------
@@ -748,12 +783,12 @@ private fun LoonProxyItemCard(
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .graphicsLayer {
-                        val scale = selectedProxyCardScale(isSelected)
+                        val scale = if (quietPages) 1f else selectedProxyCardScale(isSelected)
                         scaleX = scale
                         scaleY = scale
                     }
                     .height(54.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .then(if (GlassDefaults.quietPages) Modifier else Modifier.clip(RoundedCornerShape(14.dp)))
                     .then(if (isSelected || GlassDefaults.enabled) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(14.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
@@ -778,18 +813,19 @@ private fun LoonProxyItemCard(
                             )
                         }
 
-                        Column {
+                        Column(if (quietPages) Modifier.weight(1f).padding(end = 8.dp) else Modifier) {
                             Text(
                                 text = displayName,
-                                color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
+                                color = nameColor,
                                 fontSize = 14.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = proxy.type.uppercase(),
-                                color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
+                                color = typeColor,
                                 fontSize = 9.5.sp
                             )
                         }
@@ -798,13 +834,14 @@ private fun LoonProxyItemCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 50.dp, minHeight = 24.dp)
+                                .then(if (quietPages) Modifier.width(64.dp).heightIn(min = 24.dp)
+                                    else Modifier.defaultMinSize(minWidth = 50.dp, minHeight = 24.dp))
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
                                 ) { onTestSingleNode() },
-                            contentAlignment = Alignment.Center
+                            contentAlignment = if (quietPages) Alignment.CenterEnd else Alignment.Center
                         ) {
                             if (isTesting) {
                                 CircularProgressIndicator(
@@ -816,13 +853,18 @@ private fun LoonProxyItemCard(
                                 Text(
                                     text = delayText,
                                     color = delayColor,
+                                    style = if (quietPages) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
+                                    maxLines = 1,
                                     fontSize = 11.5.sp,
                                     fontWeight = if (isValidDelay || isTimeout) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
                         }
 
-                        if (isSelected) {
+                        if (quietPages) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            ProxySelectionMark(isSelected, Modifier.size(16.dp))
+                        } else if (isSelected) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
                                 imageVector = Icons.Default.Check,
@@ -849,12 +891,12 @@ private fun LoonProxyItemCard(
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .graphicsLayer {
-                        val scale = selectedProxyCardScale(isSelected)
+                        val scale = if (quietPages) 1f else selectedProxyCardScale(isSelected)
                         scaleX = scale
                         scaleY = scale
                     }
                     .height(62.dp)
-                    .clip(cardShape)
+                    .then(if (GlassDefaults.quietPages) Modifier else Modifier.clip(cardShape))
                     .then(
                         if (!GlassDefaults.enabled && proxyCardNeedsOuterBorder(groupGlass, isSelected)) {
                             Modifier.border(
@@ -890,13 +932,17 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
+                            color = nameColor,
                             fontSize = 12.5.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
+                        if (quietPages) {
+                            Spacer(Modifier.width(5.dp))
+                            ProxySelectionMark(isSelected, Modifier.size(14.dp))
+                        }
                     }
 
                     Row(
@@ -906,19 +952,22 @@ private fun LoonProxyItemCard(
                     ) {
                         Text(
                             text = proxy.type.uppercase(),
-                            color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
+                            color = typeColor,
                             fontSize = 8.5.sp,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = if (quietPages) Modifier.weight(1f).padding(end = 4.dp) else Modifier
                         )
                         Box(
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 44.dp, minHeight = 20.dp)
+                                .then(if (quietPages) Modifier.width(56.dp).heightIn(min = 20.dp)
+                                    else Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 20.dp))
                                 .clip(RoundedCornerShape(5.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
                                 ) { onTestSingleNode() },
-                            contentAlignment = Alignment.Center
+                            contentAlignment = if (quietPages) Alignment.CenterEnd else Alignment.Center
                         ) {
                             if (isTesting) {
                                 CircularProgressIndicator(
@@ -930,6 +979,8 @@ private fun LoonProxyItemCard(
                                 Text(
                                     text = delayText,
                                     color = delayColor,
+                                    style = if (quietPages) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
+                                    maxLines = 1,
                                     fontSize = 10.sp,
                                     fontWeight = if (isValidDelay || isTimeout) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -949,12 +1000,12 @@ private fun LoonProxyItemCard(
                     .testTag("proxy-card-${proxy.name}")
                     .fillMaxWidth()
                     .graphicsLayer {
-                        val scale = selectedProxyCardScale(isSelected)
+                        val scale = if (quietPages) 1f else selectedProxyCardScale(isSelected)
                         scaleX = scale
                         scaleY = scale
                     }
                     .height(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .then(if (GlassDefaults.quietPages) Modifier else Modifier.clip(RoundedCornerShape(12.dp)))
                     .then(if (isSelected || GlassDefaults.enabled) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(12.dp)))
                     .iosPressable { onClick() },
                 color = cardBg,
@@ -982,13 +1033,17 @@ private fun LoonProxyItemCard(
                         }
                         Text(
                             text = displayName,
-                            color = if (isSelected) SelectedProxyCardText else LoonTextPrimary,
+                            color = nameColor,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
                             modifier = Modifier.weight(1f),
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
+                        if (quietPages) {
+                            Spacer(Modifier.width(3.dp))
+                            ProxySelectionMark(isSelected, Modifier.size(12.dp))
+                        }
                     }
 
                     Row(
@@ -998,19 +1053,22 @@ private fun LoonProxyItemCard(
                     ) {
                         Text(
                             text = proxy.type.uppercase(),
-                            color = if (isSelected) SelectedProxyCardMutedText else LoonTextMuted,
+                            color = typeColor,
                             fontSize = 8.sp,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = if (quietPages) Modifier.weight(1f).padding(end = 3.dp) else Modifier
                         )
                         Box(
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 36.dp, minHeight = 18.dp)
+                                .then(if (quietPages) Modifier.width(50.dp).heightIn(min = 18.dp)
+                                    else Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 18.dp))
                                 .clip(RoundedCornerShape(4.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
                                 ) { onTestSingleNode() },
-                            contentAlignment = Alignment.Center
+                            contentAlignment = if (quietPages) Alignment.CenterEnd else Alignment.Center
                         ) {
                             if (isTesting) {
                                 CircularProgressIndicator(
@@ -1022,6 +1080,8 @@ private fun LoonProxyItemCard(
                                 Text(
                                     text = delayText,
                                     color = delayColor,
+                                    style = if (quietPages) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
+                                    maxLines = 1,
                                     fontSize = 9.sp,
                                     fontWeight = if (isValidDelay || isTimeout) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -1035,10 +1095,20 @@ private fun LoonProxyItemCard(
 }
 
 
-/**
- * Strategy and node cards share the app's Glasmio main material. The lazy proxy lists keep
- * only visible cards composed; the flat fallback remains unchanged when glass is disabled.
- */
+/** A reserved slot keeps labels and latency aligned as selection moves between nodes. */
+@Composable
+private fun ProxySelectionMark(selected: Boolean, modifier: Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (selected) {
+            Box(Modifier.matchParentSize().background(LoonBlue, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White,
+                    modifier = Modifier.fillMaxSize(0.72f))
+            }
+        }
+    }
+}
+
+/** Solid, shallow cards for quiet pages; the legacy glass branch remains available. */
 @Composable
 private fun ProxyGlassCard(
     modifier: Modifier,
@@ -1049,7 +1119,16 @@ private fun ProxyGlassCard(
     selected: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
-    if (GlassDefaults.enabled) {
+    if (GlassDefaults.quietPages) {
+        // One surface per header or node, with a uniform shallow lift and no inset panels.
+        Surface(
+            modifier = modifier.cardDepth(shape, LocalLoonColors.current.isDark, 1.dp),
+            color = color,
+            shape = shape
+        ) {
+            Box(content = content)
+        }
+    } else if (GlassDefaults.enabled) {
         // Keep the glass-material tag on its own inner node, as ProxyGroupGlass did:
         // the caller's modifier already carries the proxy-card tag, and a single node
         // can only hold one testTag, so merging the two tags loses one of them.
@@ -1098,13 +1177,22 @@ private fun AnimatedGlassSegmentGroup(
     testTag: String
 ) {
     if (options.isEmpty()) return
+    val isDark = LocalLoonColors.current.isDark
+    val backdrop = LocalArcaGlasmioBackdrop.current
+    if (GlassDefaults.enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() && backdrop != null
+    ) {
+        Box(Modifier.fillMaxWidth().testTag("$testTag-segment-group")) {
+            RefractingSegmentedControl(options, selectedKey, onSelect, testTag)
+        }
+        return
+    }
     val selectedIndex = options.indexOfFirst { it.first == selectedKey }.coerceAtLeast(0)
     val animatedIndex by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
         animationSpec = tween(durationMillis = 430, easing = FastOutSlowInEasing),
         label = "$testTag-selection"
     )
-    val isDark = LocalLoonColors.current.isDark
     val shape = RoundedCornerShape(14.dp)
     BoxWithConstraints(
         modifier = Modifier

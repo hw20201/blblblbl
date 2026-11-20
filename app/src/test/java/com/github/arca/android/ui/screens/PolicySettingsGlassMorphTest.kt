@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.core.model.TunnelMode
@@ -111,6 +113,62 @@ class PolicySettingsGlassMorphTest {
 
         compose.onNodeWithTag("policy-health-check-button").performClick()
         compose.runOnIdle { assertEquals("Proxy", speedTestGroup) }
+    }
+
+    @Test
+    fun refractingPolicySegmentsKeepTapDragAndDismissCallbacks() {
+        val viewMode = mutableStateOf("TABS")
+        val columns = mutableStateOf(1)
+        setGlasmioContent {
+            ProxiesScreen(
+                groups = listOf("Proxy"), groupMap = emptyMap(), currentGroup = null,
+                selectedGroupName = "Proxy", currentViewMode = viewMode.value,
+                showGroupIcons = true, nodeColumns = columns.value,
+                onViewModeChanged = { viewMode.value = it },
+                onShowGroupIconsChanged = {}, onNodeColumnsChanged = { columns.value = it },
+                onSelectGroup = {}, onSelectProxy = { _, _ -> }, onHealthCheck = {}
+            )
+        }
+        compose.onNodeWithTag("policy-more-button").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("proxies-view-mode-glasmio-control").assertIsDisplayed()
+        compose.onNodeWithTag("proxies-node-columns-glasmio-control").assertIsDisplayed()
+        compose.onNodeWithTag("proxies-view-mode-selection-lens").assertIsDisplayed()
+        compose.onNodeWithTag("proxies-node-columns-optical-labels").assertIsDisplayed()
+        compose.onNodeWithText("列表模式").performClick()
+        compose.onNodeWithText("三列").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals("LIST", viewMode.value)
+            assertEquals(3, columns.value)
+        }
+        val track = compose.onNodeWithTag("proxies-node-columns-glasmio-control")
+        val trackBounds = track.getUnclippedBoundsInRoot()
+        val firstTarget = compose.onNodeWithTag("proxies-node-columns-1").getUnclippedBoundsInRoot()
+        track.performTouchInput {
+            down(Offset(width * 5f / 6f, centerY))
+            moveTo(Offset(width * .52f, centerY), 300)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("selection waits until release", 3, columns.value) }
+        val movingLens = compose.onNodeWithTag("proxies-node-columns-selection-lens").getUnclippedBoundsInRoot()
+        val movingCenter = (movingLens.left.value + movingLens.right.value) / 2f
+        val width = trackBounds.right.value - trackBounds.left.value
+        assertTrue("lens follows the finger between confirmed slots",
+            movingCenter > trackBounds.left.value + width * .4f &&
+                movingCenter < trackBounds.left.value + width * .7f)
+        assertEquals("the optical layer must not move the hit targets", firstTarget,
+            compose.onNodeWithTag("proxies-node-columns-1").getUnclippedBoundsInRoot())
+        track.performTouchInput {
+            moveTo(Offset(width / 6f, centerY), 200)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, columns.value) }
+        compose.onNodeWithTag("policy-options-close").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("policy-options-panel").assertDoesNotExist()
+        compose.onNodeWithTag("policy-more-button").assertIsDisplayed()
     }
 
     @Test

@@ -58,6 +58,7 @@ import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
 import com.github.arca.android.ui.glass.LocalShortcutBlurEnabled
 import com.github.arca.android.ui.glass.NavigationLensState
+import com.github.arca.android.ui.theme.LocalLoonColors
 import io.github.neoruaa.glasmio.glass.progressiveBlurBackdrop
 import kotlin.math.roundToInt
 
@@ -267,6 +268,7 @@ internal fun ShortcutMorphOverlay(
     /** Corner radii of the row this panel grows from (top-start, top-end, bottom-end, bottom-start). */
     sourceCorners: ShortcutMorphCorners? = null,
     panelSurfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
+    raisedPanel: Boolean = false,
     sourceContent: (@Composable () -> Unit)? = null,
     /**
      * Drawn above the body in the panel's own layer: never scrolled, faded, blurred or scaled with
@@ -391,7 +393,8 @@ internal fun ShortcutMorphOverlay(
                 cornerShape = RoundedCornerShape(topStart = ts, topEnd = te, bottomEnd = corner(src.bottomEnd), bottomStart = corner(src.bottomStart))
                 currentRadius = maxOf(ts, te)
             } else {
-                currentRadius = GlassRadius.card + (28.dp - GlassRadius.card) * fraction
+                val startRadius = if (raisedPanel) 22.dp else GlassRadius.card
+                currentRadius = startRadius + (28.dp - startRadius) * fraction
                 cornerShape = RoundedCornerShape(currentRadius)
             }
             // Opening retires the source row sooner so it does not ghost under the arriving panel
@@ -410,6 +413,7 @@ internal fun ShortcutMorphOverlay(
                     .background(Color.Black.copy(alpha = 0.045f * fraction))
                     .clickable(interactionSource = null, indication = null, onClick = onDismissRequest)
             )
+            val dark = LocalLoonColors.current.isDark
             GlassSurface(
                 modifier = Modifier
                     .offset { IntOffset(current.left.roundToInt(), current.top.roundToInt()) }
@@ -425,6 +429,7 @@ internal fun ShortcutMorphOverlay(
                         shape = cornerShape
                         clip = false
                     } else Modifier)
+                    .then(if (raisedPanel) Modifier.cardDepth(cornerShape, dark, 3.dp + 3.dp * fraction) else Modifier)
                     .clip(cornerShape)
                     .settingsMorphBottomCloseFade(bottomFadeAlpha)
                     .zIndex(1f)
@@ -440,7 +445,8 @@ internal fun ShortcutMorphOverlay(
                 blurEnabled = LocalShortcutBlurEnabled.current,
                 shortcutContactFrost = true,
                 shortcutDockLens = true,
-                honorShape = menuProfile,
+                honorShape = menuProfile || raisedPanel,
+                solidFill = if (raisedPanel) { if (dark) Color(0xFF21252E) else Color.White } else null,
                 surfaceCategory = panelSurfaceCategory,
                 surfaceAlphaScale = if (menuProfile) 0.72f + 0.28f * smoothMorphWindow(0.55f, 0.95f, fraction) else 1f
             ) {

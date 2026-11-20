@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import com.github.arca.android.ui.theme.LoonBg
+import com.github.arca.android.ui.theme.LocalLoonColors
 import kotlin.random.Random
 
 /** A reproducible seed may be supplied to previews; app sessions start a fresh route. */
@@ -82,6 +83,7 @@ fun NexusGlassBackground(
     sharedGlasmioBackdrop: Backdrop? = null,
     recordGlasmioBackdropSource: Boolean = sharedGlasmioBackdrop == null,
     drawBackground: Boolean = true,
+    quietBackdrop: Boolean = false,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -111,7 +113,22 @@ fun NexusGlassBackground(
         rememberGlasmioLayerBackdrop() else null
     val glasmioLayerBackdrop = glasmioBackdrop as? GlasmioLayerBackdrop
     if (!drawBackground) {
-        Box(modifier = modifier.fillMaxSize()) {
+        Box(modifier = modifier.fillMaxSize().then(if (GlassDefaults.quietPages)
+            Modifier.background(if (LocalLoonColors.current.isDark) Color(0xFF101114) else Color(0xFFF2F2F5))
+        else Modifier)) {
+            ProvideArcaGlasmioBackdrop(glasmioBackdrop) { content() }
+        }
+        return
+    }
+    if ((GlassDefaults.quietPages || quietBackdrop) && testBackdropId == null) {
+        // Preserve both recorder paths and the shared dock backdrop, but remove the
+        // full-screen animated wallpaper. The page's solid field matches Settings.
+        Box(modifier = modifier.fillMaxSize().clipToBounds()) {
+            Box(Modifier.fillMaxSize().graphicsLayer().then(backdropRecorder)
+                .then(if (recordGlasmioBackdropSource && glasmioLayerBackdrop != null)
+                    Modifier.glassBackdropSource(glasmioLayerBackdrop).trackBackdropPosition(glasmioLayerBackdrop)
+                else Modifier)
+                .background(if (LocalLoonColors.current.isDark) Color(0xFF101114) else Color(0xFFF2F2F5)))
             ProvideArcaGlasmioBackdrop(glasmioBackdrop) { content() }
         }
         return

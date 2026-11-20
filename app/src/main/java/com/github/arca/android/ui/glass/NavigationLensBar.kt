@@ -11,6 +11,8 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.TargetBasedAnimation
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -300,9 +302,10 @@ fun NavigationLens(
     dragPosition: Float? = null,
     optics: NavigationLensOpticsState? = null,
     lensTestTag: String = "navigation-liquid-lens",
-    surfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION
+    surfaceCategory: GlassSurfaceCategory = GlassSurfaceCategory.BOTTOM_NAVIGATION,
+    solidFill: Color? = null
 ) {
-    if (lens == null || slotCount <= 0) return
+    if ((lens == null && solidFill == null) || slotCount <= 0) return
     val destination = selectedSlot.coerceIn(0, slotCount - 1).toFloat()
     val travel = remember { LensSpring(destination, LensMotion.travelStiffness, LensMotion.travelDamping) }
     val jelly = remember { LensSpring(0f, LensMotion.jellyStiffness, LensMotion.jellyDamping) }
@@ -365,7 +368,9 @@ fun NavigationLens(
     Layout(
         modifier = modifier.graphicsLayer { clip = false },
         content = {
-            NavigationGlassSurface(
+            if (solidFill != null) {
+                Box(Modifier.fillMaxSize().testTag(lensTestTag).background(solidFill, CircleShape))
+            } else NavigationGlassSurface(
                 modifier = Modifier.fillMaxSize().testTag(lensTestTag),
                 lens = lens,
                 shape = CircleShape,

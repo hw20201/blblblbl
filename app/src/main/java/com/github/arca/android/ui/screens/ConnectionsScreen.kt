@@ -52,6 +52,7 @@ import com.github.arca.android.ui.components.ShortcutSearchField
 import com.github.arca.android.ui.components.bounceOverscroll
 import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.glass.LightGlassSurface
 import com.github.arca.android.ui.theme.AppPalette
 import com.github.arca.android.ui.theme.IosBlue
@@ -236,8 +237,12 @@ private fun ConnectionRow(c: ConnectionInfo, onClose: () -> Unit) {
 
 @Composable
 private fun EmptyHint(text: String) {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = LoonTextSecondary, fontSize = 14.sp, lineHeight = 21.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    Box(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 24.dp), contentAlignment = Alignment.Center) {
+        GlassSurface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp), contentAlignment = Alignment.Center) {
+                Text(text, color = LoonTextSecondary, fontSize = 14.sp, lineHeight = 21.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
     }
 }

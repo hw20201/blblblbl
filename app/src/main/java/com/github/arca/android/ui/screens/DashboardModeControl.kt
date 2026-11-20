@@ -3,6 +3,7 @@ package com.github.arca.android.ui.screens
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -55,11 +56,11 @@ internal fun DashboardModeControl(
             .selectableGroup()
             .then(if (useGlass) Modifier.navigationLensDrag(modes.size, { dragPosition = it }, select) else Modifier)
     ) {
-        GlassSurface(
-            modifier = Modifier.matchParentSize(),
-            shape = CircleShape,
-            surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
-        ) { }
+        Box(
+            Modifier.matchParentSize()
+                .background(LoonCard, CircleShape)
+                .border(1.dp, LoonCardBorder, CircleShape)
+        )
         if (useGlass) {
             NavigationLens(
                 selectedSlot = selectedIndex,
@@ -70,7 +71,12 @@ internal fun DashboardModeControl(
                 dragPosition = dragPosition,
                 optics = optics,
                 lensTestTag = "mode-selection-lens",
-                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS,
+                solidFill = if (LocalLoonColors.current.isDark) {
+                    androidx.compose.ui.graphics.Color(0xFF263B55)
+                } else {
+                    androidx.compose.ui.graphics.Color(0xFFE6F0FF)
+                }
             )
             NavigationLensContent(
                 modifier = Modifier.matchParentSize(),

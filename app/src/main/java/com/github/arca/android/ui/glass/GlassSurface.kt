@@ -25,6 +25,8 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.github.arca.android.ui.components.cardDepth
+import com.github.arca.android.ui.theme.LoonCard
 
 /**
  * Panel material for one palette.
@@ -161,8 +163,13 @@ fun GlassSurface(
      * row's own corners and end at a panel's has to opt out.
      */
     honorShape: Boolean = false,
+    solidFill: Color? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    if (solidFill != null) {
+        Box(modifier.clip(shape).background(solidFill, shape), content = content)
+        return
+    }
     val fill = if (accent == null) {
         Brush.linearGradient(
             listOf(tokens.tint, tokens.tintEnd),
@@ -182,6 +189,16 @@ fun GlassSurface(
     val effectiveShape = if (honorShape) shape
         else if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
         else if (tunedMaterial) ShortcutTunedCardShape else shape
+    if (GlassDefaults.quietPages && surfaceCategory == GlassSurfaceCategory.LARGE_PANELS &&
+        !shortcutContactFrost && !shortcutDockLens
+    ) {
+        Box(
+            modifier.cardDepth(effectiveShape, tokens.isDark, 2.dp)
+                .clip(effectiveShape).background(LoonCard, effectiveShape),
+            content = content
+        )
+        return
+    }
     val glasmioBackdrop = LocalArcaGlasmioBackdrop.current
     if (GlassDefaults.enabled && LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() &&
         glasmioBackdrop != null

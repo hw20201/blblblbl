@@ -94,12 +94,13 @@ class NexusNavigationRegressionTest {
         compose.onNodeWithTag("quick-node-selector-sheet").assertDoesNotExist()
     }
 
-    @Test fun rulesPageTitleUsesCapsuleAndBackStillWorks() {
+    @Test fun rulesPageTitleIsPlainAndBackStillWorks() {
         var backed = false
         compose.setContent {
             RulesScreen(emptyList(), 0, TunnelMode.RULE, onBack = { backed = true })
         }
-        compose.onNodeWithTag("navigation-title-capsule").assertExists()
+        compose.onNodeWithTag("navigation-title-capsule").assertDoesNotExist()
+        compose.onNodeWithTag("navigation-title-plain").assertExists()
         compose.onNodeWithTag("navigation-bar-transparent-row").assertExists()
         compose.onNodeWithText("返回").performClick()
         compose.runOnIdle { assertTrue(backed) }

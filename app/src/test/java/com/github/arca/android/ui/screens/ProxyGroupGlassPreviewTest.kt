@@ -147,7 +147,12 @@ class ProxyGroupGlassPreviewTest {
             mapOf("left" to rect.left, "top" to rect.top, "right" to rect.right, "bottom" to rect.bottom)
         }
         assertTrue("At least one proxy group title should be visible", visibleGroupBounds.isNotEmpty())
-        if (stage != "before" && glass) {
+        if (GlassDefaults.quietPages) {
+            assertTrue("Quiet strategy cards use ordinary opaque panels",
+                compose.onAllNodesWithTag("proxy-group-glass-material", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+            assertTrue("Quiet strategy cards do not render the optical main material",
+                compose.onAllNodesWithTag("proxy-glasmio-main-material", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        } else if (stage != "before" && glass) {
             assertTrue("New GROUP glass material must actually be exercised",
                 compose.onAllNodesWithTag("proxy-group-glass-material", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
             assertTrue("GROUP cards use the app's Glasmio main material",

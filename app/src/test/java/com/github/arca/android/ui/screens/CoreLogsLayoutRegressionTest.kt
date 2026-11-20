@@ -62,16 +62,16 @@ class CoreLogsLayoutRegressionTest {
     }
 
     @Test
-    fun emptyStateSitsAboveTheReservedLogViewportAndLongLogsRemainScrollable() {
+    fun emptyStateCentersInTheConsoleAndLongLogsRemainScrollable() {
         showLogs()
 
         compose.onNodeWithTag("logs-console-empty-state").assertIsDisplayed()
         val console = compose.onNodeWithTag("logs-console-area").fetchSemanticsNode().boundsInRoot
         val empty = compose.onNodeWithTag("logs-console-empty-state").fetchSemanticsNode().boundsInRoot
-        val reserved = compose.onNodeWithTag("logs-console-future-logs-space").fetchSemanticsNode().boundsInRoot
-        assertTrue("the empty prompt stays within the upper console zone: empty=$empty console=$console", empty.bottom <= console.top + console.height * 0.46f + 1f)
-        assertTrue("the lower half remains free for future logs: reserved=$reserved console=$console", reserved.top >= empty.bottom && reserved.height >= console.height * 0.50f)
-        assertTrue("the reserved area remains inside the console", reserved.bottom <= console.bottom + 1f)
+        val zone = compose.onNodeWithTag("logs-console-empty-state-zone").fetchSemanticsNode().boundsInRoot
+        assertTrue("the empty panel fills the console viewport: zone=$zone console=$console", zone.height >= console.height - 1f && zone.width >= console.width - 1f)
+        assertTrue("the prompt remains inside the console: empty=$empty console=$console", empty.top >= console.top && empty.bottom <= console.bottom)
+        assertTrue("the prompt is centered within the console: empty=$empty console=$console", kotlin.math.abs(empty.center.y - console.center.y) <= 1f && kotlin.math.abs(empty.center.x - console.center.x) <= 1f)
 
         repeat(60) { index -> LogRepository.addLog("info", "scroll-row-$index") }
         compose.waitForIdle()

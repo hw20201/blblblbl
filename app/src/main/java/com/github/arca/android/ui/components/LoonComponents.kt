@@ -168,10 +168,41 @@ fun LoonTrafficSummaryCard(
     uploadSpeed: String,
     downloadTitle: String,
     downloadSpeed: String,
-    glass: Boolean = GlassDefaults.enabled
+    glass: Boolean = GlassDefaults.enabled,
+    editorialStyle: Boolean = false
 ) {
     val shape = RoundedCornerShape(GlassRadius.card)
-    if (glass) {
+    if (editorialStyle) {
+        val dark = LocalLoonColors.current.isDark
+        val ink = if (dark) Color(0xFFF4F7FF) else Color(0xFF17263A)
+        val muted = if (dark) Color(0xFFB9C7DD) else Color(0xFF5F7088)
+        Box(
+            modifier = modifier.fillMaxWidth().height(130.dp)
+                .clip(shape)
+                .background(if (dark) Color(0xFF18243A) else Color(0xFFE6EEFB), shape)
+                .testTag("dashboard-traffic-card")
+        ) {
+            // Character lives in the information card, not in a noisy page wallpaper.
+            Box(Modifier.align(Alignment.TopEnd).size(155.dp)
+                .background(Brush.radialGradient(listOf(
+                    Color(0xFF4A91FF).copy(alpha = if (dark) .32f else .24f), Color.Transparent
+                )), CircleShape))
+            Box(Modifier.align(Alignment.TopStart).width(5.dp).fillMaxHeight()
+                .background(Brush.verticalGradient(listOf(Color(0xFF4C91FF), Color(0xFF74C6D3)))))
+            Column(Modifier.fillMaxSize().padding(start = 22.dp, end = 18.dp, top = 12.dp, bottom = 10.dp)) {
+                Text("LIVE TRAFFIC", color = muted, fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+                Spacer(Modifier.height(4.dp))
+                Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    TrafficMetric(Modifier.weight(1f), uploadTitle, uploadSpeed,
+                        Icons.Default.ArrowUpward, Color(0xFF54D0A5), ink, muted, "traffic-upload")
+                    Box(Modifier.width(1.dp).height(42.dp).background(muted.copy(alpha = .28f)))
+                    TrafficMetric(Modifier.weight(1f).padding(start = 18.dp), downloadTitle, downloadSpeed,
+                        Icons.Default.ArrowDownward, Color(0xFF438BFA), ink, muted, "traffic-download")
+                }
+            }
+        }
+    } else if (glass) {
         GlassSurface(
             modifier = modifier.fillMaxWidth().height(104.dp).testTag("dashboard-traffic-card"),
             shape = shape,
@@ -496,7 +527,8 @@ fun LoonShortcutCard(
     lensTintTarget: Color? = null,
     /** Slot coordinates plus the resting glass rect in that slot; never a pressed/tilted AABB. */
     onRestingBoundsChanged: ((LayoutCoordinates, Rect) -> Unit)? = null,
-    lensBoundsState: State<NavigationLensGlobalBounds?>? = null
+    lensBoundsState: State<NavigationLensGlobalBounds?>? = null,
+    editorialStyle: Boolean = false
 ) {
     val haptic = rememberIosHaptic()
     val touchVariant = LocalShortcutTouchVariant.current
@@ -551,7 +583,50 @@ fun LoonShortcutCard(
     // shortcut-id tag. Chaining both testTag modifiers on the same node masks one.
     Box(Modifier.testTag("shortcut-card-$title")) {
         Box(slotModifier) {
-        if (GlassDefaults.enabled) {
+        if (editorialStyle) {
+            val accent = when {
+                title.contains("VPN", ignoreCase = true) || title.contains("连接") -> Color(0xFFFF822E)
+                title.contains("IP", ignoreCase = true) -> Color(0xFF378CFF)
+                title.contains("DNS", ignoreCase = true) -> Color(0xFF1BA889)
+                else -> Color(0xFF6A82BA)
+            }
+            val cardShape = RoundedCornerShape(22.dp)
+            val darkCard = LocalLoonColors.current.isDark
+            Box(
+                modifier = pressModifier
+                    .shadow(
+                        elevation = if (darkCard) 4.dp else 5.dp,
+                        shape = cardShape,
+                        clip = false,
+                        ambientColor = if (darkCard) Color.Black else Color(0xFF485870),
+                        spotColor = if (darkCard) Color.Black else Color(0xFF485870)
+                    )
+                    .clip(cardShape)
+                    .background(if (darkCard) Color(0xFF21252E) else Color.White, cardShape)
+                    .border(1.dp, Brush.verticalGradient(if (darkCard)
+                        listOf(Color.White.copy(alpha = .18f), accent.copy(alpha = .12f), Color.White.copy(alpha = .06f))
+                    else listOf(Color.White.copy(alpha = .85f), accent.copy(alpha = .17f), Color(0xFF8394A8).copy(alpha = .13f))), cardShape)
+            ) {
+                // A nearly imperceptible sheen on an opaque card; no wallpaper is refracted.
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+                    listOf(if (darkCard) Color.White.copy(alpha = .045f) else Color(0xFF9CC8FF).copy(alpha = .07f),
+                        Color.Transparent, Color.Transparent),
+                    startY = 0f, endY = 210f
+                )))
+                // A compact chromatic marker gives the card identity without making
+                // its entire surface translucent or introducing wallpaper noise.
+                Box(Modifier.align(Alignment.TopStart).padding(start = 15.dp, top = 0.dp)
+                    .width(38.dp).height(3.dp).background(accent, RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp)))
+                ShortcutCardContent(
+                    title, subtitle, icon, isEditing, onDelete, touchMotion.contentModifier,
+                    tintTarget = lensTintTarget,
+                    iconTintProgress = iconTintProgress,
+                    labelTintProgress = labelTintProgress,
+                    onIconBoundsChanged = if (lensTintTarget == null) null else { bounds -> iconBoundsInWindow = bounds },
+                    onLabelBoundsChanged = if (lensTintTarget == null) null else { bounds -> labelBoundsInWindow = bounds }
+                )
+            }
+        } else if (GlassDefaults.enabled && !GlassDefaults.quietPages) {
             GlassSurface(
                 modifier = pressModifier,
                 shape = RoundedCornerShape(GlassRadius.card),
