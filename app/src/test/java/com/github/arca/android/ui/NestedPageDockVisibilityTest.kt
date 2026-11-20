@@ -124,10 +124,10 @@ class NestedPageDockVisibilityTest {
 
         compose.runOnIdle { nested.value = false }
         compose.mainClock.advanceTimeBy(80)
-        compose.waitForIdle()
+        // AnimatedVisibility may need another layout frame to publish the entering dock.
+        awaitDockPresence(true)
         compose.onNodeWithContentDescription("main-tab-dock").assertExists()
         capture("dock-return-transition.png")
-        awaitDockPresence(true)
         compose.mainClock.advanceTimeBy(250)
         capture("dock-returned-main-tab.png")
         File("build/reports/nested-dock/evidence.txt").apply {
