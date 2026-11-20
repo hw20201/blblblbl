@@ -101,8 +101,8 @@ internal fun SubscriptionSourcesSheet(profile: ProfileItem, onDismiss: () -> Uni
     }
     GlassModalBottomSheet(onDismissRequest = ::close,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = LoonBg,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.90f).imePadding().padding(horizontal = 20.dp)) {
+        heightFraction = 0.90f, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             val version = state?.current
             val aggregate = version?.standalone == false
             val hasRemote = staged.any { it.enabled && it.url != null }

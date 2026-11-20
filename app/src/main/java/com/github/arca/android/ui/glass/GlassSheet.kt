@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,7 +35,8 @@ import androidx.compose.ui.window.Dialog
  * the sheet paints a GlassSurface instead of a solid container color, so sheets
  * match the glass pages. Otherwise it behaves exactly like ModalBottomSheet.
  * All sheet content roots are plain Columns, so wrapping them in one more
- * Column is layout-safe.
+ * Column is layout-safe. [heightFraction] sizes the handle and content together
+ * inside the sheet's anchor coordinate space, before applying [contentWindowInsets].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,8 +50,11 @@ fun GlassModalBottomSheet(
     tonalElevation: Dp = 0.dp,
     scrimColor: Color = BottomSheetDefaults.ScrimColor,
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
+    heightFraction: Float? = null,
+    contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
     content: @Composable ColumnScope.() -> Unit
 ) {
+    require(heightFraction == null || heightFraction > 0f && heightFraction <= 1f)
     val glass = GlassDefaults.enabled
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -60,18 +67,28 @@ fun GlassModalBottomSheet(
         scrimColor = scrimColor,
         // With glass the handle is drawn inside the glass surface; otherwise it would float
         // above the sheet on the bare scrim while the glass starts below it.
-        dragHandle = if (glass) null else dragHandle
+        dragHandle = if (glass || heightFraction != null) null else dragHandle,
+        // Fractional sheets size the entire shell before its insets. Otherwise M3's
+        // offset-dependent top inset changes the height and moves the expanded anchor.
+        contentWindowInsets = { if (heightFraction == null) contentWindowInsets() else WindowInsets(0) }
     ) {
-        if (glass) {
-            // The glass follows the sheet's own rounded top corners instead of a hard rectangle.
-            GlassSurface(modifier = Modifier.fillMaxWidth(), shape = shape) {
-                Column(Modifier.fillMaxWidth()) {
-                    dragHandle?.let { handle ->
-                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { handle() }
-                    }
-                    content()
+        val shellModifier = Modifier.fillMaxWidth().then(
+            if (heightFraction == null) Modifier else Modifier.fillMaxHeight(heightFraction)
+        )
+        val shellContent: @Composable () -> Unit = {
+            Column(Modifier.fillMaxWidth().then(
+                if (heightFraction == null) Modifier else Modifier.windowInsetsPadding(contentWindowInsets())
+            )) {
+                dragHandle?.let { handle ->
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { handle() }
                 }
+                content()
             }
+        }
+        if (glass) {
+            GlassSurface(modifier = shellModifier, shape = shape) { shellContent() }
+        } else if (heightFraction != null) {
+            Box(shellModifier) { shellContent() }
         } else {
             content()
         }

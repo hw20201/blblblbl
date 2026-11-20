@@ -79,8 +79,8 @@ internal fun SubscriptionImportSheet(
     }
     GlassModalBottomSheet(onDismissRequest = ::close,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = LoonBg,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding().padding(horizontal = 20.dp)) {
+        heightFraction = 0.92f, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             SheetHeading(if (addingSources) "添加来源" else "添加配置",
                 if (preview == null) "选择来源  ·  01 / 02" else "检查结果  ·  02 / 02", ::close)
             LazyColumn(Modifier.weight(1f).testTag("subscription-import-content"),
