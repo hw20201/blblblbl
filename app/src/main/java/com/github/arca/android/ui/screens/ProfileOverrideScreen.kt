@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.core.ClashCore
 import com.github.arca.android.data.ConfigManager
+import com.github.arca.android.data.DashboardData
 import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.data.ProfileParser
 import com.github.arca.android.data.ScriptItem
@@ -74,7 +75,7 @@ fun ProfileOverrideScreen(
                         scope.launch(Dispatchers.IO) {
                             val settings = SettingsManager(context)
                             val profiles = ConfigManager.getProfiles(context)
-                            val activeProfile = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
+                            val activeProfile = DashboardData.activeProfile(profiles, settings.selectedProfileId)
                             if (activeProfile?.id == profile.id && ClashCore.isCoreLoaded) {
                                 runCatching {
                                     val configFile = ConfigManager.prepareConfig(context, updated.file)

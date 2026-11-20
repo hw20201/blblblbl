@@ -10,11 +10,15 @@ import org.junit.Test
 class DashboardDataTest {
     private fun profile(id: String, name: String) = ProfileItem(id, name, null, File("$id.yaml"), 0L)
 
-    @Test fun selectedProfileAndFallbackUseTheSameName() {
-        val profiles = listOf(profile("a", "我的订阅"), profile("b", "备用订阅"))
+    @Test fun selectedProfileThenDefaultThenFirstFallback() {
+        val defaultProfile = profile(ConfigManager.DEFAULT_PROFILE_ID, "内置默认")
+        val profiles = listOf(profile("a", "我的订阅"), defaultProfile, profile("b", "备用订阅"))
         assertEquals("备用订阅", DashboardData.activeProfile(profiles, "b")?.name)
-        assertEquals("我的订阅", DashboardData.activeProfile(profiles, null)?.name)
-        assertEquals("我的订阅", DashboardData.activeProfile(profiles, "deleted")?.name)
+        assertEquals("内置默认", DashboardData.activeProfile(profiles, null)?.name)
+        assertEquals("内置默认", DashboardData.activeProfile(profiles, "deleted")?.name)
+
+        val withoutDefault = listOf(profile("a", "我的订阅"), profile("b", "备用订阅"))
+        assertEquals("我的订阅", DashboardData.activeProfile(withoutDefault, "deleted")?.name)
         assertNull(DashboardData.activeProfile(emptyList(), "deleted"))
     }
 

@@ -132,6 +132,15 @@ class SettingsManager(context: Context) {
         return result
     }
 
+    fun renameSelectedNodes(groups: Collection<String>, oldName: String, newName: String) {
+        if (oldName == newName) return
+        groups.forEach { group ->
+            if (getSelectedNode(group) == oldName) {
+                setSelectedNode(group, newName)
+            }
+        }
+    }
+
     // View mode persistence (TABS or LIST)
     var proxiesViewMode: String
         get() = prefs.getString("proxies_view_mode", "TABS") ?: "TABS"

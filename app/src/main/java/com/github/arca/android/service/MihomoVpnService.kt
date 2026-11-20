@@ -22,6 +22,7 @@ import com.github.kr328.clash.core.util.*
 import com.github.arca.android.R
 import com.github.arca.android.core.ClashCore
 import com.github.arca.android.data.ConfigManager
+import com.github.arca.android.data.DashboardData
 import com.github.arca.android.data.PerAppProxyMode
 import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.data.TunStack
@@ -214,7 +215,7 @@ class MihomoVpnService : VpnService() {
                 val profiles = measureStartupStage("profile_lookup", traceStartup) {
                     ConfigManager.getProfiles(this@MihomoVpnService)
                 }
-                val activeProfile = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
+                val activeProfile = DashboardData.activeProfile(profiles, settings.selectedProfileId)
 
                 val configFile = measureStartupStage("prepare_config", traceStartup) {
                     ConfigManager.prepareConfig(

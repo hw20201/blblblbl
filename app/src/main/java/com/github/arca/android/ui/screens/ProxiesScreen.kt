@@ -10,6 +10,9 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -149,8 +152,12 @@ fun ProxiesScreen(
     groupRowState: LazyListState = rememberLazyListState(),
     expandedGroups: SnapshotStateMap<String, Boolean> = remember { mutableStateMapOf() },
     perGroupTabStates: SnapshotStateMap<String, LazyListState> = remember { mutableStateMapOf() },
-    glassScene: NavigationLensState? = null
+    glassScene: NavigationLensState? = null,
+    onAddNode: (() -> Unit)? = null,
+    onEditNode: ((String) -> Unit)? = null,
+    editableNodeNames: Set<String>? = null
 ) {
+    var showMoreMenu by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
     var policyMoreButtonBounds by remember { mutableStateOf<Rect?>(null) }
     var hidePolicyMoreSource by remember { mutableStateOf(false) }
@@ -184,9 +191,12 @@ fun ProxiesScreen(
             .background(if (quietPages || !GlassDefaults.enabled) colors.bg else Color.Transparent)
     ) {
         Box(
-            modifier = Modifier.fillMaxSize()
+            // Give scrolling content its own viewport so neither cards nor their shadows
+            // can scroll into the pinned title and group capsules.
+            modifier = Modifier.fillMaxSize().padding(top = headerInset).clipToBounds()
                 .then(if (GlassDefaults.enabled) Modifier.recordNavigationScene(titleScene, glassScene) else Modifier)
                 .recordArcaGlasmioBackdropSource(pageBackdrop)
+                .testTag("policy-content-viewport")
         ) {
         // =====================================================================
         // MODE 1: TABS VIEW (High-Performance, Butter Smooth)
@@ -229,14 +239,14 @@ fun ProxiesScreen(
                     },
                     state = pullState,
                     modifier = Modifier.fillMaxSize(),
-                    indicator = { ProxiesPullIndicator(pullState, isAnyTesting, headerInset) }
+                    indicator = { ProxiesPullIndicator(pullState, isAnyTesting, 0.dp) }
                 ) {
                     LazyColumn(
                         state = activeTabState,
                         modifier = Modifier.testTag("policy-node-list")
                             .fillMaxSize()
                             .bounceOverscroll(allowTop = false, allowBottom = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val tabRowKeys = proxyRowKeysOf(chunkedRows)
@@ -258,7 +268,8 @@ fun ProxiesScreen(
                                             columns = nodeColumns,
                                             isTesting = isItemTesting,
                                             onClick = { onSelectProxy(selectedGroupName, proxy) },
-                                            onTestSingleNode = { onTestSingleNode(selectedGroupName, proxy.name) }
+                                            onTestSingleNode = { onTestSingleNode(selectedGroupName, proxy.name) },
+                                            onEditNode = onEditNode?.takeIf { canEditProxyNode(proxy, editableNodeNames) }
                                         )
                                     }
                                 }
@@ -298,7 +309,7 @@ fun ProxiesScreen(
                     onRefresh = { onHealthCheck("") },
                     state = pullState,
                     modifier = Modifier.fillMaxSize(),
-                    indicator = { ProxiesPullIndicator(pullState, isAnyTesting, headerInset) }
+                    indicator = { ProxiesPullIndicator(pullState, isAnyTesting, 0.dp) }
                 ) {
                     LazyColumn(
                         state = listModeState,
@@ -306,7 +317,7 @@ fun ProxiesScreen(
                             .testTag("policy-group-list")
                             .fillMaxSize()
                             .bounceOverscroll(allowTop = false, allowBottom = false),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = headerInset + 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()))
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = mainDockContentInset(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()))
                     ) {
                         visibleGroups.forEachIndexed { groupIndex, groupName ->
                             val group = groupMap[groupName]
@@ -374,7 +385,8 @@ fun ProxiesScreen(
                                                             columns = columns,
                                                             isTesting = isItemTesting,
                                                             onClick = { onSelectProxy(groupName, proxy) },
-                                                            onTestSingleNode = { onTestSingleNode(groupName, proxy.name) }
+                                                            onTestSingleNode = { onTestSingleNode(groupName, proxy.name) },
+                                                            onEditNode = onEditNode?.takeIf { canEditProxyNode(proxy, editableNodeNames) }
                                                         )
                                                     }
                                                 }
@@ -403,14 +415,16 @@ fun ProxiesScreen(
         )
         // Titles and actions stay sharp above the shared scroll-edge blur.
         Column(Modifier.onSizeChanged { headerHeightPx = it.height }.fillMaxWidth()
+            .testTag("policy-header")
+            .then(if (quietPages) Modifier.background(colors.bg) else Modifier)
             .statusBarsPadding()
-            .padding(horizontal = 20.dp).padding(top = 12.dp)
+            .padding(top = 12.dp)
             ) {
             // Top Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .padding(horizontal = 20.dp).padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -455,8 +469,7 @@ fun ProxiesScreen(
                         .clip(CircleShape)
                         .onGloballyPositioned { policyMoreButtonBounds = it.boundsInWindow() }
                         .iosPressable(pressedScale = 0.96f, role = Role.Button) {
-                            hidePolicyMoreSource = true
-                            showOptionsMenu = true
+                            showMoreMenu = true
                         }
                         .graphicsLayer { alpha = if (hidePolicyMoreSource) 0f else 1f }
                         .testTag("policy-more-button"),
@@ -473,6 +486,33 @@ fun ProxiesScreen(
                         tint = LoonTextPrimary,
                         modifier = Modifier.size(22.dp)
                     )
+                    DropdownMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false },
+                        shape = RoundedCornerShape(18.dp),
+                        containerColor = colors.card,
+                        modifier = Modifier.widthIn(min = 192.dp).testTag("policy-more-menu")
+                    ) {
+                        if (onAddNode != null) {
+                            DropdownMenuItem(
+                                text = { Text("添加节点") },
+                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                                onClick = { showMoreMenu = false; onAddNode() },
+                                modifier = Modifier.testTag("policy-add-node")
+                            )
+                            HorizontalDivider(color = LoonCardBorder.copy(alpha = 0.35f))
+                        }
+                        DropdownMenuItem(
+                            text = { Text("显示设置") },
+                            leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) },
+                            onClick = {
+                                showMoreMenu = false
+                                hidePolicyMoreSource = true
+                                showOptionsMenu = true
+                            },
+                            modifier = Modifier.testTag("policy-display-settings")
+                        )
+                    }
                 }
             }
         }
@@ -483,8 +523,10 @@ fun ProxiesScreen(
                     state = groupRowState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(bottom = 4.dp)
+                        .testTag("policy-group-tabs"),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(visibleGroups.size, key = { visibleGroups[it] }) { index ->
                         val groupName = visibleGroups[index]
@@ -497,7 +539,9 @@ fun ProxiesScreen(
                             showRim = false,
                             frostedFillAlpha = FROSTED_PAGE_TITLE_FILL_ALPHA,
                             frostedTint = if (isSelected) FROSTED_SELECTED_GLASS_TINT else null,
-                            modifier = Modifier
+                            shape = RoundedCornerShape(12.dp),
+                            cornerRadius = 12.dp,
+                            modifier = Modifier.testTag("policy-group-tab-$groupName")
                                 .then(if (quietPages) {
                                     val shape = RoundedCornerShape(12.dp)
                                     Modifier
@@ -521,14 +565,15 @@ fun ProxiesScreen(
                                         modifier = Modifier
                                             .size(20.dp)
                                             .padding(end = 6.dp),
-                                        contentDescription = groupName
+                                        contentDescription = proxyGroupDisplayName(groupName)
                                     )
                                 }
                                 Text(
-                                    text = groupName,
+                                    text = proxyGroupDisplayName(groupName),
                                     color = if (quietPages && isSelected) LoonBlue else LoonTextPrimary,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    fontSize = 13.sp
+                                    fontSize = 13.sp,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -657,7 +702,7 @@ private fun LoonGroupHeaderCard(
                         RemoteIcon(
                             url = iconUrl,
                             modifier = Modifier.size(30.dp),
-                            contentDescription = groupName
+                            contentDescription = proxyGroupDisplayName(groupName)
                         )
                     }
                 }
@@ -668,7 +713,7 @@ private fun LoonGroupHeaderCard(
                         .padding(vertical = 1.dp)
                 ) {
                     Text(
-                        text = groupName,
+                        text = proxyGroupDisplayName(groupName),
                         color = LoonTextPrimary,
                         fontSize = if (quietPages) 15.sp else 14.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -739,6 +784,23 @@ private fun LoonGroupHeaderCard(
     }
 }
 
+// Runtime group names can include a profile UUID; hide that implementation detail
+// in labels only. Lazy keys, selection and callbacks always retain the original name.
+private val ProxyGroupUuid = Regex(
+    """(?i)[(\[（【]?\s*(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])\s*[)\]）】]?"""
+)
+
+internal fun proxyGroupDisplayName(name: String): String {
+    if (!ProxyGroupUuid.containsMatchIn(name)) return name
+    return ProxyGroupUuid.replace(name, "")
+        .trim(' ', '-', '_', '·', '|', ':', '/')
+        .ifBlank { "策略组" }
+}
+
+/** A missing profile allowlist must never expose provider or runtime-only nodes for editing. */
+internal fun canEditProxyNode(proxy: Proxy, editableNodeNames: Set<String>?): Boolean =
+    !proxy.isGroup && editableNodeNames?.contains(proxy.name) == true
+
 // Keep the selected node perceptibly pressed without changing its measured layout size.
 internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
 
@@ -758,8 +820,41 @@ private fun LoonProxyItemCard(
     columns: Int = 1,
     isTesting: Boolean = false,
     onClick: () -> Unit,
-    onTestSingleNode: () -> Unit = {}
+    onTestSingleNode: () -> Unit = {},
+    onEditNode: ((String) -> Unit)? = null
 ) {
+    var showRenameMenu by remember(proxy.name) { mutableStateOf(false) }
+    LaunchedEffect(proxy.name, onEditNode != null) {
+        if (onEditNode == null) showRenameMenu = false
+    }
+    val nodeInteraction = if (onEditNode == null) {
+        Modifier.iosPressable(onClick = onClick)
+    } else {
+        Modifier.combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            role = Role.Button,
+            onClick = onClick,
+            onLongClickLabel = "重命名",
+            onLongClick = { showRenameMenu = true }
+        )
+    }
+    val latencyInteraction = if (onEditNode == null) {
+        Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onTestSingleNode
+        )
+    } else {
+        Modifier.combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            role = Role.Button,
+            onClick = onTestSingleNode,
+            onLongClickLabel = "重命名",
+            onLongClick = { showRenameMenu = true }
+        )
+    }
     val nodeEmoji = extractLeadingEmoji(proxy.name)
     val displayName = if (nodeEmoji != null && proxy.name.startsWith(nodeEmoji)) {
         proxy.name.removePrefix(nodeEmoji).trim()
@@ -787,7 +882,8 @@ private fun LoonProxyItemCard(
     val nameColor = if (quietPages) colors.textPrimary else if (isSelected) SelectedProxyCardText else LoonTextPrimary
     val typeColor = if (quietPages) colors.textSecondary else if (isSelected) SelectedProxyCardMutedText else LoonTextMuted
 
-    when (columns) {
+    Box {
+        when (columns) {
         // ---------------------------------------------------------------------
         // 1 Column: Standard Horizontal Card (Fixed Height 54dp)
         // ---------------------------------------------------------------------
@@ -802,9 +898,9 @@ private fun LoonProxyItemCard(
                         scaleY = scale
                     }
                     .height(54.dp)
-                    .then(if (GlassDefaults.quietPages) Modifier else Modifier.clip(RoundedCornerShape(14.dp)))
                     .then(if (isSelected || GlassDefaults.enabled) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(14.dp)))
-                    .iosPressable { onClick() },
+                    .then(nodeInteraction),
+
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
                 accent = null,
@@ -851,10 +947,7 @@ private fun LoonProxyItemCard(
                                 .then(if (quietPages) Modifier.width(64.dp).heightIn(min = 24.dp)
                                     else Modifier.defaultMinSize(minWidth = 50.dp, minHeight = 24.dp))
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { onTestSingleNode() },
+                                .then(latencyInteraction),
                             contentAlignment = if (quietPages) Alignment.CenterEnd else Alignment.Center
                         ) {
                             if (isTesting) {
@@ -910,7 +1003,6 @@ private fun LoonProxyItemCard(
                         scaleY = scale
                     }
                     .height(62.dp)
-                    .then(if (GlassDefaults.quietPages) Modifier else Modifier.clip(cardShape))
                     .then(
                         if (!GlassDefaults.enabled && proxyCardNeedsOuterBorder(groupGlass, isSelected)) {
                             Modifier.border(
@@ -920,7 +1012,8 @@ private fun LoonProxyItemCard(
                             )
                         } else Modifier
                     )
-                    .iosPressable { onClick() },
+                    .then(nodeInteraction),
+
                 color = cardBg,
                 shape = cardShape,
                 groupScene = glassScene,
@@ -977,10 +1070,7 @@ private fun LoonProxyItemCard(
                                 .then(if (quietPages) Modifier.width(56.dp).heightIn(min = 20.dp)
                                     else Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 20.dp))
                                 .clip(RoundedCornerShape(5.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { onTestSingleNode() },
+                                .then(latencyInteraction),
                             contentAlignment = if (quietPages) Alignment.CenterEnd else Alignment.Center
                         ) {
                             if (isTesting) {
@@ -1019,9 +1109,9 @@ private fun LoonProxyItemCard(
                         scaleY = scale
                     }
                     .height(56.dp)
-                    .then(if (GlassDefaults.quietPages) Modifier else Modifier.clip(RoundedCornerShape(12.dp)))
                     .then(if (isSelected || GlassDefaults.enabled) Modifier else Modifier.border(.5.dp, LoonCardBorder, RoundedCornerShape(12.dp)))
-                    .iosPressable { onClick() },
+                    .then(nodeInteraction),
+
                 color = cardBg,
                 shape = RoundedCornerShape(if (columns == 3) 12.dp else 14.dp),
                 accent = null,
@@ -1075,13 +1165,10 @@ private fun LoonProxyItemCard(
                         )
                         Box(
                             modifier = Modifier
-                                .then(if (quietPages) Modifier.width(50.dp).heightIn(min = 18.dp)
+                                .then(if (quietPages) Modifier.width(44.dp).heightIn(min = 18.dp)
                                     else Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 18.dp))
                                 .clip(RoundedCornerShape(4.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { onTestSingleNode() },
+                                .then(latencyInteraction),
                             contentAlignment = if (quietPages) Alignment.CenterEnd else Alignment.Center
                         ) {
                             if (isTesting) {
@@ -1104,6 +1191,21 @@ private fun LoonProxyItemCard(
                     }
                 }
             }
+        }
+    }
+        DropdownMenu(
+            expanded = showRenameMenu && onEditNode != null,
+            onDismissRequest = { showRenameMenu = false },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = colors.card,
+            modifier = Modifier.widthIn(min = 180.dp).testTag("proxy-rename-menu-${proxy.name}")
+        ) {
+            DropdownMenuItem(
+                text = { Text("重命名") },
+                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                onClick = { showRenameMenu = false; onEditNode?.invoke(proxy.name) },
+                modifier = Modifier.testTag("proxy-rename-action-${proxy.name}")
+            )
         }
     }
 }
@@ -1143,10 +1245,15 @@ private fun ProxyGlassCard(
             Box(content = content)
         }
     } else if (GlassDefaults.enabled) {
+        // The rounded shadow must sit outside the clip; clipping the caller's
+        // modifier first cuts off the lift and can leave a rectangular edge.
+        val surfaceModifier = modifier
+            .shadow(if (selected) 3.dp else 0.dp, shape, clip = false)
+            .clip(shape)
         // Keep the glass-material tag on its own inner node, as ProxyGroupGlass did:
         // the caller's modifier already carries the proxy-card tag, and a single node
         // can only hold one testTag, so merging the two tags loses one of them.
-        Box(modifier) {
+        Box(surfaceModifier) {
             Box(Modifier.matchParentSize()
                 .testTag(if (selected) "proxy-selected-glass-material" else "proxy-group-glass-material"))
             Box(Modifier.matchParentSize().testTag("proxy-glasmio-main-material"))
@@ -1160,7 +1267,7 @@ private fun ProxyGlassCard(
             )
         }
     } else if (selected) {
-        Surface(modifier = modifier, color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
+        Surface(modifier = modifier.shadow(3.dp, shape, clip = false), color = SelectedProxyCardFill, shape = shape) { Box(content = content) }
     } else {
         Surface(modifier = modifier, color = color, shape = shape) { Box(content = content) }
     }

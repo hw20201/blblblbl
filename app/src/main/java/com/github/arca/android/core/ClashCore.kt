@@ -112,7 +112,7 @@ object ClashCore {
             init(context)
             val settings = com.github.arca.android.data.SettingsManager(context)
             val profiles = com.github.arca.android.data.ConfigManager.getProfiles(context)
-            val activeProfile = profiles.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.firstOrNull()
+            val activeProfile = com.github.arca.android.data.DashboardData.activeProfile(profiles, settings.selectedProfileId)
             if (activeProfile != null && activeProfile.file.exists()) {
                 val configFile = com.github.arca.android.data.ConfigManager.prepareConfig(context, activeProfile.file)
                 val res = load(configFile)
