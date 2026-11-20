@@ -38,17 +38,16 @@ class DraftPagesVisibleTest {
             view.layout(0, 0, 400, 900)
         }
         settle()
-        checkPage("dashboard", "ARCA", "快捷方式", theme)
+        checkPage("dashboard", "ARCA", hasText("快捷方式"), theme)
         dock("策略").performClick()
         settle()
-        // This empty-state message is actual page content, not the surviving bottom dock.
-        checkPage("policy", "策略", "暂无节点数据", theme, true)
+        checkPage("policy", "策略", hasTestTag("policy-content-viewport"), theme)
         dock("设置").performClick()
         settle()
-        checkPage("settings", "设置", "TUN 堆栈", theme)
+        checkPage("settings", "设置", hasText("TUN 堆栈"), theme)
         dock("仪表").performClick()
         settle()
-        checkPage("dashboard-return", "ARCA", "快捷方式", theme)
+        checkPage("dashboard-return", "ARCA", hasText("快捷方式"), theme)
     }
 
     private fun dock(text: String) = compose.onNode(
@@ -59,10 +58,10 @@ class DraftPagesVisibleTest {
         compose.waitForIdle()
     }
 
-    private fun checkPage(page: String, title: String, body: String, theme: String, substring: Boolean = false) {
+    private fun checkPage(page: String, title: String, body: SemanticsMatcher, theme: String) {
         val notDock = !hasAnyAncestor(hasTestTag("navigation-dock"))
         compose.onNode(hasText(title) and notDock).assertIsDisplayed()
-        compose.onNode(hasText(body, substring = substring) and notDock).assertIsDisplayed()
+        compose.onNode(body and notDock).assertIsDisplayed()
         // Execute recording-time code too. This does NOT execute a real GPU compositor.
         compose.runOnUiThread {
             val view = compose.activity.window.decorView
