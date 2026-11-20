@@ -38,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import kotlin.math.abs
 
-/** Real Compose dashboard + exact two-recorder MainActivity path; not a concept image. */
+/** Real quiet-page dashboard: injected mesh time must not animate its background or soften text. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -57,25 +57,24 @@ class SoftMeshRenderingTest {
         GlassDefaults.quietPages = true
     }
 
-    @Test fun api35ActualDashboardMovesThroughCardsAndAgslDock() = verify(false)
+    @Test fun api35QuietDashboardIgnoresMeshTime() = verify(false)
 
     @Test @Config(sdk = [31], qualifiers = "w400dp-h800dp-mdpi")
-    fun api31ActualDashboardMovesWithoutPretendingAgslExists() = verify(false)
+    fun api31QuietDashboardIgnoresMeshTime() = verify(false)
 
     @Test fun api35DarkDashboardKeepsDarkModeAndSharpText() = verify(true)
 
-    @Test fun api35CustomBlueActuallyPaintsBrandAndNavigation() = verify(false, GlassPalettes.byKey("custom:19AACC"))
+    @Test fun api35CustomBlueKeepsPlainTitleAndAccentedNavigation() = verify(false, GlassPalettes.byKey("custom:19AACC"))
 
-    @Test fun api35CustomCoralActuallyPaintsBrandAndNavigation() = verify(false, GlassPalettes.byKey("custom:DD3366"))
+    @Test fun api35CustomCoralKeepsPlainTitleAndAccentedNavigation() = verify(false, GlassPalettes.byKey("custom:DD3366"))
 
     private fun verify(dark: Boolean, palette: GlassPaletteSpec = GlassPalettes.CREAM) {
         val seconds = mutableFloatStateOf(0f)
         var compositions = 0
         var foreground = 0
         GlassDefaults.enabled = true
-        GlassDefaults.quietPages = false // 
-        // This suite measures the animated SoftMesh renderer, independent of the app's
-        // newly enabled saved Fluted wallpaper.
+        GlassDefaults.quietPages = true
+        // Quiet pages must suppress even an explicitly injected animated mesh.
         GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = palette
         compose.setContent {
@@ -117,6 +116,7 @@ class SoftMeshRenderingTest {
         compose.waitForIdle()
         val title = compose.onNodeWithTag("shortcut-card-Nodes").fetchSemanticsNode().boundsInRoot
         val dock = compose.onNodeWithTag("navigation-dock").fetchSemanticsNode().boundsInRoot
+        val header = compose.onNodeWithTag("dashboard-nexus-title").fetchSemanticsNode().boundsInRoot
         val beforeCount = compositions
         val first = screenshot()
         val custom = palette.key.startsWith("custom:")
@@ -124,7 +124,7 @@ class SoftMeshRenderingTest {
         save(first, "$name-t00.png")
         if (custom) {
             val accent = palette.uiAccent.toArgb()
-            assertTrue("selected RGB must really reach NEXUS brand glyphs", matching(first, Rect(20f, 20f, 180f, 56f), accent) > 100)
+            assertTrue("plain ARCA title uses the readable page foreground", matching(first, header, foreground) > 25)
             assertTrue("selected RGB must really reach active navigation", matching(first,
                 Rect(dock.left + 10, dock.top + 8, dock.left + 90, dock.bottom - 8), accent) > 25)
         }
@@ -143,9 +143,9 @@ class SoftMeshRenderingTest {
             val dockDelta = difference(first, next,
                 Rect(dock.left + 20, dock.top + 8, dock.left + 60, dock.top + 16))
             log.appendLine("t=$time: empty shortcut RGB-sum mean delta=$cardDelta; rim=$rimDelta; dock=$dockDelta; content compositions=$compositions")
-            assertTrue("moving background reaches actual card sampling: $cardDelta", cardDelta > 0.4)
-            assertTrue("actual shortcut bevel follows the mesh rather than a fixed white outline: $rimDelta", rimDelta > 0.4)
-            assertTrue("moving background reaches dock sample: $dockDelta", dockDelta > 0.2)
+            assertEquals("quiet shortcut center ignores mesh time", 0.0, cardDelta, 0.0)
+            assertEquals("quiet shortcut edge ignores mesh time", 0.0, rimDelta, 0.0)
+            assertEquals("quiet dock background ignores mesh time", 0.0, dockDelta, 0.0)
             assertSharpTitle(first, next, title, foreground)
             for (row in 0..1) for (col in 0..1) {
                 // Keep away from controls: expose top/middle/bottom in both screen halves.
@@ -153,7 +153,7 @@ class SoftMeshRenderingTest {
                     (col + 1) * first.width / 2f - 4, (if (row == 0) 102f else 650f))
                 val delta = difference(first, next, zone)
                 log.appendLine("  screen quadrant $col,$row RGB-sum delta=$delta")
-                assertTrue("motion is not confined to a narrow strip: $col,$row=$delta", delta > 0.3)
+                assertEquals("quiet page stays still in quadrant $col,$row", 0.0, delta, 0.0)
             }
             next.recycle()
         }

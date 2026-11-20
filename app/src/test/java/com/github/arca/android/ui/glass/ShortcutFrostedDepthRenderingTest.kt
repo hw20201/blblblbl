@@ -38,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import kotlin.math.abs
 
-/** Real dashboard, two shared scene recorders and navigation dock; captures native PixelCopy output. */
+/** Quiet dashboard shortcuts preserve sharp labels and a static background in every material mode. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -74,8 +74,8 @@ class ShortcutFrostedDepthRenderingTest {
         var compositions = 0
         var foreground = 0
         GlassDefaults.enabled = true
-        GlassDefaults.quietPages = false // 
-        // Exercise the SoftMesh-backed shortcut material, not the product's Fluted wallpaper.
+        GlassDefaults.quietPages = true
+        // An injected mesh clock must not animate the quiet dashboard.
         GlassDefaults.wallpaper = GlassWallpaperSettings(enabled = false)
         GlassDefaults.palette = GlassPalettes.CREAM
         compose.setContent {
@@ -121,27 +121,8 @@ class ShortcutFrostedDepthRenderingTest {
             ?.replace(Regex("[^A-Za-z0-9._-]"), "-") ?: "current"
         val name = "api${android.os.Build.VERSION.SDK_INT}-${if (dark) "dark" else "light"}-${if (tuned) "tuned" else "legacy"}-$label"
         save(first, "$name-t00.png")
-        // Only the accepted legacy material promises a double bright bevel. The tuned
-        // profile bends the backdrop instead; both profiles must pass the glyph and
-        // draw-only animated-scene checks below.
-        if (android.os.Build.VERSION.SDK_INT >= 33 && !tuned) {
-            var bevel = 0L
-            var samples = 0
-            // The captured rounded card edge is antialiased across more than two pixels;
-            // sample the inset return beyond that coverage rather than inside the same rim.
-            val insetReturnOffset = 4
-            for (x in (card.left + 32).toInt() until (card.right - 32).toInt()) {
-                val outer = first.getPixel(x, card.top.toInt())
-                val insetReturn = first.getPixel(x, card.top.toInt() + insetReturnOffset)
-                bevel += android.graphics.Color.red(outer) - android.graphics.Color.red(insetReturn)
-                bevel += android.graphics.Color.green(outer) - android.graphics.Color.green(insetReturn)
-                bevel += android.graphics.Color.blue(outer) - android.graphics.Color.blue(insetReturn)
-                samples += 3
-            }
-            val contrast = bevel.toDouble() / samples
-            println("actual local double-bevel contrast=$contrast")
-            assertTrue("outer catch must be distinct from inset return, not a uniform card tint: $contrast", contrast > 3.0)
-        }
+        val expectedBackground = if (dark) 0xFF101114.toInt() else 0xFFF2F2F5.toInt()
+        assertEquals("dashboard uses the quiet page background", expectedBackground, first.getPixel(4, 400))
         val titleText = Rect(card.left + 14, card.top + 14, card.right - 56, card.top + 33)
         val titleCores = countCores(first, titleText, foreground)
         assertTrue("actual shortcut title must have opaque glyph cores: $titleCores", titleCores > 25)
@@ -161,8 +142,9 @@ class ShortcutFrostedDepthRenderingTest {
         val dockDelta = difference(first, last, dockReference)
         val sharpCores = stableCores(first, last, titleText, foreground)
         log.appendLine("t=24s: card center RGB-sum mean delta=$centerDelta; card edge=$edgeDelta; dock reference=$dockDelta; stable title cores=$sharpCores/$titleCores; compositions=$compositions")
-        assertTrue("moving backdrop must reach actual shortcut card center: $centerDelta", centerDelta > 0.4)
-        assertTrue("actual shortcut edge must follow the changed backdrop: $edgeDelta", edgeDelta > 0.4)
+        assertEquals("quiet shortcut center ignores mesh time", 0.0, centerDelta, 0.0)
+        assertEquals("quiet shortcut edge ignores mesh time", 0.0, edgeDelta, 0.0)
+        assertEquals("quiet dock background ignores mesh time", 0.0, dockDelta, 0.0)
         assertTrue("background motion must not blur or warp actual title glyph cores: $sharpCores/$titleCores",
             sharpCores >= titleCores * .98)
         output("$name-metrics.txt").writeText(log.toString())

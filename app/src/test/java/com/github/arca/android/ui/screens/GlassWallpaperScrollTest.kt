@@ -64,10 +64,10 @@ class GlassWallpaperScrollTest {
 
     @After fun restoreGlassSettings() { restoreGlobals() }
 
-    @Test fun dashboardShortcutCardsScrollWithoutMovingTheWallpaper() {
+    @Test fun dashboardShortcutCardsScrollOverTheFixedQuietBackground() {
         val scroll = ScrollState(0)
         GlassDefaults.enabled = true
-        GlassDefaults.quietPages = false // quiet pages drop the wallpaper; these tests measure the fixed wallpaper
+        GlassDefaults.quietPages = true // Dashboard now shares the solid quiet-page background.
         GlassDefaults.wallpaper = fixedTestWallpaper
         compose.setContent {
             MihomoTheme(themeMode = ThemeMode.LIGHT) {
@@ -105,15 +105,16 @@ class GlassWallpaperScrollTest {
         compose.onNodeWithTag("dashboard-scroll").assertExists()
         val card = compose.onNodeWithTag("shortcut-card-节点").assertExists()
         val cardTopBefore = card.fetchSemanticsNode().boundsInRoot.top
-        val wallpaperBefore = captureWallpaperEdge()
+        val wallpaperBefore = captureWallpaperEdge(quiet = true)
         compose.runOnIdle { scroll.dispatchRawDelta(240f) }
         compose.waitForIdle()
         assertTrue("the dashboard must actually scroll", scroll.value > 0)
         val cardTopAfter = compose.onNodeWithTag("shortcut-card-节点").fetchSemanticsNode().boundsInRoot.top
         assertTrue("shortcut cards should move with the scrolling page content", cardTopAfter < cardTopBefore - 100f)
-        val wallpaperAfter = captureWallpaperEdge()
-        assertTrue("the fixed wallpaper must remain visible at the viewport edge", wallpaperAfter.distinct().size > 8)
-        assertEquals("scrolling page content must not translate the wallpaper", wallpaperBefore, wallpaperAfter)
+        val wallpaperAfter = captureWallpaperEdge(quiet = true)
+        assertEquals("dashboard hides the saved wallpaper behind the quiet background",
+            listOf(Color(0xFFF2F2F5).toArgb()), wallpaperAfter.distinct())
+        assertEquals("scrolling dashboard content must not change the quiet background", wallpaperBefore, wallpaperAfter)
         restoreGlobals()
     }
 
@@ -188,7 +189,7 @@ class GlassWallpaperScrollTest {
         restoreGlobals()
     }
 
-    private fun captureWallpaperEdge(): List<Int> {
+    private fun captureWallpaperEdge(quiet: Boolean = false): List<Int> {
         compose.waitForIdle()
         val view = compose.activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -208,7 +209,12 @@ class GlassWallpaperScrollTest {
             for (y in yStart until yEnd step 4) for (x in 2 until xEnd step 2) add(bitmap.getPixel(x, y))
         }
         bitmap.recycle()
-        assertTrue("test wallpaper should be visible in the sampled edge", pixels.distinct().size > 8)
+        if (quiet) {
+            assertEquals("quiet background covers the viewport edge",
+                listOf(Color(0xFFF2F2F5).toArgb()), pixels.distinct())
+        } else {
+            assertTrue("test wallpaper should be visible in the sampled edge", pixels.distinct().size > 8)
+        }
         return pixels
     }
 
