@@ -628,17 +628,18 @@ fun ProfilesScreen(
                             filePickerLauncher.launch("*/*")
                         }
                     )
-                    CupertinoDivider()
-
-                    CupertinoCell(
-                        title = "删除配置",
-                        icon = Icons.Default.DeleteOutline,
-                        iconBg = IosRed,
-                        onClick = {
-                            actionSheetProfile = null
-                            deleteConfirmProfile = target
-                        }
-                    )
+                    if (target.id != ConfigManager.DEFAULT_PROFILE_ID) {
+                        CupertinoDivider()
+                        CupertinoCell(
+                            title = "删除配置",
+                            icon = Icons.Default.DeleteOutline,
+                            iconBg = IosRed,
+                            onClick = {
+                                actionSheetProfile = null
+                                deleteConfirmProfile = target
+                            }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

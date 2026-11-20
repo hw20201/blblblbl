@@ -38,6 +38,7 @@ data class SubscriptionUserInfo(
 
 object ConfigManager {
     private const val TAG = "ConfigManager"
+    const val DEFAULT_PROFILE_ID = "builtin-default"
 
     /** Top-level config keys that only the injected runtime header may set. */
     private val PROTECTED_TOP_LEVEL_KEYS = setOf(
@@ -217,6 +218,32 @@ object ConfigManager {
         }
 
 
+    private val defaultProfileLock = Any()
+
+    private fun ensureDefaultProfileFile(context: Context): File = synchronized(defaultProfileLock) {
+        val file = getProfilesDir(context).resolve("$DEFAULT_PROFILE_ID.yaml")
+        if (!file.isFile) {
+            val body = """
+                proxies: []
+                proxy-groups:
+                  - name: GLOBAL
+                    type: select
+                    proxies:
+                      - DIRECT
+                rules:
+                  - MATCH,DIRECT
+            """.trimIndent() + "\n"
+            com.github.arca.android.data.subscription.atomicWrite(file, body.toByteArray(Charsets.UTF_8))
+            invalidateProfilesCache()
+        }
+        file
+    }
+
+    fun getOrCreateDefaultProfile(context: Context): ProfileItem {
+        ensureDefaultProfileFile(context)
+        return getProfiles(context, forceReload = true).first { it.id == DEFAULT_PROFILE_ID }
+    }
+
     fun saveLocalProfile(context: Context, name: String, content: String): ProfileItem {
         val normalized = NowhereLink.normalizeProfile(content)
         val id = java.util.UUID.randomUUID().toString()
@@ -245,6 +272,7 @@ object ConfigManager {
     }
 
     fun getProfiles(context: Context, forceReload: Boolean = false): List<ProfileItem> {
+        ensureDefaultProfileFile(context)
         if (!forceReload) {
             cachedProfiles?.let { return it }
         }
@@ -260,7 +288,8 @@ object ConfigManager {
             val file = if (pointer == null) dir.resolve("$id.yaml") else
                 runCatching { store.versionFile(id, pointer.versionId) }.getOrNull() ?: return@mapNotNull null
             if (!file.isFile) return@mapNotNull null
-            val name = prefs.getString("${id}_name", pointer?.name ?: id) ?: id
+            val defaultName = if (id == DEFAULT_PROFILE_ID) "默认配置" else pointer?.name ?: id
+            val name = prefs.getString("${id}_name", defaultName) ?: defaultName
             val url = if (managed) null else prefs.getString("${id}_url", null)
             val updated = pointer?.updatedAt ?: prefs.getLong("${id}_updated", file.lastModified())
             val scriptEnabled = prefs.getBoolean("${id}_script_enabled", false)
@@ -300,14 +329,52 @@ object ConfigManager {
 
     fun saveProfileContent(context: Context, id: String, content: String): Boolean {
         return runCatching {
+            require(Regex("[A-Za-z0-9_-]{1,100}").matches(id)) { "配置标识无效" }
+            require(SubscriptionStore(context).head(id) == null) { "托管订阅不可直接覆盖" }
             val file = getProfilesDir(context).resolve("$id.yaml")
-            file.writeText(content)
+            com.github.arca.android.data.subscription.atomicWrite(file, content.toByteArray(Charsets.UTF_8))
             val prefs = context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE)
             prefs.edit().putLong("${id}_updated", System.currentTimeMillis()).apply()
             invalidateProfilesCache()
             true
         }.getOrDefault(false)
     }
+
+    suspend fun appendNodeToProfile(context: Context, profileId: String, raw: String): Result<ProfileItem> = withContext(Dispatchers.IO) {
+        try {
+            val input = raw.trim()
+            val nodeText = if (NowhereLink.hasScheme(input)) {
+                (NowhereLink.parse(input) ?: error(NowhereLink.INVALID_LINK_MESSAGE)).toProfileYaml()
+            } else input
+            val inspection = com.github.arca.android.data.subscription.SubscriptionValidator.inspect(context, nodeText, "auto")
+            require(inspection.nodes.size == 1 && inspection.diagnostics.isEmpty()) { "请仅输入一个有效节点" }
+            val node = inspection.nodes.single()
+            editProfileNode(context, profileId) { ProfileNodeEditor.append(it, node.data, node.name) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { Result.failure(IllegalArgumentException(failure.message ?: "节点追加失败")) }
+    }
+
+    suspend fun renameProfileNode(context: Context, profileId: String, oldName: String, newName: String): Result<ProfileItem> = withContext(Dispatchers.IO) {
+        editProfileNode(context, profileId) { ProfileNodeEditor.rename(it, oldName, newName) }
+    }
+
+    private val nodeEditLock = Any()
+
+    private fun editProfileNode(context: Context, id: String, edit: (String) -> String): Result<ProfileItem> = synchronized(nodeEditLock) {
+        runCatching {
+            val profile = getProfiles(context, true).firstOrNull { it.id == id } ?: error("找不到配置")
+            require(!profile.managed && !profile.canRefresh) { "订阅节点不可直接编辑，请编辑来源或保存为本地配置" }
+            val original = profile.file.inputStream().use { readBounded(it) }
+            val content = edit(original)
+            if (content == original) return@runCatching profile
+            com.github.arca.android.data.subscription.atomicWrite(profile.file, content.toByteArray(Charsets.UTF_8))
+            context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE).edit()
+                .putLong("${id}_updated", System.currentTimeMillis()).apply()
+            invalidateProfilesCache()
+            getProfiles(context, forceReload = true).first { it.id == id }
+        }
+    }
+
 
     private fun saveProfileMetadata(context: Context, item: ProfileItem) {
         val prefs = context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE)
@@ -333,6 +400,7 @@ object ConfigManager {
     }
 
     internal fun deleteProfile(context: Context, id: String) {
+        if (id == DEFAULT_PROFILE_ID) return
         SubscriptionStore(context).delete(id)
         val file = getProfilesDir(context).resolve("$id.yaml")
         if (file.exists()) file.delete()
@@ -387,6 +455,7 @@ object ConfigManager {
         sourceFile: File?,
         ipv6Enabled: Boolean = SettingsManager(context).ipv6Enabled
     ): File {
+        if (sourceFile == null) return prepareConfig(context, getOrCreateDefaultProfile(context).file, ipv6Enabled)
         val targetFile = getConfigFile(context)
         val settings = SettingsManager(context)
 
