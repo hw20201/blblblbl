@@ -1179,9 +1179,10 @@ private fun AnimatedGlassSegmentGroup(
     if (options.isEmpty()) return
     val isDark = LocalLoonColors.current.isDark
     val backdrop = LocalArcaGlasmioBackdrop.current
-    if (GlassDefaults.enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+    val useRefractingControl = GlassDefaults.enabled &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         LocalGlassSettings.current.glassPreset.usesGlasmioFrosted() && backdrop != null
-    ) {
+    if (useRefractingControl) {
         Box(Modifier.fillMaxWidth().testTag("$testTag-segment-group")) {
             RefractingSegmentedControl(options, selectedKey, onSelect, testTag)
         }

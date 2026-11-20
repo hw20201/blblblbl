@@ -189,9 +189,10 @@ fun GlassSurface(
     val effectiveShape = if (honorShape) shape
         else if (tunedMaterial && LocalShortcutOpticalFollowupEnabled.current) ShortcutFollowupCardShape
         else if (tunedMaterial) ShortcutTunedCardShape else shape
-    if (GlassDefaults.quietPages && surfaceCategory == GlassSurfaceCategory.LARGE_PANELS &&
+    val useQuietPanel = GlassDefaults.quietPages &&
+        surfaceCategory == GlassSurfaceCategory.LARGE_PANELS &&
         !shortcutContactFrost && !shortcutDockLens
-    ) {
+    if (useQuietPanel) {
         Box(
             modifier.cardDepth(effectiveShape, tokens.isDark, 2.dp)
                 .clip(effectiveShape).background(LoonCard, effectiveShape),
