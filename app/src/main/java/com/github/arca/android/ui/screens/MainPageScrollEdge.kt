@@ -29,9 +29,9 @@ internal fun MainPageScrollEdge(
     scrollOffsetPx: () -> Int
 ) {
     val latestOffset by rememberUpdatedState(scrollOffsetPx)
-    val glassEnabled = GlassDefaults.enabled
+    val glasmioBlurAvailable = GlassDefaults.enabled
     val edge = modifier.fillMaxWidth().height(headerHeight + 28.dp)
-    if (glassEnabled && backdrop != null) {
+    if (glasmioBlurAvailable && backdrop != null) {
         Box(edge.graphicsLayer {
             // Read scroll in the layer, so each pixel of scrolling does not recompose the page.
             alpha = (latestOffset() / (96.dp.toPx())).coerceIn(0f, 1f)
@@ -49,7 +49,7 @@ internal fun MainPageScrollEdge(
         )
         val revealDistance = 96.dp.toPx()
         onDrawBehind {
-            val reveal = if (glassEnabled && backdrop != null) {
+            val reveal = if (glasmioBlurAvailable && backdrop != null) {
                 (latestOffset() / revealDistance).coerceIn(0f, 1f)
             } else 0f
             drawRect(resting, alpha = 1f - reveal)
