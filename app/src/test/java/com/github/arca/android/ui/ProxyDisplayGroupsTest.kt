@@ -37,10 +37,34 @@ class ProxyDisplayGroupsTest {
         )
 
         assertEquals("node-a", result.getValue("Main").now)
-        assertEquals("Live title", result.getValue("Main").proxies.single().title)
+        assertEquals("Base title", result.getValue("Main").proxies.single().title)
         assertEquals(125, result.getValue("Main").proxies.single().delay)
         assertEquals("other-base", result.getValue("Other").now)
         assertEquals(95, result.getValue("Other").proxies.single().delay)
+    }
+
+    @Test
+    fun unknownOrDifferentRuntimeCannotReplaceLocalCardsOrTopology() {
+        val local = linkedMapOf(
+            "Local first" to ProxyGroup("select", listOf(Proxy("HK", type = "ss", title = "Local HK")), "HK"),
+            "Local second" to ProxyGroup("select", listOf(Proxy("Inline only", type = "vmess")), "Inline only")
+        )
+        val remote = linkedMapOf(
+            "Remote only" to ProxyGroup("select", listOf(Proxy("Remote"))),
+            "Local second" to ProxyGroup("select", listOf(Proxy("Inline only", type = "trojan"))),
+            "Local first" to ProxyGroup("select", listOf(Proxy("HK", type = "trojan", title = "Remote HK", delay = 80)), "Missing remote node")
+        )
+        for (loadedId in listOf(null, "remote", "builtin-default")) {
+            val display = buildProxyDisplayGroups(local, remote, emptyMap(), emptyMap(),
+                allowLiveData = canUsePolicyRuntime("builtin-default", loadedId))
+            assertEquals(listOf("Local first", "Local second"), display.keys.toList())
+            assertEquals(listOf("HK"), display.getValue("Local first").proxies.map { it.name })
+            val card = display.getValue("Local first").proxies.single()
+            assertEquals("ss", card.type)
+            assertEquals("Local HK", card.title)
+            assertEquals("HK", display.getValue("Local first").now)
+            assertEquals(if (loadedId == "builtin-default") 80 else -1, card.delay)
+        }
     }
 
     @Test

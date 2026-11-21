@@ -54,8 +54,10 @@ object SubscriptionManager {
                         val remote = draft.remote ?: (draft.mode != "proxy" && !text.contains('\n') &&
                             (text.startsWith("https://", true) || text.startsWith("http://", true)))
                         val source = SubscriptionSource(UUID.randomUUID().toString(),
-                            draft.name.cleanLabel().ifBlank { "来源 ${index + 1}" }, text.takeIf { remote }, draft.token, draft.mode)
-                        fetch(context, source, text.takeUnless { remote }) to null
+                            draft.name.cleanLabel(), text.takeIf { remote }, draft.token, draft.mode)
+                        val snapshot = fetch(context, source, text.takeUnless { remote })
+                        val label = source.name.ifBlank { snapshot.suggestedName }.ifBlank { "来源 ${index + 1}" }
+                        snapshot.copy(source = source.copy(name = label)) to null
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (failure: Exception) {
                         null to ImportDiagnostic(index + 1, 0, "source", "来源 ${index + 1}：${safeFailure(failure)}")
@@ -69,11 +71,11 @@ object SubscriptionManager {
     suspend fun create(context: Context, name: String, preview: ImportPreview,
         standalone: Boolean, allowPartial: Boolean): ProfileItem = withContext(Dispatchers.IO) {
         publication.withLock {
-            require(name.isNotBlank()) { "请为配置命名" }
+            val title = name.cleanLabel().ifBlank { preview.suggestedName.cleanLabel() }.ifBlank { "聚合配置" }
             require(allowPartial || preview.rejected == 0) { "请先确认仅导入通过校验的项目" }
             val usable = preview.sources.filter { it.inspection.usable }
             require(usable.isNotEmpty()) { "没有可导入的来源" }
-            val version = build(context, name.cleanLabel(), usable, standalone)
+            val version = build(context, title, usable, standalone)
             publish(context, ManagedSubscription(profileId = UUID.randomUUID().toString(), current = version), null)
         }
     }
@@ -140,15 +142,20 @@ object SubscriptionManager {
         }
     }
 
-    /** Editor/file replacement deliberately becomes a local version; old sources remain in rollback. */
+    /** Default replacements stay locally editable; other profiles keep versioned rollback. */
     suspend fun replace(context: Context, profile: ProfileItem, text: String): ProfileItem {
         val preview = preview(context, listOf(SourceDraft(profile.name, text, remote = false)))
         require(preview.failures.isEmpty() && preview.rejected == 0) { "内容未通过校验，请使用导入预览查看逐项原因" }
         return withContext(Dispatchers.IO) { publication.withLock {
-            val oldVersion = SubscriptionStore(context).read(profile.id)?.current ?: migrate(context, profile).current
             val standalone = preview.sources.single().inspection.completeValid
             val version = build(context, profile.name, preview.sources, standalone)
-            publish(context, ManagedSubscription(profileId = profile.id, current = version, previous = oldVersion), profile)
+            if (profile.id == ConfigManager.DEFAULT_PROFILE_ID) {
+                check(ConfigManager.saveProfileContent(context, profile.id, version.content)) { "默认配置保存失败" }
+                ConfigManager.getOrCreateDefaultProfile(context)
+            } else {
+                val oldVersion = SubscriptionStore(context).read(profile.id)?.current ?: migrate(context, profile).current
+                publish(context, ManagedSubscription(profileId = profile.id, current = version, previous = oldVersion), profile)
+            }
         } }
     }
 
@@ -198,17 +205,19 @@ object SubscriptionManager {
     private suspend fun fetch(context: Context, source: SubscriptionSource, local: String?, previous: SourceSnapshot? = null): SourceSnapshot {
         if (source.url == null) {
             val text = local ?: previous?.text ?: error("没有本地内容")
-            return SourceSnapshot(source, text, SubscriptionValidator.inspect(context, text, source.inputMode))
+            return SourceSnapshot(source, text, SubscriptionValidator.inspect(context, text, source.inputMode),
+                suggestedName = source.name)
         }
         val fetched = networkSlots.withPermit { download(source, previous) }
         if (fetched.notModified) return requireNotNull(previous).copy(status = "未变化 · HTTP 304", retained = false,
             attemptedAt = System.currentTimeMillis())
         return SourceSnapshot(source, fetched.text, SubscriptionValidator.inspect(context, fetched.text, source.inputMode),
-            etag = fetched.etag, lastModified = fetched.modified, userInfo = fetched.userInfo, status = "已更新")
+            etag = fetched.etag, lastModified = fetched.modified, userInfo = fetched.userInfo, status = "已更新",
+            suggestedName = fetched.suggestedName)
     }
 
     private data class Download(val text: String = "", val etag: String? = null, val modified: String? = null,
-        val userInfo: String? = null, val notModified: Boolean = false)
+        val userInfo: String? = null, val notModified: Boolean = false, val suggestedName: String = "")
 
     private suspend fun download(source: SubscriptionSource, previous: SourceSnapshot?): Download = coroutineScope {
         requireSecureRemoteUrl(requireNotNull(source.url))
@@ -247,8 +256,10 @@ object SubscriptionManager {
                         } }
                         val body = response.body ?: error("来源内容为空")
                         require(body.contentLength() <= SUBSCRIPTION_MAX_BYTES) { "内容超过 10 MiB 限制" }
-                        return@coroutineScope Download(body.byteStream().use { readBounded(it) }, response.header("ETag"),
-                            response.header("Last-Modified"), response.header("subscription-userinfo"))
+                        val text = body.byteStream().use { readBounded(it) }
+                        val suggestedName = ConfigManager.extractProfileName(source.name, response, text, source.url).cleanLabel()
+                        return@coroutineScope Download(text, response.header("ETag"), response.header("Last-Modified"),
+                            response.header("subscription-userinfo"), suggestedName = suggestedName)
                     }
                 }
             } finally {

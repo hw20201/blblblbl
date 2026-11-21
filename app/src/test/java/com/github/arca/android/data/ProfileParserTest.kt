@@ -179,6 +179,7 @@ class ProfileParserTest {
             val parsed = ProfileParser.parse(tempFile)
             assertEquals(3, parsed.totalNodes)
             assertEquals(2, parsed.totalRules)
+            assertEquals(setOf("Inline"), parsed.inlineNodeNames)
             assertEquals(setOf("Inline", "Provider-HK", "Provider-JP", "DIRECT", "REJECT"), parsed.groups["Via provider"]!!.proxies.map { it.name }.toSet())
             assertEquals(setOf("Inline", "Provider-HK", "Provider-JP"), parsed.groups["Everyone"]!!.proxies.map { it.name }.toSet())
             assertEquals(3, parsed.totalNodes)
@@ -196,6 +197,80 @@ class ProfileParserTest {
         }
     }
 
+
+    @Test
+    fun `same name provider members never inherit inline management provenance`() {
+        val provider = File.createTempFile("provider_same_name", ".yaml", tempFile.parentFile)
+        try {
+            provider.writeText("proxies:\n  - {name: HK, type: trojan}\n  - {name: Provider tail, type: vmess}\n")
+            tempFile.writeText("""
+                proxies:
+                  - {name: HK, type: ss}
+                  - {name: Added actual, type: ss}
+                proxy-providers:
+                  cached:
+                    type: file
+                    path: ${provider.absolutePath}
+                proxy-groups:
+                  - {name: Inline, type: select, proxies: [HK, Added actual], use: [cached]}
+                  - {name: Provider, type: select, use: [cached]}
+                  - {name: All, type: select, include-all: true}
+                rules: []
+            """.trimIndent())
+            val parsed = ProfileParser.parse(tempFile)
+            assertEquals(setOf("HK", "Added actual"), parsed.inlineNodeNames)
+            assertEquals(setOf("HK", "Added actual"), parsed.inlineNodeNamesByGroup.getValue("Inline"))
+            assertTrue(parsed.inlineNodeNamesByGroup.getValue("Provider").isEmpty())
+            assertEquals(setOf("HK", "Added actual"), parsed.inlineNodeNamesByGroup.getValue("All"))
+            assertEquals("ss", parsed.groups.getValue("Inline").proxies.first { it.name == "HK" }.type)
+            assertEquals("trojan", parsed.groups.getValue("Provider").proxies.first { it.name == "HK" }.type)
+            assertEquals(listOf("HK", "Added actual", "Provider tail"), parsed.groups.getValue("Inline").proxies.map { it.name })
+        } finally {
+            provider.delete()
+        }
+    }
+
+    @Test
+    fun `include-all retains local same-name provenance with provider use`() {
+        assertIncludeAllWithProviderKeepsLocalOrigin("include-all")
+    }
+
+    @Test
+    fun `include-all-proxies retains local same-name provenance with provider use`() {
+        assertIncludeAllWithProviderKeepsLocalOrigin("include-all-proxies")
+    }
+
+    private fun assertIncludeAllWithProviderKeepsLocalOrigin(includeKey: String) {
+        val provider = File.createTempFile("provider_include_all", ".yaml", tempFile.parentFile)
+        try {
+            provider.writeText("proxies:\n  - {name: HK, type: trojan}\n  - {name: Provider tail, type: vmess}\n")
+            tempFile.writeText("""
+                proxies:
+                  - {name: HK, type: ss}
+                  - {name: Local only, type: ss}
+                proxy-providers:
+                  cached:
+                    type: file
+                    path: ${provider.absolutePath}
+                proxy-groups:
+                  - {name: All with provider, type: select, $includeKey: true, use: [cached]}
+                  - {name: Provider only, type: select, use: [cached]}
+                  - {name: Filtered provider, type: select, use: [cached], filter: HK}
+                rules: []
+            """.trimIndent())
+            val parsed = ProfileParser.parse(tempFile)
+            assertEquals(setOf("HK", "Local only"), parsed.inlineNodeNamesByGroup.getValue("All with provider"))
+            assertEquals("ss", parsed.groups.getValue("All with provider").proxies.first { it.name == "HK" }.type)
+            assertEquals(1, parsed.groups.getValue("All with provider").proxies.count { it.name == "HK" })
+            assertTrue(parsed.groups.getValue("All with provider").proxies.any { it.name == "Provider tail" })
+            for (providerGroup in listOf("Provider only", "Filtered provider")) {
+                assertTrue(parsed.inlineNodeNamesByGroup.getValue(providerGroup).isEmpty())
+                assertEquals("trojan", parsed.groups.getValue(providerGroup).proxies.first { it.name == "HK" }.type)
+            }
+        } finally {
+            provider.delete()
+        }
+    }
 
     @Test
     fun `keeps subgroups and special policies as group members while excluding policies from node count`() {

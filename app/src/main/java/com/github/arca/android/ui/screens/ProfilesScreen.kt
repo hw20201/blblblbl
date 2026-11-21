@@ -586,7 +586,7 @@ fun ProfilesScreen(
                     }
 
                     CupertinoCell(
-                        title = "编辑配置参数",
+                        title = if (target.id == ConfigManager.DEFAULT_PROFILE_ID) "重命名" else "编辑配置参数",
                         icon = Icons.Default.Tune,
                         iconBg = AppPalette.iconOrange,
                         onClick = {
@@ -705,7 +705,7 @@ fun ProfilesScreen(
                     .padding(bottom = 36.dp)
             ) {
                 Text(
-                    text = "配置参数设置",
+                    text = if (target.id == ConfigManager.DEFAULT_PROFILE_ID) "重命名默认配置" else "配置参数设置",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = LoonTextPrimary,
@@ -714,6 +714,9 @@ fun ProfilesScreen(
 
                 CupertinoGroupedSection {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (target.id == ConfigManager.DEFAULT_PROFILE_ID) {
+                            Text("独立节点仍保存在此配置中。", fontSize = 12.sp, color = LoonTextSecondary)
+                        }
                         Text("配置备注名称", fontSize = 12.sp, color = LoonTextSecondary)
                         TextField(
                             value = editName,
@@ -813,7 +816,7 @@ fun ProfilesScreen(
                         .clickable {
                             val intervalHours = (intervalHoursText.toIntOrNull() ?: 24).coerceAtLeast(1)
                             val updated = target.copy(
-                                name = editName.ifBlank { target.name },
+                                name = editName.trim().ifBlank { target.name },
                                 url = if (target.url != null) editUrl.ifBlank { target.url } else null,
                                 autoUpdate = editAutoUpdate,
                                 autoUpdateInterval = intervalHours * 60

@@ -113,6 +113,36 @@ class SubscriptionManagerInstrumentedTest {
     }
 
     @Test
+    fun defaultEditorAndLocalFileReplacementsKeepManualNodeManagementAvailable(): Unit = runBlocking {
+        check(context.packageName.endsWith(".coretest.v98"))
+        val original = ConfigManager.getOrCreateDefaultProfile(context)
+        val originalText = original.file.readText()
+        try {
+            ConfigManager.updateProfile(context, original.copy(name = "我的独立节点"))
+            for (name in listOf("Edited", "FileReplacement")) {
+                val replacement = nodes(name) + "proxy-groups: [{name: Select, type: select, proxies: [$name, DIRECT]}]\nrules: [\"MATCH,Select\"]\n"
+                val saved = SubscriptionManager.replace(context, ConfigManager.getOrCreateDefaultProfile(context), replacement)
+                assertEquals(ConfigManager.DEFAULT_PROFILE_ID, saved.id)
+                assertEquals(original.file, saved.file)
+                assertEquals("我的独立节点", saved.name)
+                assertFalse(saved.managed)
+                assertFalse(saved.canRefresh)
+                assertNull(SubscriptionManager.state(context, saved.id))
+                ConfigManager.readProfileNode(context, saved.id, name).getOrThrow()
+                ConfigManager.renameProfileNode(context, saved.id, name, "$name-Renamed").getOrThrow()
+                ConfigManager.appendNodeToProfile(context, saved.id, nodes(name), "Select").getOrThrow()
+                ConfigManager.deleteProfileNode(context, saved.id, "$name-Renamed").getOrThrow()
+                assertEquals(listOf(name), ConfigManager.readProfileProxyNames(context, saved.id))
+                SubscriptionManager.delete(context, saved.id)
+                assertTrue(saved.file.isFile)
+            }
+        } finally {
+            assertTrue(ConfigManager.saveProfileContent(context, original.id, originalText))
+            ConfigManager.updateProfile(context, original)
+        }
+    }
+
+    @Test
     fun partialPreviewRequiresExplicitAcceptanceAndDoesNotImportBadLines(): Unit = runBlocking {
         check(context.packageName.endsWith(".coretest.v98"))
         val good = "ss://YWVzLTEyOC1nY206Zml4dHVyZQ@127.0.0.1:443#Local"
@@ -168,6 +198,131 @@ class SubscriptionManagerInstrumentedTest {
             assertFalse(backup.exists())
             assertNotNull(SubscriptionManager.state(context, profile.id))
         } finally { SubscriptionManager.delete(context, profile.id) }
+    }
+
+    @Test
+    fun unnamedRemoteImportsResolveUrlHeadersBodyAndHostThroughTheDownloadEntry(): Unit = runBlocking {
+        check(context.packageName.endsWith(".coretest.v98"))
+        FixtureServer().use { server ->
+            val body = "# title: Body Name\n" + nodes("Imported")
+            val titled = Reply(body, headers = mapOf(
+                "profile-title" to "Header%20Name", "Content-Disposition" to "attachment; filename=Ignored.yaml"))
+            val cases = listOf(
+                Triple("/fragment?name=Query%20Name#Fragment%20Name", titled, "Fragment Name"),
+                Triple("/query?name=Query%20Name", titled, "Query Name"),
+                Triple("/query-title?title=Query%20Title", titled, "Query Title"),
+                Triple("/header", titled, "Header Name"),
+                Triple("/filename", Reply(body, headers = mapOf("Content-Disposition" to "attachment; filename=Filename.yaml")), "Filename"),
+                Triple("/encoded-filename", Reply(body, headers = mapOf("Content-Disposition" to "attachment; filename*=UTF-8''Encoded%20Filename.yaml")), "Encoded Filename"),
+                Triple("/comment", Reply(body), "Body Name"),
+                Triple("/plain", Reply(nodes("Imported")), "127.0.0.1")
+            )
+            for ((path, reply, expected) in cases) {
+                server.responses[path.substringBefore('#')] = reply
+                val profile = ConfigManager.downloadSubscription(context, server.url(path), "  ").getOrThrow()
+                try {
+                    assertEquals(path, expected, profile.name)
+                    val current = SubscriptionManager.state(context, profile.id)!!.current
+                    val snapshot = current.sources.single()
+                    assertEquals(expected, snapshot.suggestedName)
+                    assertEquals(expected, snapshot.source.name)
+                    assertEquals(expected, ImportPreview(current.sources).suggestedName)
+                    assertEquals(server.url(path), snapshot.source.url)
+                    assertEquals(expected, selected(profile.id).name)
+                    assertTrue(profile.canRefresh)
+                } finally { SubscriptionManager.delete(context, profile.id) }
+            }
+        }
+    }
+
+    @Test
+    fun explicitProfileAndSourceNamesTakePrecedenceOverRemoteMetadata(): Unit = runBlocking {
+        check(context.packageName.endsWith(".coretest.v98"))
+        FixtureServer().use { server ->
+            server.responses["/explicit"] = Reply("# title: Body Name\n" + nodes("Explicit"),
+                headers = mapOf("profile-title" to "Header%20Name"))
+            val url = server.url("/explicit#Fragment%20Name")
+            val automatic = SubscriptionManager.preview(context, listOf(SourceDraft("", url)))
+            assertEquals(0, automatic.rejected)
+            assertEquals("Fragment Name", automatic.sources.single().suggestedName)
+            assertEquals("Fragment Name", automatic.sources.single().source.name)
+            val inferred = SubscriptionManager.create(context, "", automatic, false, false)
+            try { assertEquals("Fragment Name", inferred.name) }
+            finally { SubscriptionManager.delete(context, inferred.id) }
+
+            val aliased = SubscriptionManager.preview(context, listOf(SourceDraft("  Source Alias  ", url)))
+            assertEquals(0, aliased.rejected)
+            assertEquals("Source Alias", aliased.sources.single().source.name)
+            assertEquals("Source Alias", aliased.suggestedName)
+            val named = SubscriptionManager.create(context, "  My Configuration  ", aliased, false, false)
+            try {
+                assertEquals("My Configuration", named.name)
+                assertEquals("Source Alias", SubscriptionManager.state(context, named.id)!!.current.sources.single().source.name)
+            } finally { SubscriptionManager.delete(context, named.id) }
+
+            val legacyEntry = ConfigManager.downloadSubscription(context, url, "  Explicit Download  ").getOrThrow()
+            try { assertEquals("Explicit Download", legacyEntry.name) }
+            finally { SubscriptionManager.delete(context, legacyEntry.id) }
+        }
+    }
+
+    @Test
+    fun remoteCompleteConfigurationKeepsItsPolicyProvidersAndRefreshesAsAStandaloneProfile(): Unit = runBlocking {
+        check(context.packageName.endsWith(".coretest.v98"))
+        FixtureServer().use { server ->
+            val complete = nodes("Original") + """
+                proxy-providers:
+                  FixtureProvider:
+                    type: http
+                    url: ${server.url("/provider.yaml")}
+                    path: ./providers/import-fixture.yaml
+                    interval: 3600
+                rule-providers:
+                  FixtureRules:
+                    type: http
+                    behavior: domain
+                    format: text
+                    url: ${server.url("/rules.txt")}
+                    path: ./rules/import-fixture.txt
+                    interval: 3600
+                proxy-groups:
+                  - name: OriginalGroup
+                    type: select
+                    proxies: [Original, DIRECT]
+                    use: [FixtureProvider]
+                rules:
+                  - RULE-SET,FixtureRules,OriginalGroup
+                  - DOMAIN-SUFFIX,example.invalid,OriginalGroup
+                  - MATCH,DIRECT
+            """.trimIndent()
+            server.responses["/complete.yaml"] = Reply(complete, headers = mapOf("profile-title" to "Full%20Remote"))
+            val profile = ConfigManager.downloadSubscription(context, server.url("/complete.yaml"), "").getOrThrow()
+            try {
+                assertEquals("Full Remote", profile.name)
+                assertEquals(complete, profile.file.readText())
+                val original = SubscriptionManager.state(context, profile.id)!!.current
+                assertTrue(original.standalone)
+                assertTrue(ImportPreview(original.sources).supportsStandalone)
+                assertTrue(profile.managed)
+                assertTrue(profile.canRefresh)
+                assertNull(profile.url)
+                assertFalse(server.requests.containsKey("/provider.yaml"))
+                assertFalse(server.requests.containsKey("/rules.txt"))
+
+                val changed = complete.replace("example.invalid", "updated.invalid")
+                server.responses["/complete.yaml"] = Reply(changed, headers = mapOf("profile-title" to "Changed%20Server%20Title"))
+                val update = SubscriptionManager.update(context, profile)
+                assertTrue(update.changed)
+                assertFalse(update.sources.single().retained)
+                assertEquals(changed, selected(profile.id).file.readText())
+                assertEquals("Full Remote", selected(profile.id).name)
+                val current = SubscriptionManager.state(context, profile.id)!!.current
+                assertTrue(current.standalone)
+                assertEquals("Full Remote", current.sources.single().source.name)
+                assertFalse(server.requests.containsKey("/provider.yaml"))
+                assertFalse(server.requests.containsKey("/rules.txt"))
+            } finally { SubscriptionManager.delete(context, profile.id) }
+        }
     }
 
     private fun selected(id: String) = ConfigManager.getProfiles(context, forceReload = true).single { it.id == id }

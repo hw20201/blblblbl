@@ -1,5 +1,6 @@
 package com.github.arca.android.ui.screens
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,9 +8,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.data.ThemeMode
+import com.github.arca.android.data.subscription.*
 import com.github.arca.android.ui.glass.ProvideGlassTheme
 import com.github.arca.android.ui.theme.MihomoTheme
+import java.io.File
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,12 +30,17 @@ import org.robolectric.annotation.GraphicsMode
 class SubscriptionImportSheetTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun show() {
+    private fun show(
+        initial: SourceDraft? = null,
+        onPreview: suspend (Context, List<SourceDraft>) -> ImportPreview = SubscriptionManager::preview,
+        onCommit: (suspend (String, ImportPreview, Boolean, Boolean) -> ProfileItem)? = null
+    ) {
         compose.setContent {
             MihomoTheme(ThemeMode.LIGHT) {
                 ProvideGlassTheme {
                     Box(Modifier.fillMaxSize()) {
-                        SubscriptionImportSheet(onDismiss = {}, onImported = {})
+                        SubscriptionImportSheet(onDismiss = {}, onImported = {}, initial = initial,
+                            onPreview = onPreview, onCommit = onCommit)
                     }
                 }
             }
@@ -38,9 +50,68 @@ class SubscriptionImportSheetTest {
     @Test fun emptyInputCannotStartInspection() {
         show()
         compose.onNodeWithText("添加配置").assertIsDisplayed()
+        compose.onNodeWithText("支持订阅链接、远程配置文件 URL", substring = true).assertExists()
         compose.onNodeWithTag("profile-add-submit").assertIsNotEnabled()
         compose.onNodeWithTag("profile-add-local-file").assertIsDisplayed()
         compose.onNodeWithTag("profile-add-clipboard").assertIsDisplayed()
+    }
+
+    @Test fun completeRemotePreviewSuggestsANameAndSavesTheWholeConfigurationByDefault() {
+        var draftName: String? = null
+        var committedName: String? = null
+        var keptComplete: Boolean? = null
+        show(initial = SourceDraft("", "https://example.invalid/config.yaml"), onPreview = { _, drafts ->
+            draftName = drafts.single().name
+            completePreview()
+        }, onCommit = { title, _, standalone, _ ->
+            committedName = title; keptComplete = standalone
+            ProfileItem("fixture", title, null, File("fixture.yaml"))
+        })
+        inspect()
+        compose.onNodeWithTag("profile-add-name").performScrollTo().assertTextContains("Server Name")
+        compose.onNodeWithTag("subscription-import-standalone").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("subscription-import-extract").assertIsNotSelected()
+        compose.onNodeWithTag("profile-add-submit").performClick()
+        compose.runOnIdle {
+            assertEquals("", draftName)
+            assertEquals("Server Name", committedName)
+            assertEquals(true, keptComplete)
+        }
+    }
+
+    @Test fun explicitNameWinsAndNodeExtractionRemainsAnExplicitChoice() {
+        var committedName: String? = null
+        var keptComplete: Boolean? = null
+        show(initial = SourceDraft("", "https://example.invalid/config.yaml"),
+            onPreview = { _, _ -> completePreview() }, onCommit = { title, _, standalone, _ ->
+                committedName = title; keptComplete = standalone
+                ProfileItem("fixture", title, null, File("fixture.yaml"))
+            })
+        compose.onNodeWithTag("profile-add-name").performScrollTo().performTextInput("User Name")
+        inspect()
+        compose.onNodeWithTag("profile-add-name").performScrollTo().assertTextContains("User Name")
+        compose.onNodeWithTag("subscription-import-extract").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithTag("profile-add-submit").performClick()
+        compose.runOnIdle {
+            assertEquals("User Name", committedName)
+            assertEquals(false, keptComplete)
+        }
+    }
+
+    private fun inspect() {
+        compose.onNodeWithTag("profile-add-submit").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("subscription-import-standalone").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun completePreview(): ImportPreview {
+        val node = ImportNode(1, name = "Fixture", type = "ss", data = Json.parseToJsonElement(
+            """{"name":"Fixture","type":"ss","server":"node.invalid","port":443,"cipher":"aes-128-gcm","password":"fixture"}""").jsonObject)
+        return ImportPreview(listOf(SourceSnapshot(
+            SubscriptionSource("remote", "Server Name", "https://example.invalid/config.yaml"), "fixture",
+            ImportInspection(format = "mihomo", nodes = listOf(node), complete = "fixture", completeValid = true),
+            suggestedName = "Server Name")))
     }
 
     @Test fun queuedSourceCanBeEditedWithoutLosingItsContents() {

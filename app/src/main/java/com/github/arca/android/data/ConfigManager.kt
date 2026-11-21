@@ -101,51 +101,60 @@ object ConfigManager {
     internal fun extractProfileName(name: String?, response: okhttp3.Response?, body: String, url: String): String {
         if (!name.isNullOrBlank()) return name.trim()
 
-        // 1. Check URL Fragment (#Name)
-        runCatching {
-            val uri = java.net.URI(url)
-            val fragment = uri.fragment
-            if (!fragment.isNullOrBlank()) {
-                val decoded = runCatching { java.net.URLDecoder.decode(fragment, "UTF-8") }.getOrDefault(fragment)
-                if (decoded.isNotBlank()) return decoded.trim()
-            }
+        val uri = runCatching { java.net.URI(url) }.getOrNull()
+        fun decode(value: String): String = runCatching { java.net.URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+
+        // 1. Check URL Fragment (#Name), decoding only once.
+        uri?.rawFragment?.let { fragment ->
+            val decoded = decode(fragment).trim()
+            if (decoded.isNotBlank()) return decoded
         }
 
-        // 2. Check URL Query param (name=... or title=...)
-        runCatching {
-            val uri = java.net.URI(url)
-            val query = uri.query
-            if (!query.isNullOrBlank()) {
-                for (param in query.split("&")) {
-                    val pair = param.split("=")
-                    if (pair.size == 2 && (pair[0].equals("name", ignoreCase = true) || pair[0].equals("title", ignoreCase = true))) {
-                        val decoded = runCatching { java.net.URLDecoder.decode(pair[1], "UTF-8") }.getOrDefault(pair[1])
-                        if (decoded.isNotBlank()) return decoded.trim()
-                    }
+        // 2. Split the raw query before decoding; escaped separators are part of the value.
+        uri?.rawQuery?.split('&')?.forEach { param ->
+            val pair = param.split('=', limit = 2)
+            if (pair.size == 2) {
+                val key = decode(pair[0])
+                if (key.equals("name", ignoreCase = true) || key.equals("title", ignoreCase = true)) {
+                    val decoded = decode(pair[1]).trim()
+                    if (decoded.isNotBlank()) return decoded
                 }
             }
         }
 
         // 3. Check response header: profile-title
-        val profileTitle = response?.header("profile-title") ?: response?.header("Profile-Title")
-        if (!profileTitle.isNullOrBlank()) {
-            val decoded = runCatching { java.net.URLDecoder.decode(profileTitle, "UTF-8") }.getOrDefault(profileTitle)
-            if (decoded.isNotBlank()) return decoded.trim()
+        response?.header("profile-title")?.let { title ->
+            val decoded = decode(title).trim()
+            if (decoded.isNotBlank()) return decoded
         }
 
-        // 4. Check Content-Disposition (filename*=UTF-8''... or filename=...)
-        val contentDisp = response?.header("content-disposition") ?: response?.header("Content-Disposition")
-        if (!contentDisp.isNullOrBlank()) {
-            if (contentDisp.contains("filename*=", ignoreCase = true)) {
-                val rawEncoded = contentDisp.substringAfter("filename*=").substringAfter("''").trim('"', '\'', ' ')
-                val decoded = runCatching { java.net.URLDecoder.decode(rawEncoded, "UTF-8") }.getOrDefault(rawEncoded)
-                val clean = decoded.removeSuffix(".yaml").removeSuffix(".yml")
-                if (clean.isNotBlank()) return clean.trim()
+        // 4. Parse complete parameters so trailing attributes and quoted semicolons aren't mistaken for names.
+        response?.header("Content-Disposition")?.let { disposition ->
+            val parameters = Regex("""(?:^|;)\s*([^=;\s]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^";]*))""")
+                .findAll(disposition).associate { match ->
+                    val quoted = match.groups[2]?.value
+                    match.groupValues[1].lowercase() to
+                        (quoted?.replace(Regex("""\\(.)""")) { it.groupValues[1] } ?: match.groupValues[3].trim())
+                }
+            fun filename(value: String): String {
+                val trimmed = value.trim()
+                return when {
+                    trimmed.endsWith(".yaml", ignoreCase = true) -> trimmed.dropLast(5).trimEnd()
+                    trimmed.endsWith(".yml", ignoreCase = true) -> trimmed.dropLast(4).trimEnd()
+                    else -> trimmed
+                }
             }
-            if (contentDisp.contains("filename=", ignoreCase = true)) {
-                val fname = contentDisp.substringAfter("filename=").trim('"', '\'', ' ')
-                val cleanFname = fname.removeSuffix(".yaml").removeSuffix(".yml")
-                if (cleanFname.isNotBlank()) return cleanFname.trim()
+            parameters["filename*"]?.split('\'', limit = 3)?.let { parts ->
+                if (parts.size == 3 && parts[0].equals("UTF-8", ignoreCase = true)) {
+                    // RFC 5987 uses percent encoding, not form encoding: a literal plus stays a plus.
+                    val decoded = runCatching { java.net.URLDecoder.decode(parts[2].replace("+", "%2B"), "UTF-8") }.getOrNull()
+                    val clean = decoded?.let { filename(it) }
+                    if (!clean.isNullOrBlank()) return clean
+                }
+            }
+            parameters["filename"]?.let { raw ->
+                val clean = filename(raw)
+                if (clean.isNotBlank()) return clean
             }
         }
 
@@ -186,9 +195,9 @@ object ConfigManager {
         name: String
     ): Result<ProfileItem> = withContext(Dispatchers.IO) {
         try {
-            val preview = SubscriptionManager.preview(context, listOf(SourceDraft(name.ifBlank { "订阅" }, url)))
-            Result.success(SubscriptionManager.create(context, name.ifBlank { "订阅" }, preview,
-                standalone = preview.sources.singleOrNull()?.inspection?.completeValid == true, allowPartial = false))
+            val preview = SubscriptionManager.preview(context, listOf(SourceDraft(name, url)))
+            Result.success(SubscriptionManager.create(context, name, preview,
+                standalone = preview.supportsStandalone, allowPartial = false))
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { Result.failure(IllegalArgumentException(SubscriptionManager.safeFailure(failure))) }
     }
@@ -222,6 +231,17 @@ object ConfigManager {
 
     private fun ensureDefaultProfileFile(context: Context): File = synchronized(defaultProfileLock) {
         val file = getProfilesDir(context).resolve("$DEFAULT_PROFILE_ID.yaml")
+        // Older editor replacements accidentally published the default as managed. Preserve
+        // its current version before removing that pointer, so the stable id is local again.
+        val store = SubscriptionStore(context)
+        store.head(DEFAULT_PROFILE_ID)?.let { head ->
+            val current = store.versionFile(DEFAULT_PROFILE_ID, head.versionId)
+            check(current.isFile) { "默认配置版本不存在，未覆盖本地内容" }
+            val content = current.inputStream().use { readBounded(it) }
+            com.github.arca.android.data.subscription.atomicWrite(file, content.toByteArray(Charsets.UTF_8))
+            store.delete(DEFAULT_PROFILE_ID)
+            invalidateProfilesCache()
+        }
         if (!file.isFile) {
             val body = """
                 proxies: []
@@ -290,11 +310,11 @@ object ConfigManager {
             if (!file.isFile) return@mapNotNull null
             val defaultName = if (id == DEFAULT_PROFILE_ID) "默认配置" else pointer?.name ?: id
             val name = prefs.getString("${id}_name", defaultName) ?: defaultName
-            val url = if (managed) null else prefs.getString("${id}_url", null)
+            val url = if (managed || id == DEFAULT_PROFILE_ID) null else prefs.getString("${id}_url", null)
             val updated = pointer?.updatedAt ?: prefs.getLong("${id}_updated", file.lastModified())
             val scriptEnabled = prefs.getBoolean("${id}_script_enabled", false)
             val scriptIds = prefs.getString("${id}_script_ids", "").orEmpty().split(",").filter { it.isNotBlank() }
-            val autoUpdate = prefs.getBoolean("${id}_auto_update", false)
+            val autoUpdate = id != DEFAULT_PROFILE_ID && prefs.getBoolean("${id}_auto_update", false)
             val autoUpdateInterval = prefs.getInt("${id}_auto_update_interval", 1440)
             val info = parseSubscriptionUserInfo(pointer?.userInfo)
             fun quota(field: String, value: Long?): Long = if (managed) value ?: 0L else prefs.getLong("${id}_$field", 0L)
@@ -330,6 +350,7 @@ object ConfigManager {
     fun saveProfileContent(context: Context, id: String, content: String): Boolean {
         return runCatching {
             require(Regex("[A-Za-z0-9_-]{1,100}").matches(id)) { "配置标识无效" }
+            if (id == DEFAULT_PROFILE_ID) ensureDefaultProfileFile(context)
             require(SubscriptionStore(context).head(id) == null) { "托管订阅不可直接覆盖" }
             val file = getProfilesDir(context).resolve("$id.yaml")
             com.github.arca.android.data.subscription.atomicWrite(file, content.toByteArray(Charsets.UTF_8))
@@ -340,30 +361,79 @@ object ConfigManager {
         }.getOrDefault(false)
     }
 
-    suspend fun appendNodeToProfile(context: Context, profileId: String, raw: String): Result<ProfileItem> = withContext(Dispatchers.IO) {
+    suspend fun appendNodeToProfile(
+        context: Context, profileId: String, raw: String, groupName: String? = null
+    ): Result<ProfileItem> = withContext(Dispatchers.IO) {
         try {
-            val input = raw.trim()
-            val nodeText = if (NowhereLink.hasScheme(input)) {
-                (NowhereLink.parse(input) ?: error(NowhereLink.INVALID_LINK_MESSAGE)).toProfileYaml()
-            } else input
-            val inspection = com.github.arca.android.data.subscription.SubscriptionValidator.inspect(context, nodeText, "auto")
-            require(inspection.nodes.size == 1 && inspection.diagnostics.isEmpty()) { "请仅输入一个有效节点" }
-            val node = inspection.nodes.single()
-            editProfileNode(context, profileId) { ProfileNodeEditor.append(it, node.data, node.name) }
+            require(profileId == DEFAULT_PROFILE_ID) { "独立节点只能添加到默认配置" }
+            val node = inspectSingleNode(context, raw)
+            editProfileNode(context, profileId) { ProfileNodeEditor.append(it, node.data, node.name, groupName) }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { Result.failure(IllegalArgumentException(failure.message ?: "节点追加失败")) }
     }
 
-    suspend fun renameProfileNode(context: Context, profileId: String, oldName: String, newName: String): Result<ProfileItem> = withContext(Dispatchers.IO) {
+    suspend fun renameProfileNode(
+        context: Context, profileId: String, oldName: String, newName: String
+    ): Result<ProfileItem> = withContext(Dispatchers.IO) {
         editProfileNode(context, profileId) { ProfileNodeEditor.rename(it, oldName, newName) }
+    }
+
+    suspend fun replaceProfileNode(
+        context: Context, profileId: String, name: String, raw: String
+    ): Result<ProfileItem> = withContext(Dispatchers.IO) {
+        try {
+            require(profileId == DEFAULT_PROFILE_ID) { "独立节点仅在默认配置中管理" }
+            val node = inspectSingleNode(context, raw)
+            editProfileNode(context, profileId) { ProfileNodeEditor.replace(it, name, node.data) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { Result.failure(IllegalArgumentException(failure.message ?: "节点保存失败")) }
+    }
+
+    suspend fun deleteProfileNode(context: Context, profileId: String, name: String): Result<ProfileItem> = withContext(Dispatchers.IO) {
+        editProfileNode(context, profileId) { ProfileNodeEditor.delete(it, name) }
+    }
+
+    suspend fun readProfileNode(context: Context, profileId: String, name: String): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(profileId == DEFAULT_PROFILE_ID) { "请在远程配置中管理此节点；独立节点仅在默认配置中管理" }
+            val profile = getProfiles(context, true).firstOrNull { it.id == profileId } ?: error("找不到配置")
+            require(!profile.managed && !profile.canRefresh) { "请在远程配置中管理此节点" }
+            ProfileNodeEditor.node(profile.file.inputStream().use { readBounded(it) }, name)
+        }
+    }
+
+    /** Raw names retain YAML order; display/parser expansion must not determine added identity. */
+    internal suspend fun readProfileProxyNames(context: Context, profileId: String): List<String> = withContext(Dispatchers.IO) {
+        val profile = getProfiles(context, true).firstOrNull { it.id == profileId } ?: error("找不到配置")
+        ProfileNodeEditor.proxyNames(profile.file.inputStream().use { readBounded(it) })
+    }
+
+    internal suspend fun writableNodeGroupNames(context: Context, profile: ProfileItem): List<String> = withContext(Dispatchers.IO) {
+        require(profile.id == DEFAULT_PROFILE_ID && !profile.managed && !profile.canRefresh && profile.file.canWrite()) {
+            "请在可写的默认配置中管理独立节点"
+        }
+        val raw = profile.file.inputStream().use { readBounded(it) }
+        val visible = ProfileParser.parse(profile.file, context = context).groupNames.toSet()
+        ProfileNodeEditor.writableGroupNames(raw).filter { it in visible }
+    }
+
+    private suspend fun inspectSingleNode(context: Context, raw: String): com.github.arca.android.data.subscription.ImportNode {
+        val input = raw.trim()
+        val text = if (NowhereLink.hasScheme(input)) {
+            (NowhereLink.parse(input) ?: error(NowhereLink.INVALID_LINK_MESSAGE)).toProfileYaml()
+        } else input
+        val inspection = com.github.arca.android.data.subscription.SubscriptionValidator.inspect(context, text, "auto")
+        require(inspection.nodes.size == 1 && inspection.diagnostics.isEmpty()) { "请仅输入一个有效节点" }
+        return inspection.nodes.single()
     }
 
     private val nodeEditLock = Any()
 
     private fun editProfileNode(context: Context, id: String, edit: (String) -> String): Result<ProfileItem> = synchronized(nodeEditLock) {
         runCatching {
+            require(id == DEFAULT_PROFILE_ID) { "独立节点仅在默认配置中管理" }
             val profile = getProfiles(context, true).firstOrNull { it.id == id } ?: error("找不到配置")
-            require(!profile.managed && !profile.canRefresh) { "订阅节点不可直接编辑，请编辑来源或保存为本地配置" }
+            require(!profile.managed && !profile.canRefresh) { "请在远程配置中管理此节点" }
             val original = profile.file.inputStream().use { readBounded(it) }
             val content = edit(original)
             if (content == original) return@runCatching profile
@@ -380,11 +450,11 @@ object ConfigManager {
         val prefs = context.getSharedPreferences("profiles_meta", Context.MODE_PRIVATE)
         prefs.edit()
             .putString("${item.id}_name", item.name)
-            .putString("${item.id}_url", item.url)
+            .putString("${item.id}_url", item.url.takeUnless { item.id == DEFAULT_PROFILE_ID })
             .putLong("${item.id}_updated", item.lastUpdated)
             .putBoolean("${item.id}_script_enabled", item.scriptEnabled)
             .putString("${item.id}_script_ids", item.scriptIds.joinToString(","))
-            .putBoolean("${item.id}_auto_update", item.autoUpdate)
+            .putBoolean("${item.id}_auto_update", item.id != DEFAULT_PROFILE_ID && item.autoUpdate)
             .putInt("${item.id}_auto_update_interval", item.autoUpdateInterval)
             .putLong("${item.id}_upload_bytes", item.uploadBytes)
             .putLong("${item.id}_download_bytes", item.downloadBytes)

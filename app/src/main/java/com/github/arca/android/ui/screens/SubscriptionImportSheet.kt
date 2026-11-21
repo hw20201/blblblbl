@@ -45,11 +45,13 @@ internal fun SubscriptionImportSheet(
     onImported: (ProfileItem) -> Unit,
     initial: SourceDraft? = null,
     addingSources: Boolean = false,
-    onCommit: (suspend (String, ImportPreview, Boolean, Boolean) -> ProfileItem)? = null
+    onCommit: (suspend (String, ImportPreview, Boolean, Boolean) -> ProfileItem)? = null,
+    onPreview: suspend (Context, List<SourceDraft>) -> ImportPreview = SubscriptionManager::preview
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(initial?.name ?: "") }
+    var automaticName by remember { mutableStateOf(initial?.name.isNullOrBlank()) }
     var label by remember { mutableStateOf(initial?.name ?: "") }
     var text by remember { mutableStateOf(initial?.text ?: "") }
     var token by remember { mutableStateOf(initial?.token ?: "") }
@@ -65,14 +67,15 @@ internal fun SubscriptionImportSheet(
     var failure by remember { mutableStateOf<String?>(null) }
     var work by remember { mutableStateOf<Job?>(null) }
     var expanded by remember { mutableStateOf(emptySet<String>()) }
-    fun draft() = SourceDraft(label.ifBlank { "来源 ${queue.size + 1}" }, text, mode, token, remote)
+    fun draft() = SourceDraft(label, text, mode, token, remote)
+    fun rename(value: String) { name = value.take(100); automaticName = name.isBlank() }
     fun close() { work?.cancel(); onDismiss() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) work = scope.launch {
             try {
                 val selected = withContext(Dispatchers.IO) { ConfigManager.readProfileDraft(context, uri) }
                 text = selected.text; label = selected.name; remote = false
-                if (name.isBlank()) name = selected.name
+                if (automaticName) name = selected.name
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { failure = "文件读取失败，请检查大小与 UTF-8 编码" }
         }
@@ -88,9 +91,11 @@ internal fun SubscriptionImportSheet(
                 if (preview == null) {
                     item {
                         SubscriptionCard {
-                            Text("订阅、节点，一处导入", fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
-                            Text("支持 URL、Mihomo 配置、节点 YAML、分享链接和 Base64。先检查，确认后保存。",
+                            Text("订阅与远程配置，一处导入", fontWeight = FontWeight.SemiBold, color = LoonTextPrimary)
+                            Text("支持订阅链接、远程配置文件 URL、本地 Mihomo 配置、节点 YAML、分享链接和 Base64。" +
+                                if (addingSources) "先检查，确认后加入当前聚合配置。" else "先检查，确认后独立保存配置。",
                                 color = LoonTextSecondary, fontSize = 12.sp)
+                            if (!addingSources) Text("策略页添加的独立节点保存在默认配置。", color = LoonTextSecondary, fontSize = 11.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { picker.launch("*/*") }, modifier = Modifier.weight(1f).testTag("profile-add-local-file")) {
                                     Icon(Icons.Default.UploadFile, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text("本地文件")
@@ -105,9 +110,9 @@ internal fun SubscriptionImportSheet(
                             }
                         }
                     }
-                    item { SubscriptionField(name, { name = it.take(100) }, "配置名称", "profile-add-name") }
+                    item { SubscriptionField(name, ::rename, "配置名称（留空自动获取）", "profile-add-name") }
                     item { SubscriptionField(label, { label = it.take(100) }, "当前来源别名（选填）") }
-                    item { SubscriptionField(text, { text = it; remote = null }, "订阅 URL 或节点内容", "profile-add-url", singleLine = false) }
+                    item { SubscriptionField(text, { text = it; remote = null }, "订阅 / 远程配置文件 URL 或内容", "profile-add-url", singleLine = false) }
                     item {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             items(listOf("auto" to "自动识别", "yaml" to "YAML", "uri" to "节点链接", "base64" to "Base64", "proxy" to "HTTP / SOCKS 代理")) { (value, title) ->
@@ -124,7 +129,7 @@ internal fun SubscriptionImportSheet(
                         SubscriptionCard {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Layers, null, tint = IosBlue, modifier = Modifier.size(18.dp))
-                                Text(queue[index].name, Modifier.weight(1f).padding(start = 8.dp), color = LoonTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(queue[index].name.ifBlank { "来源 ${index + 1}" }, Modifier.weight(1f).padding(start = 8.dp), color = LoonTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 IconButton(enabled = !busy, onClick = {
                                     val selected = queue[index]
                                     val remaining = queue.filterIndexed { i, _ -> i != index }
@@ -143,6 +148,7 @@ internal fun SubscriptionImportSheet(
                     }
                 } else {
                     val result = requireNotNull(preview)
+                    if (!addingSources) item { SubscriptionField(name, ::rename, "配置名称（留空自动获取）", "profile-add-name") }
                     item {
                         SubscriptionCard {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -153,16 +159,18 @@ internal fun SubscriptionImportSheet(
                             Text("已完成格式解析和同版本核心校验；连通性尚未测试。", fontSize = 11.sp, color = LoonTextSecondary)
                         }
                     }
-                    if (!addingSources && result.sources.size == 1 && result.sources[0].inspection.completeValid) item {
+                    if (!addingSources && result.supportsStandalone) item {
                         SubscriptionCard {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(standalone, { standalone = true }); Text("保留完整配置", color = LoonTextPrimary)
-                                RadioButton(!standalone, { standalone = false }); Text("提取节点", color = LoonTextPrimary)
+                                RadioButton(standalone, { standalone = true }, modifier = Modifier.testTag("subscription-import-standalone")); Text("保留完整配置", color = LoonTextPrimary)
+                                RadioButton(!standalone, { standalone = false }, modifier = Modifier.testTag("subscription-import-extract")); Text("提取节点", color = LoonTextPrimary)
                             }
-                            Text(if (standalone) "保留原有分组、规则和 provider。" else "使用聚合的基础分组与规则；不合并来源的 DNS 或脚本。", fontSize = 12.sp, color = LoonTextSecondary)
+                            Text(if (standalone) "保留原有分组、规则及节点 / 规则 provider，作为独立配置保存。" else "仅提取节点，重新生成基础分组与规则；不保留来源原有的分组、规则、provider、DNS 或脚本。", fontSize = 12.sp, color = LoonTextSecondary)
                         }
                     }
                     if (!standalone) item {
+                        Text("提取节点后生成基础分组与规则；多个来源按节点聚合，不合并原有分组、规则或 provider。",
+                            color = LoonTextSecondary, fontSize = 12.sp)
                         Text(aggregate?.let { "生成 ${it.nodes} 个唯一节点 · 全部节点 + 按来源分组" } ?: generationError.orEmpty(),
                             color = if (aggregate == null) IosRed else LoonTextSecondary, fontSize = 12.sp)
                     }
@@ -206,17 +214,18 @@ internal fun SubscriptionImportSheet(
                         try {
                             if (preview == null) {
                                 val all = queue + if (text.isNotBlank()) listOf(draft()) else emptyList()
-                                val inspected = SubscriptionManager.preview(context, all)
+                                val inspected = onPreview(context, all)
                                 val generated = withContext(Dispatchers.Default) { runCatching { SubscriptionAggregator.generate(inspected.sources) } }
                                 aggregate = generated.getOrNull()
                                 generationError = generated.exceptionOrNull()?.let { error ->
                                     SubscriptionManager.safeFailure(error as? Exception ?: IllegalStateException("聚合配置生成失败"))
                                 }
                                 queue = all; text = ""; label = ""; token = ""; remote = null
-                                standalone = !addingSources && inspected.sources.singleOrNull()?.inspection?.completeValid == true
+                                if (automaticName) name = inspected.suggestedName
+                                standalone = !addingSources && inspected.supportsStandalone
                                 preview = inspected
                             } else {
-                                val title = name.ifBlank { preview!!.sources.firstOrNull()?.source?.name ?: "聚合配置" }
+                                val title = name.ifBlank { preview!!.suggestedName.ifBlank { "聚合配置" } }
                                 val imported = onCommit?.invoke(title, preview!!, standalone, partial)
                                     ?: SubscriptionManager.create(context, title, preview!!, standalone, partial)
                                 onImported(imported); onDismiss()
