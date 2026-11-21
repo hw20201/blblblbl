@@ -10,7 +10,10 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,13 +32,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.LocalPinnableContainer
+import androidx.compose.ui.layout.PinnableContainer
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -58,7 +66,6 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
 
 private fun formatRelativeTime(timestamp: Long): String {
     val diff = System.currentTimeMillis() - timestamp
@@ -123,11 +130,61 @@ fun ProfilesScreen(
     var deleteConfirmProfile by remember { mutableStateOf<ProfileItem?>(null) }
     var refreshingProfileId by remember { mutableStateOf<String?>(null) }
     var localProfiles by remember(profiles) { mutableStateOf(profiles) }
-    var draggedProfileId by remember { mutableStateOf<String?>(null) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var profileDrag by remember { mutableStateOf<ProfileDragPosition?>(null) }
+    var retainedDragItem by remember { mutableStateOf<ProfileReorderItem?>(null) }
+    val dragContainers = remember { mutableMapOf<String, PinnableContainer>() }
+    var dragPin by remember { mutableStateOf<PinnableContainer.PinnedHandle?>(null) }
+    DisposableEffect(Unit) { onDispose { dragPin?.release() } }
+    val draggedProfileId by remember { derivedStateOf { profileDrag?.id } }
+    val currentOnReorderProfiles by rememberUpdatedState(onReorderProfiles)
     val lazyListState = rememberLazyListState()
     val pullState = rememberPullToRefreshState()
     var pullRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(profiles) {
+        // Pointer events and remeasurement need not alternate. Keep the latest finger position
+        // while waiting for a layout matching our order, including a release in that interval.
+        snapshotFlow {
+            profileDrag?.let { drag ->
+                drag to profileReorderResult(
+                    localProfiles.map { it.id },
+                    lazyListState.layoutInfo.visibleItemsInfo.map {
+                        ProfileReorderItem(it.key as String, it.index, it.offset, it.size)
+                    },
+                    drag,
+                    retainedDragItem
+                )
+            }
+        }.collect { frame ->
+            val (drag, result) = frame ?: return@collect
+            when (result) {
+                ProfileReorderResult.AwaitLayout -> Unit
+                ProfileReorderResult.Cancelled -> {
+                    profileDrag = null
+                    retainedDragItem = null
+                    dragPin?.release()
+                    dragPin = null
+                }
+                ProfileReorderResult.Settled -> if (drag.released) {
+                    profileDrag = null
+                    retainedDragItem = null
+                    dragPin?.release()
+                    dragPin = null
+                    currentOnReorderProfiles?.invoke(localProfiles)
+                }
+                is ProfileReorderResult.Move -> {
+                    val firstIndex = lazyListState.firstVisibleItemIndex
+                    if (result.affectsFirstVisibleItem(firstIndex)) {
+                        // Override keyed first-item retention in the SAME remeasure as the move.
+                        lazyListState.requestScrollToItem(firstIndex, lazyListState.firstVisibleItemScrollOffset)
+                    }
+                    localProfiles = localProfiles.toMutableList().apply {
+                        add(result.to, removeAt(result.from))
+                    }
+                }
+            }
+        }
+    }
 
     // File Picker for replacing profile
     var targetReplacingProfile by remember { mutableStateOf<ProfileItem?>(null) }
@@ -273,11 +330,75 @@ fun ProfilesScreen(
             ) {
             LazyColumn(
                 state = lazyListState,
+                // The viewport detector is outside LazyColumn's internal scrollable node.
+                // Only an accepted card pickup may lock that competing drag recognizer.
+                userScrollEnabled = profileDrag == null,
                 modifier = Modifier
                     .fillMaxSize()
                     .bounceOverscroll(allowTop = false)
                     .padding(horizontal = 16.dp)
-                    .testTag("profiles-list"),
+                    .testTag("profiles-list")
+                    // Observe unscaled viewport coordinates, outside the moving card's layer.
+                    .pointerInput(profiles, localProfiles.size) {
+                        fun cancelProfileDrag() {
+                            profileDrag = null
+                            retainedDragItem = null
+                            dragPin?.release()
+                            dragPin = null
+                            localProfiles = profiles
+                        }
+                        fun dragAt(pointerY: Float): ProfileDragPosition? {
+                            val layout = lazyListState.layoutInfo
+                            return profileDragStart(layout.visibleItemsInfo.map {
+                                ProfileReorderItem(it.key as String, it.index, it.offset, it.size)
+                            }, layout.viewportStartOffset, pointerY)
+                        }
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // Reject non-card starts BEFORE recognizing a long press. Merely
+                            // returning null from onDragStart cannot veto the stock detector's
+                            // automatic consumption of movement/up in gaps or content padding.
+                            if (dragAt(down.position.y) == null) return@awaitEachGesture
+                            val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                            val start = dragAt(longPress.position.y) ?: return@awaitEachGesture
+                            dragPin?.release()
+                            dragPin = dragContainers[start.id]?.pin()
+                            retainedDragItem = lazyListState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.key == start.id }?.let {
+                                    ProfileReorderItem(start.id, it.index, it.offset, it.size)
+                                }
+                            profileDrag = start
+                            try {
+                                // Own accepted drags before the inner scrollable's Main pass,
+                                // even when the scroll lock has not recomposed yet.
+                                var pointerId = longPress.id
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == pointerId }
+                                    if (change == null || change.isConsumed) {
+                                        cancelProfileDrag()
+                                        break
+                                    }
+                                    if (change.changedToUp()) {
+                                        change.consume()
+                                        val next = event.changes.firstOrNull { it.pressed }
+                                        if (next == null) {
+                                            profileDrag = profileDrag?.copy(released = true)
+                                            break
+                                        }
+                                        pointerId = next.id
+                                    } else {
+                                        val deltaY = change.positionChange().y
+                                        profileDrag?.let { profileDrag = it.copy(top = it.top + deltaY) }
+                                        change.consume()
+                                    }
+                                }
+                            } catch (cancelled: CancellationException) {
+                                cancelProfileDrag()
+                                throw cancelled
+                            }
+                        }
+                    },
                 contentPadding = PaddingValues(top = 10.dp, bottom = if (embeddedPanel) 24.dp else 120.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -285,54 +406,42 @@ fun ProfilesScreen(
                     val isBeingDragged = draggedProfileId == item.id
                     val isSelected = item.id == selectedProfileId
                     val isRefreshing = refreshingProfileId == item.id
+                    val pinnableContainer = LocalPinnableContainer.current
+                    DisposableEffect(item.id, pinnableContainer) {
+                        if (pinnableContainer != null) dragContainers[item.id] = pinnableContainer
+                        onDispose {
+                            if (dragContainers[item.id] === pinnableContainer) dragContainers.remove(item.id)
+                        }
+                    }
 
                     ProfilesPanelSurface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .offset { if (isBeingDragged) IntOffset(0, dragOffsetY.roundToInt()) else IntOffset.Zero }
                             .zIndex(if (isBeingDragged) 10f else 1f)
+                            .onPlaced { coordinates ->
+                                if (profileDrag?.id == item.id) {
+                                    // This modifier precedes the moving layer, so placement cannot
+                                    // feed translation back into its own offset. Include pinned slots
+                                    // which LazyColumn omits from visibleItemsInfo after normalization.
+                                    retainedDragItem = ProfileReorderItem(
+                                        item.id, index,
+                                        coordinates.positionInParent().y.toInt() - lazyListState.layoutInfo.beforeContentPadding,
+                                        coordinates.size.height
+                                    )
+                                }
+                            }
                             .graphicsLayer {
+                                val drag = profileDrag
+                                val slotOffset = lazyListState.layoutInfo.visibleItemsInfo
+                                    .firstOrNull { it.key == item.id }?.offset
+                                    ?: retainedDragItem?.takeIf { it.id == item.id }?.offset
+                                translationY = if (drag?.id == item.id && slotOffset != null) drag.translationY(slotOffset) else 0f
                                 scaleX = if (isBeingDragged) 1.03f else 1f
                                 scaleY = if (isBeingDragged) 1.03f else 1f
                                 shadowElevation = if (isBeingDragged) 12f else 0f
                             }
-                            .pointerInput(item.id, localProfiles.size) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { draggedProfileId = item.id; dragOffsetY = 0f },
-                                    onDragEnd = {
-                                        onReorderProfiles?.invoke(localProfiles)
-                                        draggedProfileId = null
-                                        dragOffsetY = 0f
-                                    },
-                                    onDragCancel = {
-                                        localProfiles = profiles
-                                        draggedProfileId = null
-                                        dragOffsetY = 0f
-                                    },
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        dragOffsetY += amount.y
-                                        val visible = lazyListState.layoutInfo.visibleItemsInfo
-                                        val dragged = visible.firstOrNull { it.key == item.id }
-                                        if (dragged != null) {
-                                            val center = dragged.offset + dragOffsetY + dragged.size / 2f
-                                            val target = visible.firstOrNull { it.key != item.id && center >= it.offset && center <= it.offset + it.size }
-                                            if (target != null) {
-                                                val from = localProfiles.indexOfFirst { it.id == item.id }
-                                                val to = localProfiles.indexOfFirst { it.id == target.key }
-                                                if (from >= 0 && to >= 0 && from != to) {
-                                                    val reordered = localProfiles.toMutableList()
-                                                    val moved = reordered.removeAt(from)
-                                                    reordered.add(to, moved)
-                                                    localProfiles = reordered
-                                                    dragOffsetY += dragged.offset - target.offset
-                                                }
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                            .iosPressable {
+                            .testTag("profile-card-${item.id}")
+                            .iosPressable(pressedScale = 1f) {
                                 haptic.selection()
                                 onSelectProfile(item)
                             },

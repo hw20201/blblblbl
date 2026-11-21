@@ -8,7 +8,7 @@ import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -192,7 +192,11 @@ fun DashboardScreen(
     allowLan: Boolean = false,
     onAllowLanChanged: (Boolean) -> Unit = {},
     glassScene: NavigationLensState? = null,
-    navigationLensBoundsState: State<NavigationLensGlobalBounds?>? = null
+    navigationLensBoundsState: State<NavigationLensGlobalBounds?>? = null,
+    onAddNode: () -> Unit = {},
+    onRenameNode: (String) -> Unit = {},
+    onDeleteNode: (String) -> Unit = {},
+    editableNodeNames: Set<String>? = null
 ) {
     val isRunning = vpnState.status == VpnState.Status.RUNNING
     val isStarting = vpnState.status == VpnState.Status.STARTING
@@ -208,6 +212,14 @@ fun DashboardScreen(
     val shortcutBounds = remember { AtomicReference<Map<String, Rect>>(emptyMap()) }
     var quickNodeSearchQuery by remember { mutableStateOf("") }
     var isTestingQuickSheet by remember { mutableStateOf(false) }
+    var nodeActionMenuName by remember(mainGroupName, selectedProfileId) { mutableStateOf<String?>(null) }
+    // Structural node updates invalidate the menu, but speed-test delay updates do not.
+    LaunchedEffect(activeNodeName, mainGroupProxies.map { Triple(it.name, it.type, it.isGroup) }) {
+        nodeActionMenuName = null
+    }
+    LaunchedEffect(activeShortcutPanelId) {
+        if (activeShortcutPanelId != "nodes") nodeActionMenuName = null
+    }
     val dashboardRootCoordinates = remember { AtomicReference<LayoutCoordinates?>(null) }
     val openShortcutPanel = remember {
         {
@@ -425,8 +437,10 @@ fun DashboardScreen(
                     val gridHeight = if (rawGridHeight == 0.dp && isEditingShortcuts) 10.dp else rawGridHeight
 
                     // Keep current displayedShortcuts available in gesture callbacks
+                    val displayedShortcutIds = displayedShortcuts.map { it.id }
                     val currentDisplayedRef = rememberUpdatedState(displayedShortcuts)
                     val currentLocalOrderRef = rememberUpdatedState(localOrder)
+                    val currentUpdateOrder = rememberUpdatedState(onUpdateShortcutOrder)
 
                     val gridBoxModifier = Modifier
                         .fillMaxWidth()
@@ -486,111 +500,116 @@ fun DashboardScreen(
                                         IntOffset(x.roundToInt(), y.roundToInt())
                                     }
                                     .zIndex(if (isBeingDragged) 100f else if (pickedUpShortcutId == item.id) 50f else 1f)
-                                    .graphicsLayer {
-                                        val scale = if (isBeingDragged) 1.06f else 1f
-                                        scaleX = scale
-                                        scaleY = scale
-                                        shadowElevation = if (isBeingDragged) 24f else 0f
-                                        alpha = if (item.id == hiddenShortcutId) 0f else 1f
-                                    }
-                                    .testTag("shortcut-${item.id}")
+                                    .then(if (isEditingShortcuts) Modifier.testTag("shortcut-${item.id}") else Modifier)
 
                                 if (isEditingShortcuts) {
-                                    itemModifier = itemModifier.pointerInput(item.id) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                val list = currentDisplayedRef.value
-                                                val curIdx = list.indexOfFirst { it.id == item.id }
-                                                draggedId = item.id
-                                                initialSlotIndex = curIdx
-                                                hoverSlotIndex = curIdx
-                                                val startCol = if (curIdx != -1) curIdx % 2 else 0
-                                                val startRow = if (curIdx != -1) curIdx / 2 else 0
-                                                dragStartSlotX = startCol * (itemWidthPx + spacingPx)
-                                                dragStartSlotY = startRow * (itemHeightPx + spacingPx)
-                                                dragOffsetState = Offset.Zero
-                                            },
-                                            onDragEnd = {
-                                                val list = currentDisplayedRef.value
-                                                val fromIdx = initialSlotIndex
-                                                val toIdx = hoverSlotIndex
-                                                val canSwap = fromIdx != toIdx && fromIdx in list.indices && toIdx in list.indices
-                                                if (canSwap) {
-                                                    val mutable = currentLocalOrderRef.value.toMutableList()
-                                                    val fromPos = mutable.indexOf(item.id)
-                                                    val targetItem = list[toIdx]
-                                                    val toPos = mutable.indexOf(targetItem.id)
-                                                    if (fromPos != -1 && toPos != -1) {
-                                                        mutable.removeAt(fromPos)
-                                                        mutable.add(toPos, item.id)
-                                                        localOrder = mutable
-                                                        onUpdateShortcutOrder(mutable)
+                                    // Editing already signals reordering: take the drag at touch slop,
+                                    // before the page scrolls, and keep input outside the scaled face.
+                                    itemModifier = itemModifier.pointerInput(
+                                        item.id, itemWidthPx, itemHeightPx, spacingPx, localOrder, displayedShortcutIds
+                                    ) {
+                                        fun clearDrag() {
+                                            if (draggedId != item.id) return
+                                            draggedId = null
+                                            dragOffsetState = Offset.Zero
+                                            initialSlotIndex = -1
+                                            hoverSlotIndex = -1
+                                        }
+                                        try {
+                                            detectDragGestures(
+                                                onDragStart = {
+                                                    val list = currentDisplayedRef.value
+                                                    val curIdx = list.indexOfFirst { it.id == item.id }
+                                                    if (curIdx == -1) return@detectDragGestures
+                                                    draggedId = item.id
+                                                    initialSlotIndex = curIdx
+                                                    hoverSlotIndex = curIdx
+                                                    dragStartSlotX = (curIdx % 2) * (itemWidthPx + spacingPx)
+                                                    dragStartSlotY = (curIdx / 2) * (itemHeightPx + spacingPx)
+                                                    dragOffsetState = Offset.Zero
+                                                },
+                                                onDragEnd = {
+                                                    val order = currentLocalOrderRef.value
+                                                    val reordered = reorderDashboardShortcut(
+                                                        order = order,
+                                                        displayedIds = currentDisplayedRef.value.map { it.id },
+                                                        draggedId = item.id,
+                                                        targetSlot = hoverSlotIndex
+                                                    )
+                                                    if (reordered != order) {
+                                                        localOrder = reordered
+                                                        currentUpdateOrder.value(reordered)
                                                     }
+                                                    clearDrag()
+                                                },
+                                                onDragCancel = { clearDrag() },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    if (draggedId != item.id) return@detectDragGestures
+
+                                                    val nextOffset = dragOffsetState + dragAmount
+                                                    dragOffsetState = nextOffset
+                                                    hoverSlotIndex = shortcutDragTargetSlot(
+                                                        startIndex = initialSlotIndex,
+                                                        dragX = nextOffset.x,
+                                                        dragY = nextOffset.y,
+                                                        columnStride = itemWidthPx + spacingPx,
+                                                        rowStride = itemHeightPx + spacingPx,
+                                                        itemCount = currentDisplayedRef.value.size
+                                                    )
                                                 }
-                                                draggedId = null
-                                                dragOffsetState = Offset.Zero
-                                                initialSlotIndex = -1
-                                                hoverSlotIndex = -1
+                                            )
+                                        } finally {
+                                            // Removing edit mode, a card, or stale grid/order geometry
+                                            // cancels pointerInput without necessarily calling onDragCancel.
+                                            clearDrag()
+                                        }
+                                    }
+                                }
+
+                                // zIndex must belong to the grid's direct child; the card has its own
+                                // wrapper. Scale only the face so pointer deltas remain in grid pixels.
+                                Box(modifier = itemModifier) {
+                                    DashboardShortcutCard(
+                                        modifier = Modifier
+                                            // Outside editing retain the original clickable slot semantics.
+                                            .then(if (!isEditingShortcuts) Modifier.testTag("shortcut-${item.id}") else Modifier)
+                                            .graphicsLayer {
+                                                val scale = if (isBeingDragged) 1.06f else 1f
+                                                scaleX = scale
+                                                scaleY = scale
+                                                shadowElevation = if (isBeingDragged) 24f else 0f
+                                                alpha = if (item.id == hiddenShortcutId) 0f else 1f
                                             },
-                                            onDragCancel = {
-                                                draggedId = null
-                                                dragOffsetState = Offset.Zero
-                                                initialSlotIndex = -1
-                                                hoverSlotIndex = -1
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                if (draggedId != item.id) return@detectDragGesturesAfterLongPress
-
-                                                val nextOffset = dragOffsetState + dragAmount
-                                                dragOffsetState = nextOffset
-
-                                                val list = currentDisplayedRef.value
-                                                val curCenterX = dragStartSlotX + nextOffset.x + itemWidthPx / 2f
-                                                val curCenterY = dragStartSlotY + nextOffset.y + itemHeightPx / 2f
-
-                                                val targetCol = (curCenterX / (itemWidthPx + spacingPx)).toInt().coerceIn(0, 1)
-                                                val targetRow = (curCenterY / (itemHeightPx + spacingPx)).toInt().coerceIn(0, (list.size - 1) / 2)
-                                                val targetIndex = (targetRow * 2 + targetCol).coerceIn(0, list.size - 1)
-
-                                                if (targetIndex != hoverSlotIndex) {
-                                                    hoverSlotIndex = targetIndex
-                                                }
+                                        item = item,
+                                        isEditing = isEditingShortcuts,
+                                        lens = glassScene,
+                                        navigationLensBoundsState = if (item.id == "dns") navigationLensBoundsState else null,
+                                        onPickupChanged = { picked ->
+                                            if (picked) pickedUpShortcutId = item.id
+                                            else if (pickedUpShortcutId == item.id) pickedUpShortcutId = null
+                                        },
+                                        onRestingBoundsChanged = { coordinates, restingRect ->
+                                            val root = dashboardRootCoordinates.get()
+                                            if (root != null && root.isAttached && coordinates.isAttached) {
+                                                // Overlay is a sibling in this root. Keep scroll/edit placement,
+                                                // but anchor to the settled plane (B rests 6dp above its hit slot),
+                                                // not the transient press, tilt or pickup transform.
+                                                val topLeft = root.localPositionOf(coordinates, restingRect.topLeft)
+                                                val bottomRight = root.localPositionOf(coordinates, restingRect.bottomRight)
+                                                shortcutBounds.set(shortcutBounds.get() + (item.id to Rect(topLeft, bottomRight)))
                                             }
-                                        )
-                                    }
+                                        },
+                                        onDelete = {
+                                            if (draggedId == null) { // Prevent delete during drag
+                                                onUpdateVisibleShortcuts(visibleShortcuts - item.id)
+                                            }
+                                        },
+                                        onClick = {
+                                            if (item.id == "vpn") item.onClick() else openShortcutPanel(item.id)
+                                        }
+                                    )
                                 }
-
-                            DashboardShortcutCard(
-                                modifier = itemModifier,
-                                item = item,
-                                isEditing = isEditingShortcuts,
-                                lens = glassScene,
-                                navigationLensBoundsState = if (item.id == "dns") navigationLensBoundsState else null,
-                                onPickupChanged = { picked ->
-                                    if (picked) pickedUpShortcutId = item.id
-                                    else if (pickedUpShortcutId == item.id) pickedUpShortcutId = null
-                                },
-                                onRestingBoundsChanged = { coordinates, restingRect ->
-                                    val root = dashboardRootCoordinates.get()
-                                    if (root != null && root.isAttached && coordinates.isAttached) {
-                                        // Overlay is a sibling in this root. Keep scroll/edit placement,
-                                        // but anchor to the settled plane (B rests 6dp above its hit slot),
-                                        // not the transient press, tilt or pickup transform.
-                                        val topLeft = root.localPositionOf(coordinates, restingRect.topLeft)
-                                        val bottomRight = root.localPositionOf(coordinates, restingRect.bottomRight)
-                                        shortcutBounds.set(shortcutBounds.get() + (item.id to Rect(topLeft, bottomRight)))
-                                    }
-                                },
-                                onDelete = {
-                                    if (draggedId == null) { // Prevent delete during drag
-                                        onUpdateVisibleShortcuts(visibleShortcuts - item.id)
-                                    }
-                                },
-                                onClick = {
-                                    if (item.id == "vpn") item.onClick() else openShortcutPanel(item.id)
-                                }
-                            )
                         }
                     }
                 }
@@ -794,6 +813,18 @@ fun DashboardScreen(
                                 }
                             }
                         }
+                        TextButton(
+                            onClick = {
+                                nodeActionMenuName = null
+                                activeShortcutPanelId = null
+                                onAddNode()
+                            },
+                            modifier = Modifier.testTag("quick-node-add")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("添加独立节点")
+                        }
                         OutlinedTextField(
                             value = quickNodeSearchQuery,
                             onValueChange = { quickNodeSearchQuery = it },
@@ -873,64 +904,106 @@ fun DashboardScreen(
                                 ) { index, proxy ->
                                     val isSelected = proxy.name == activeNodeName
                                     val nodeEmoji = extractLeadingEmoji(proxy.name)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                onSelectProxy(mainGroupName, proxy)
-                                                activeShortcutPanelId = null
+                                    val canManage = canManageProxyNode(proxy, editableNodeNames)
+                                    Box {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("quick-node-${proxy.name}")
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    if (isSelected) {
+                                                        nodeActionMenuName = proxy.name
+                                                    } else {
+                                                        nodeActionMenuName = null
+                                                        onSelectProxy(mainGroupName, proxy)
+                                                        activeShortcutPanelId = null
+                                                    }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 11.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                                if (nodeEmoji != null) {
+                                                    Text(nodeEmoji, fontSize = 17.sp, modifier = Modifier.padding(end = 10.dp))
+                                                }
+                                                Column {
+                                                    Text(
+                                                        text = proxy.name,
+                                                        color = if (isSelected) LoonOrange else LoonTextPrimary,
+                                                        fontSize = 14.5.sp,
+                                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                        maxLines = 1
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(proxy.type.uppercase(), color = LoonTextMuted, fontSize = 11.sp)
+                                                }
                                             }
-                                            .padding(horizontal = 8.dp, vertical = 11.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            if (nodeEmoji != null) {
-                                                Text(nodeEmoji, fontSize = 17.sp, modifier = Modifier.padding(end = 10.dp))
-                                            }
-                                            Column {
-                                                Text(
-                                                    text = proxy.name,
-                                                    color = if (isSelected) LoonOrange else LoonTextPrimary,
-                                                    fontSize = 14.5.sp,
-                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                                    maxLines = 1
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(proxy.type.uppercase(), color = LoonTextMuted, fontSize = 11.sp)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (isTestingQuickSheet) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(13.dp),
+                                                        strokeWidth = 1.8.dp,
+                                                        color = LoonOrange
+                                                    )
+                                                } else {
+                                                    val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
+                                                    val delayText = when {
+                                                        proxy.delay == -2 -> "超时"
+                                                        proxy.delay > 0 -> "${proxy.delay} ms"
+                                                        else -> "--"
+                                                    }
+                                                    Text(
+                                                        text = delayText,
+                                                        color = delayColor,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
+                                                        modifier = Modifier.padding(end = 8.dp)
+                                                    )
+                                                }
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = LoonOrange,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
                                             }
                                         }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (isTestingQuickSheet) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(13.dp),
-                                                    strokeWidth = 1.8.dp,
-                                                    color = LoonOrange
+                                        DropdownMenu(
+                                            expanded = nodeActionMenuName == proxy.name && activeShortcutPanelId == "nodes",
+                                            onDismissRequest = { nodeActionMenuName = null },
+                                            modifier = Modifier.testTag("quick-node-action-menu")
+                                        ) {
+                                            if (!canManage) {
+                                                DropdownMenuItem(
+                                                    text = { Text("仅默认配置中的独立节点可编辑") },
+                                                    enabled = false,
+                                                    onClick = {}
                                                 )
-                                            } else {
-                                                val delayColor = AppPalette.delayColor(proxy.delay, LoonTextMuted)
-                                                val delayText = when {
-                                                    proxy.delay == -2 -> "超时"
-                                                    proxy.delay > 0 -> "${proxy.delay} ms"
-                                                    else -> "--"
+                                            }
+                                            DropdownMenuItem(
+                                                text = { Text("重命名") },
+                                                modifier = Modifier.testTag("quick-node-rename"),
+                                                enabled = canManage,
+                                                onClick = {
+                                                    nodeActionMenuName = null
+                                                    activeShortcutPanelId = null
+                                                    onRenameNode(proxy.name)
                                                 }
-                                                Text(
-                                                    text = delayText,
-                                                    color = delayColor,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = if (proxy.delay > 0 || proxy.delay == -2) FontWeight.SemiBold else FontWeight.Normal,
-                                                    modifier = Modifier.padding(end = 8.dp)
-                                                )
-                                            }
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = LoonOrange,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("删除") },
+                                                modifier = Modifier.testTag("quick-node-delete"),
+                                                enabled = canManage,
+                                                onClick = {
+                                                    nodeActionMenuName = null
+                                                    activeShortcutPanelId = null
+                                                    onDeleteNode(proxy.name)
+                                                }
+                                            )
                                         }
                                     }
                                     if (index < filteredNodes.size - 1) {

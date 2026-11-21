@@ -108,6 +108,108 @@ class NodeManagementDialogsTest {
         assertEquals(before, ConfigManager.getOrCreateDefaultProfile(context).file.readText())
     }
 
+    @Test fun addSocks5YamlFromRemoteAppendsResolvedNameToExistingDefaultOnly() {
+        val default = ConfigManager.getOrCreateDefaultProfile(context)
+        val beforeDefault = Yaml().load<Map<String, Any>>(default.file.readText())
+        val remote = ConfigManager.saveLocalProfile(context, "远程配置", """
+            proxies:
+              - {name: Old, type: socks5, server: remote.example.invalid, port: 1080}
+            proxy-groups:
+              - {name: Remote select, type: select, proxies: [Old]}
+            rules: ["MATCH,Old"]
+        """.trimIndent())
+        ConfigManager.updateProfile(context, remote.copy(url = "https://example.invalid/config.yaml"))
+        val activeRemote = ConfigManager.getProfiles(context, forceReload = true).first { it.id == remote.id }
+        val remoteBytes = activeRemote.file.readBytes()
+        val profilePathsBefore = ConfigManager.getProfiles(context, forceReload = true)
+            .associate { it.id to it.file.absolutePath }
+        val yamlFilesBefore = ConfigManager.getProfilesDir(context).listFiles().orEmpty()
+            .filter { it.extension == "yaml" }.map { it.absolutePath }.toSet()
+        show(activeRemote)
+        compose.onNodeWithTag("open-add").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("node-add-input") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("独立节点保存在「我的节点」", substring = true).assertExists()
+        compose.onNodeWithTag("node-add-input").performTextReplacement("""
+            proxies:
+              - name: Old
+                type: socks5
+                server: 203.0.113.10
+                port: 1081
+                username: fixture-user
+                password: fixture-password
+        """.trimIndent())
+        compose.onNodeWithTag("node-operation-confirm").assertIsEnabled().performClick()
+        compose.waitUntil(10_000) { saved != null }
+        compose.onNodeWithTag("node-add-input").assertDoesNotExist()
+        compose.runOnIdle {
+            val updated = saved!!
+            assertEquals(ConfigManager.DEFAULT_PROFILE_ID, updated.id)
+            assertEquals(default.id, updated.id)
+            assertEquals(default.file.absolutePath, updated.file.absolutePath)
+            assertEquals("我的节点", updated.name)
+            assertNull(updated.url)
+            assertFalse(updated.managed)
+            assertFalse(updated.canRefresh)
+            assertEquals(listOf("Old-2"), addedNodeNames)
+            val after = Yaml().load<Map<String, Any>>(updated.file.readText())
+            val beforeNodes = beforeDefault["proxies"] as List<*>
+            val afterNodes = after["proxies"] as List<*>
+            assertEquals(2, afterNodes.size)
+            assertEquals("the old connection must not be replaced by a colliding add", beforeNodes.single(), afterNodes.first())
+            val added = afterNodes.last() as Map<*, *>
+            assertEquals("Old-2", added["name"])
+            assertEquals("socks5", added["type"])
+            assertEquals("203.0.113.10", added["server"])
+            assertEquals(1081, (added["port"] as Number).toInt())
+            val group = (after["proxy-groups"] as List<*>).single() as Map<*, *>
+            assertEquals("Select", group["name"])
+            assertEquals(listOf("Old", "Old-2"), group["proxies"])
+            assertEquals(beforeDefault["rules"], after["rules"])
+            assertArrayEquals(remoteBytes, activeRemote.file.readBytes())
+            val profilesAfter = ConfigManager.getProfiles(context, forceReload = true)
+            assertEquals(profilePathsBefore, profilesAfter.associate { it.id to it.file.absolutePath })
+            assertEquals(1, profilesAfter.count { it.id == ConfigManager.DEFAULT_PROFILE_ID })
+            assertEquals(activeRemote.url, profilesAfter.first { it.id == remote.id }.url)
+            assertEquals(yamlFilesBefore, ConfigManager.getProfilesDir(context).listFiles().orEmpty()
+                .filter { it.extension == "yaml" }.map { it.absolutePath }.toSet())
+        }
+    }
+
+    @Test fun cancelAddWithValidYamlDoesNotWriteOrPublishAddedNodes() {
+        val default = ConfigManager.getOrCreateDefaultProfile(context)
+        val defaultBytes = default.file.readBytes()
+        val profilePathsBefore = ConfigManager.getProfiles(context, forceReload = true)
+            .associate { it.id to it.file.absolutePath }
+        val yamlFilesBefore = ConfigManager.getProfilesDir(context).listFiles().orEmpty()
+            .filter { it.extension == "yaml" }.map { it.absolutePath }.toSet()
+        show(default)
+        compose.onNodeWithTag("open-add").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("node-add-input") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("node-add-input").performTextReplacement("""
+            proxies:
+              - {name: Cancelled, type: socks5, server: 203.0.113.11, port: 1081}
+        """.trimIndent())
+        compose.onNodeWithTag("node-operation-confirm").assertIsEnabled()
+        compose.onNodeWithText("取消").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("node-add-input").assertDoesNotExist()
+        compose.onNodeWithTag("node-operation-confirm").assertDoesNotExist()
+        compose.runOnIdle {
+            assertNull(saved)
+            assertNull(addedNodeNames)
+            assertEquals("Old", currentName)
+            assertArrayEquals(defaultBytes, ConfigManager.getOrCreateDefaultProfile(context).file.readBytes())
+            assertEquals(profilePathsBefore, ConfigManager.getProfiles(context, forceReload = true)
+                .associate { it.id to it.file.absolutePath })
+            assertEquals(yamlFilesBefore, ConfigManager.getProfilesDir(context).listFiles().orEmpty()
+                .filter { it.extension == "yaml" }.map { it.absolutePath }.toSet())
+        }
+    }
+
     @Test fun remoteNodesCannotOpenActionsAndAddShowsRenamedDefaultDestination() {
         val remote = ConfigManager.saveLocalProfile(context, "远程配置", "proxies: []")
         ConfigManager.updateProfile(context, remote.copy(url = "https://example.invalid/config.yaml"))

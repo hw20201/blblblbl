@@ -539,6 +539,9 @@ class MainActivity : ComponentActivity() {
                         parseActiveProfile()
                     }
                 )
+                // Reuse the policy page's saved-name focus path, including collision suffixes.
+                // The saved default profile remains visible even if hot loading failed.
+                if (addedNodeNames.isNotEmpty()) pagerState.scrollToPage(1)
                 result.fold(
                     onSuccess = { AppNotice.success(message) },
                     onFailure = { error ->
@@ -1123,6 +1126,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSelectProxy = { group, proxy -> handleSelectProxy(mainProxyGroupName, proxy) },
                                 onHealthCheck = { group -> runSpeedTestForGroup(group) },
+                                onAddNode = nodeActions.add,
+                                onRenameNode = nodeActions.rename,
+                                onDeleteNode = nodeActions.delete,
+                                editableNodeNames = editableNodeNamesByGroup[mainProxyGroupName].orEmpty(),
                                 onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
                                 onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
                                 onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
