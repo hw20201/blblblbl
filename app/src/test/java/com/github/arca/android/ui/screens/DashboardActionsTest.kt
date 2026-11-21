@@ -115,7 +115,7 @@ class DashboardActionsTest {
         compose.onNodeWithText("添加配置").assertExists()
         compose.onNodeWithTag("profile-add-local-file").assertExists()
         compose.onNodeWithTag("profile-add-clipboard").assertExists()
-        compose.onNodeWithTag("profile-add-name").assertExists()
+        compose.onNodeWithTag("profile-add-name").assertDoesNotExist()
         compose.onNodeWithTag("profile-add-url").assertExists()
         compose.onNodeWithTag("profile-add-submit").assertExists()
     }
