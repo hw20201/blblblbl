@@ -30,14 +30,27 @@ internal object ProfileNodeEditor {
     }
 
     fun append(raw: String, proxy: JsonObject, name: String, groupName: String? = null): String {
+        return appendAll(raw, listOf(proxy to name), groupName)
+    }
+
+    /** Append one checked import batch with a single YAML parse/dump and no partial file writes. */
+    fun appendAll(raw: String, imported: List<Pair<JsonObject, String>>, groupName: String? = null): String {
+        require(imported.isNotEmpty()) { "没有可导入的节点" }
         val config = parse(raw)
-        val used = usedNames(config)
-        val base = name.filterNot { it.isISOControl() || it == ',' }.trim().take(100).ifBlank { "节点" }
-        val resolved = generateSequence(1) { it + 1 }.map { n -> if (n == 1) base else "-$n".let { base.take(100 - it.length) + it } }.first { it !in used && !isReserved(it) }
         val nodes = entries(config, "proxies")
-        require(nodes.size < 10_000) { "节点超过 10,000 条限制" }
-        val node = parse(proxy.toString()).apply { put("name", resolved) }
-        config["proxies"] = nodes + listOf(node)
+        require(nodes.size + imported.size <= 10_000) { "节点超过 10,000 条限制" }
+        val used = usedNames(config).toMutableSet()
+        val resolved = imported.map { (_, name) ->
+            val base = name.filterNot { it.isISOControl() || it == ',' }.trim().take(100).ifBlank { "节点" }
+            generateSequence(1) { it + 1 }
+                .map { n -> if (n == 1) base else "-$n".let { base.take(100 - it.length) + it } }
+                .first { it !in used && !isReserved(it) }
+                .also { used += it }
+        }
+        val appended = imported.mapIndexed { index, (proxy, _) ->
+            parse(proxy.toString()).apply { put("name", resolved[index]) }
+        }
+        config["proxies"] = nodes + appended
         val groups = entries(config, "proxy-groups")
         val writable = writableGroups(groups)
         val group = if (!groupName.isNullOrBlank()) {
@@ -47,14 +60,16 @@ internal object ProfileNodeEditor {
         } else writable.firstOrNull { it["type"] == "select" } ?: writable.firstOrNull()
         require(group != null || groups.isEmpty()) { "没有可见且可写的策略组，请先编辑配置" }
         if (group != null) {
-            val excluded = (group["exclude-filter"] as? String)?.trim()?.takeIf { it.isNotBlank() }
-                ?.let { Regex(it, RegexOption.IGNORE_CASE).containsMatchIn(resolved) } == true
-            require(!excluded) { "目标策略组的排除筛选会隐藏此节点，请选择其他策略组" }
+            val exclusion = (group["exclude-filter"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+                ?.let { Regex(it, RegexOption.IGNORE_CASE) }
+            require(exclusion == null || resolved.none { exclusion.containsMatchIn(it) }) {
+                "目标策略组的排除筛选会隐藏此节点，请选择其他策略组"
+            }
             group["proxies"] = ((group["proxies"] as? List<*>) ?: emptyList<Any>()) + resolved
             // Explicit membership must remain visible even in groups with provider filters.
             config["proxy-groups"] = groups
         } else {
-            config["proxy-groups"] = listOf(mapOf("name" to "节点选择", "type" to "select", "proxies" to listOf(resolved, "DIRECT")))
+            config["proxy-groups"] = listOf(mapOf("name" to "节点选择", "type" to "select", "proxies" to (resolved + "DIRECT")))
             if (config["rules"] == null) config["rules"] = listOf("MATCH,节点选择")
         }
         return dump(config)

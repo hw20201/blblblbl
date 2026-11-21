@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -419,6 +420,12 @@ fun ProfilesScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .zIndex(if (isBeingDragged) 10f else 1f)
+                            .animateItem(
+                                placementSpec = if (isBeingDragged) null else spring(
+                                    stiffness = Spring.StiffnessMediumLow,
+                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                )
+                            )
                             .onPlaced { coordinates ->
                                 if (profileDrag?.id == item.id) {
                                     // This modifier precedes the moving layer, so placement cannot
@@ -445,16 +452,18 @@ fun ProfilesScreen(
                                 scaleY = if (isBeingDragged) 1.03f else 1f
                                 shadowElevation = if (isBeingDragged) 12f else 0f
                             }
-                            .testTag("profile-card-${item.id}")
-                            .iosPressable(pressedScale = 1f) {
-                                haptic.selection()
-                                onSelectProfile(item)
-                            },
-                        shape = cardShape
+                            .then(if (isSelected) Modifier.border(1.dp, IosBlue.copy(alpha = 0.16f), cardShape) else Modifier)
+                            .testTag("profile-card-${item.id}"),
+                        shape = cardShape,
+                        quietPanelElevation = profileCardQuietElevation(isSelected)
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .iosPressable(pressedScale = 1f) {
+                                    haptic.selection()
+                                    onSelectProfile(item)
+                                }
                                 .padding(horizontal = 15.dp, vertical = 14.dp)
                         ) {
                             // Top Row: Active Radio, Title, Tag & Actions
@@ -1114,10 +1123,11 @@ private fun ProfilesPanelSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(18.dp),
     fallbackColor: Color = LoonCard,
+    quietPanelElevation: Dp = 2.dp,
     content: @Composable () -> Unit
 ) {
     if (GlassDefaults.enabled) {
-        GlassSurface(modifier = modifier, shape = shape) { content() }
+        GlassSurface(modifier = modifier, shape = shape, quietPanelElevation = quietPanelElevation) { content() }
     } else {
         Surface(modifier = modifier, shape = shape, color = fallbackColor) { content() }
     }

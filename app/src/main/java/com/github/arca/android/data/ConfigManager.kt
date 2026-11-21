@@ -5,6 +5,7 @@ import android.util.Log
 import com.github.arca.android.data.subscription.SubscriptionManager
 import com.github.arca.android.data.subscription.SubscriptionStore
 import com.github.arca.android.data.subscription.SourceDraft
+import com.github.arca.android.data.subscription.ImportPreview
 import com.github.arca.android.data.subscription.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -370,6 +371,30 @@ object ConfigManager {
             editProfileNode(context, profileId) { ProfileNodeEditor.append(it, node.data, node.name, groupName) }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { Result.failure(IllegalArgumentException(failure.message ?: "节点追加失败")) }
+    }
+
+    /** Local imports update only the existing built-in profile; remote snapshots use SubscriptionManager.create. */
+    suspend fun appendImportedNodesToDefault(
+        context: Context, preview: ImportPreview, allowPartial: Boolean
+    ): Result<ProfileItem> = withContext(Dispatchers.IO) {
+        try {
+            require(allowPartial || preview.rejected == 0) { "请先确认仅导入通过校验的项目" }
+            require(preview.sources.isNotEmpty() && preview.sources.all { it.source.url == null }) {
+                "远程订阅及混合来源请分开导入"
+            }
+            val localSources = preview.sources.filter { it.inspection.usable }
+            require(localSources.isNotEmpty()) { "没有可导入的来源" }
+            val importedNodes = localSources.flatMap { source ->
+                source.inspection.nodes.map { node -> node.data to node.name }
+            }
+            require(importedNodes.isNotEmpty()) { "本地配置中没有可追加的节点" }
+            editProfileNode(context, DEFAULT_PROFILE_ID) { raw ->
+                ProfileNodeEditor.appendAll(raw, importedNodes)
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            Result.failure(IllegalArgumentException(failure.message ?: "本地节点导入失败"))
+        }
     }
 
     suspend fun renameProfileNode(

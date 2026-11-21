@@ -83,6 +83,22 @@ class ProfileNodeEditorTest {
         assertEquals(original["rules"], out["rules"])
     }
 
+    @Test fun appendAllAddsEveryNodeOnceAndResolvesCollisionsAcrossTheBatch() {
+        val second = JsonObject(mapOf("type" to JsonPrimitive("socks5"), "server" to JsonPrimitive("third.example"), "port" to JsonPrimitive(1080)))
+        val out = parse(ProfileNodeEditor.appendAll(raw, listOf(proxy to "Old", second to "Old")))
+        assertEquals(listOf("Old", "Child", "Old-2", "Old-3"), entries(out, "proxies").map { it["name"] })
+        assertEquals(listOf("Old", "Child", "DIRECT", "Old-2", "Old-3"), entries(out, "proxy-groups")[0]["proxies"])
+        assertEquals(parse(raw)["rules"], out["rules"])
+    }
+
+    @Test fun appendAllRejectsInvalidBatchWithoutChangingInput() {
+        val before = raw
+        assertThrows(IllegalStateException::class.java) {
+            ProfileNodeEditor.appendAll(raw, listOf(proxy to "New"), groupName = "Missing")
+        }
+        assertEquals(before, raw)
+    }
+
     @Test fun appendRejectsMissingOrInexactGroupWithoutFallingBack() {
         for (groupName in listOf("Missing", "Select-Ol", "select-old")) {
             val failure = assertThrows(IllegalStateException::class.java) {

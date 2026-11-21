@@ -1,10 +1,17 @@
 package com.github.arca.android.data
 
 import android.content.Context
+import com.github.arca.android.data.subscription.ImportInspection
+import com.github.arca.android.data.subscription.ImportNode
+import com.github.arca.android.data.subscription.ImportPreview
+import com.github.arca.android.data.subscription.SourceSnapshot
 import com.github.arca.android.data.subscription.SubscriptionHead
+import com.github.arca.android.data.subscription.SubscriptionSource
 import com.github.arca.android.data.subscription.SubscriptionStore
 import com.github.arca.android.data.subscription.subscriptionJson
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -40,6 +47,60 @@ class DefaultProfileTest {
         assertEquals(listOf("script-1"), loaded.scriptIds)
         val prepared = ConfigManager.prepareConfig(context, null).readText()
         assertTrue(prepared.contains("marker: persisted"))
+    }
+
+    @Test fun localImportOnlyAppendsToExistingDefaultAndCreatesNoProfileOrFile() = runBlocking {
+        val default = ConfigManager.getOrCreateDefaultProfile(context)
+        val beforeIds = ConfigManager.getProfiles(context, forceReload = true).map { it.id }.toSet()
+        val beforeFiles = ConfigManager.getProfilesDir(context).listFiles().orEmpty().map { it.canonicalPath }.toSet()
+        val node = ImportNode(1, name = "Imported local", type = "socks5", data = buildJsonObject {
+            put("type", JsonPrimitive("socks5"))
+            put("server", JsonPrimitive("local.example"))
+            put("port", JsonPrimitive(1080))
+        })
+        val preview = ImportPreview(listOf(SourceSnapshot(
+            source = SubscriptionSource("local", "", url = null),
+            text = "local fixture",
+            inspection = ImportInspection(format = "yaml", nodes = listOf(node))
+        )))
+
+        val imported = ConfigManager.appendImportedNodesToDefault(context, preview, allowPartial = false).getOrThrow()
+
+        assertEquals(ConfigManager.DEFAULT_PROFILE_ID, imported.id)
+        assertEquals(default.file, imported.file)
+        assertEquals(beforeIds, ConfigManager.getProfiles(context, forceReload = true).map { it.id }.toSet())
+        assertEquals(beforeFiles, ConfigManager.getProfilesDir(context).listFiles().orEmpty().map { it.canonicalPath }.toSet())
+        val content = imported.file.readText()
+        assertTrue(content.contains("name: Imported local"))
+        assertTrue(content.contains("server: local.example"))
+        assertNull(SubscriptionStore(context).head(imported.id))
+    }
+
+    @Test fun remoteAndMixedImportsCannotModifyTheDefaultProfile() = runBlocking {
+        val default = ConfigManager.getOrCreateDefaultProfile(context)
+        val original = default.file.readBytes()
+        val localNode = ImportNode(1, name = "Local", type = "socks5", data = buildJsonObject {
+            put("type", JsonPrimitive("socks5"))
+            put("server", JsonPrimitive("local.example"))
+            put("port", JsonPrimitive(1080))
+        })
+        val snapshot = SourceSnapshot(
+            source = SubscriptionSource("source", "", url = null),
+            text = "fixture",
+            inspection = ImportInspection(format = "yaml", nodes = listOf(localNode))
+        )
+        val remoteSnapshot = snapshot.copy(source = SubscriptionSource(
+            "remote", "", url = "https://example.invalid/config.yaml"
+        ))
+
+        for (sources in listOf(listOf(remoteSnapshot), listOf(snapshot, remoteSnapshot))) {
+            val result = ConfigManager.appendImportedNodesToDefault(
+                context, ImportPreview(sources), allowPartial = false
+            )
+            assertTrue(result.isFailure)
+            assertArrayEquals(original, default.file.readBytes())
+        }
+        assertNull(SubscriptionStore(context).head(default.id))
     }
 
     @Test fun defaultDisplayNamePersistsWithoutChangingIdentityOrYaml() {

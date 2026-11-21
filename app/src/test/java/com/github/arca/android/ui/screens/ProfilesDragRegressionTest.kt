@@ -180,6 +180,9 @@ class ProfilesDragRegressionTest {
     private fun checkDrag(glass: Boolean) {
         show(glass)
         val initialCenter = centerY("a")
+        val initialNeighborCenter = centerY("b")
+        var previousNeighborCenter = initialNeighborCenter
+        var sawSmoothNeighborMotion = false
         val outsideRangeNeighbor = centerY("c")
         val displacement = centerY("b") - initialCenter + 4f
         pickup("a")
@@ -190,8 +193,14 @@ class ProfilesDragRegressionTest {
             move(step) {
                 assertEquals("dragged center follows finger at frame $frame", initialCenter + travelled, centerY("a"), 1.5f)
                 assertEquals("keyed first-item anchoring must not move the unaffected neighbor", outsideRangeNeighbor, centerY("c"), 1.5f)
+                val currentNeighborCenter = centerY("b")
+                if (currentNeighborCenter < previousNeighborCenter - 0.1f &&
+                    currentNeighborCenter > initialCenter + 1f && currentNeighborCenter < initialNeighborCenter - 1f
+                ) sawSmoothNeighborMotion = true
+                previousNeighborCenter = currentNeighborCenter
             }
         }
+        assertTrue("the adjacent card must pass through intermediate positions during its placement animation", sawSmoothNeighborMotion)
         // Small reversal after a swap must not exchange the unequal-height neighbor again.
         move(-2f)
         assertEquals(initialCenter + travelled - 2f, centerY("a"), 1.5f)

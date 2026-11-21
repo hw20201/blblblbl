@@ -1,11 +1,27 @@
 package com.github.arca.android.ui.screens
 
+import com.github.arca.android.data.ProfileItem
+import java.io.File
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProfileReorderTest {
+    @Test fun selectedProfileCardHasNoRestingDepthShadow() {
+        assertEquals(0.dp, profileCardQuietElevation(isSelected = true))
+        assertEquals(2.dp, profileCardQuietElevation(isSelected = false))
+    }
+
+    @Test fun quickProfileMovePreservesRelativeOrderAndSupportsEitherDirection() {
+        val profiles = listOf("a", "b", "c", "d").map { ProfileItem(it, it, null, File("$it.yaml")) }
+        assertEquals(listOf("b", "c", "a", "d"), moveQuickProfile(profiles, "a", "c").map { it.id })
+        assertEquals(listOf("a", "d", "b", "c"), moveQuickProfile(profiles, "d", "b").map { it.id })
+        assertEquals(profiles, moveQuickProfile(profiles, "missing", "b"))
+        assertEquals(profiles, moveQuickProfile(profiles, "a", "a"))
+    }
+
     @Test fun translationPreservesViewportTopBeforeAndAfterUnequalHeightMove() {
         val drag = ProfileDragPosition("a", 143.25f)
         for (slot in listOf(10, 202, 177, -15)) {

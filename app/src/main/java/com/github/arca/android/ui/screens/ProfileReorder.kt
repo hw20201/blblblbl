@@ -1,5 +1,19 @@
 package com.github.arca.android.ui.screens
 
+import com.github.arca.android.data.ProfileItem
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/** Move one profile into the target row's slot without changing the other rows' relative order. */
+internal fun moveQuickProfile(profiles: List<ProfileItem>, draggedId: String, targetId: String): List<ProfileItem> {
+    val from = profiles.indexOfFirst { it.id == draggedId }
+    val to = profiles.indexOfFirst { it.id == targetId }
+    if (from < 0 || to < 0 || from == to) return profiles
+    return profiles.toMutableList().apply { add(to, removeAt(from)) }
+}
+
+internal fun profileCardQuietElevation(isSelected: Boolean): Dp = if (isSelected) 0.dp else 2.dp
+
 /** The dragged top stays in padded list coordinates, independent of remeasured slots. */
 internal data class ProfileDragPosition(
     val id: String,

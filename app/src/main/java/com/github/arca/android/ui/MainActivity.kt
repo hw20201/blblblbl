@@ -1061,6 +1061,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                onQuickProfileOrderChanged = { newOrderList ->
+                                    profiles = newOrderList
+                                    ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
+                                },
                                 onQuickProfileImported = profileImported,
                                 rules = parsedProfile.rules,
                                 fakeIpEnabled = fakeIpEnabled,
