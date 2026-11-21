@@ -406,6 +406,7 @@ fun ProfilesScreen(
                     val isBeingDragged = draggedProfileId == item.id
                     val isSelected = item.id == selectedProfileId
                     val isRefreshing = refreshingProfileId == item.id
+                    val cardShape = RoundedCornerShape(18.dp)
                     val pinnableContainer = LocalPinnableContainer.current
                     DisposableEffect(item.id, pinnableContainer) {
                         if (pinnableContainer != null) dragContainers[item.id] = pinnableContainer
@@ -431,6 +432,10 @@ fun ProfilesScreen(
                                 }
                             }
                             .graphicsLayer {
+                                // Match the lift shadow to the panel outline; the default layer
+                                // shape is rectangular and leaves a square gray shadow under the card.
+                                shape = cardShape
+                                clip = false
                                 val drag = profileDrag
                                 val slotOffset = lazyListState.layoutInfo.visibleItemsInfo
                                     .firstOrNull { it.key == item.id }?.offset
@@ -445,7 +450,7 @@ fun ProfilesScreen(
                                 haptic.selection()
                                 onSelectProfile(item)
                             },
-                        shape = RoundedCornerShape(18.dp)
+                        shape = cardShape
                     ) {
                         Column(
                             modifier = Modifier
