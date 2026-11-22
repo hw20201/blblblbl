@@ -97,8 +97,6 @@ class PolicySettingsGlassMorphTest {
 
         val sourceHeight = compose.onNodeWithTag("policy-more-button").fetchSemanticsNode().boundsInRoot.height
         compose.onNodeWithTag("policy-more-button").performClick()
-        compose.mainClock.advanceTimeBy(300)
-        compose.onNodeWithTag("policy-display-settings").performClick()
         compose.waitForIdle()
 
         compose.onNodeWithTag("policy-options-panel").assertExists()
@@ -133,8 +131,6 @@ class PolicySettingsGlassMorphTest {
             )
         }
         compose.onNodeWithTag("policy-more-button").performClick()
-        compose.mainClock.advanceTimeBy(300)
-        compose.onNodeWithTag("policy-display-settings").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("proxies-view-mode-glasmio-control").assertIsDisplayed()
         compose.onNodeWithTag("proxies-node-columns-glasmio-control").assertIsDisplayed()
@@ -199,8 +195,6 @@ class PolicySettingsGlassMorphTest {
 
         val sourceHeight = compose.onNodeWithTag("policy-more-button").fetchSemanticsNode().boundsInRoot.height
         compose.onNodeWithTag("policy-more-button").performClick()
-        compose.mainClock.advanceTimeBy(300)
-        compose.onNodeWithTag("policy-display-settings").performClick()
         advanceFrames(58)
         val openHeight = compose.onNodeWithTag("policy-options-panel").fetchSemanticsNode().boundsInRoot.height
         assertTrue(openHeight > sourceHeight * 5f)

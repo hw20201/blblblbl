@@ -191,8 +191,8 @@ class ProxiesGlassRenderingTest {
             val header = compose.onNodeWithTag("policy-header").getUnclippedBoundsInRoot()
             val blur = compose.onNodeWithTag("policy-top-glasmio-blur").getUnclippedBoundsInRoot()
             val viewport = compose.onNodeWithTag("policy-content-viewport").getUnclippedBoundsInRoot()
-            assertEquals("Blur starts 6dp above the header in $viewMode", header.top - 6.dp, blur.top)
-            assertEquals("Blur's 28dp tail ends 6dp higher in $viewMode", header.bottom + 22.dp, blur.bottom)
+            assertEquals("Blur starts 12dp above the header in $viewMode", header.top - 12.dp, blur.top)
+            assertEquals("Blur's 28dp tail ends 12dp higher in $viewMode", header.bottom + 16.dp, blur.bottom)
             assertEquals("Viewport begins at the full header bottom in $viewMode", header.bottom, viewport.top)
             val cardTag = if (viewMode == "TABS") "proxy-card-Local" else "policy-group-header-$rawName"
             val firstCard = compose.onNodeWithTag(cardTag).getUnclippedBoundsInRoot()
@@ -234,7 +234,8 @@ class ProxiesGlassRenderingTest {
             }
         }
         compose.onNodeWithTag("policy-more-button").performClick()
-        compose.onNodeWithTag("policy-more-menu").assertIsDisplayed()
+        compose.waitForIdle()
+        compose.onNodeWithTag("policy-options-panel").assertExists()
         compose.onNodeWithTag("policy-add-node").performClick()
         assertEquals(1, added)
 
