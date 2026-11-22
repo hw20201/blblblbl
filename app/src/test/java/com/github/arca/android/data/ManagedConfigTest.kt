@@ -90,8 +90,8 @@ class ManagedConfigTest {
         assertEquals(expectedRules, ProfileNodeEditor.defaultSplitRules)
         val template = ConfigManager.defaultProfileTemplate()
         assertTrue(template.contains("  - name: AdBlock\n    type: select\n    proxies:\n      - REJECT\n      - DIRECT"))
-        assertTrue(template.contains("          - GEOSITE,CATEGORY-AI-!CN,AI"))
-        assertTrue(template.contains("          - MATCH,GLOBAL"))
+        assertTrue(template.contains("  - GEOSITE,CATEGORY-AI-!CN,AI"))
+        assertTrue(template.contains("  - MATCH,GLOBAL"))
     }
 
     @Test fun disablingGroupRemovesItsRulesAndGroup() {
@@ -178,8 +178,8 @@ class ManagedConfigTest {
     @Test fun applyRefusesHandEditedRulesAndMissingGlobal() {
         val default = ConfigManager.getOrCreateDefaultProfile(context)
         val edited = default.file.readText().replace(
-            "          - MATCH,GLOBAL",
-            "          - DOMAIN,example.com,DIRECT\n          - MATCH,GLOBAL"
+            "  - MATCH,GLOBAL",
+            "  - DOMAIN,example.com,DIRECT\n  - MATCH,GLOBAL"
         )
         assertNull(ProfileNodeEditor.applyManagedConfig(ManagedConfig.default(), edited))
         assertNull(
