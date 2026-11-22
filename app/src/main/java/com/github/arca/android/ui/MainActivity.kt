@@ -360,47 +360,6 @@ class MainActivity : ComponentActivity() {
         var testingNodes by remember { mutableStateOf(setOf<String>()) }
         val pagerState = rememberPagerState(initialPage = currentTab, pageCount = { 3 })
         val coroutineScope = rememberCoroutineScope()
-        // Persist a managed-config change, rewrite the built-in default profile
-        // from it and reload the core when that profile is the active one.
-        // A profile whose rules were hand-edited is never rewritten: the
-        // setting snaps back and the user is told why.
-        val onManagedConfigChanged: (ManagedConfig) -> Unit = { updated ->
-            if (updated != managedConfig) {
-                val previous = settingsManager.managedConfig
-                settingsManager.managedConfig = updated
-                managedConfig = updated
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val rewritten = runCatching {
-                        val default = ConfigManager.getOrCreateDefaultProfile(this@MainActivity)
-                        ProfileNodeEditor.applyManagedConfig(updated, default.file.readText(), previous)
-                    }.getOrNull()
-                    if (rewritten == null) {
-                        withContext(Dispatchers.Main) {
-                            settingsManager.managedConfig = previous
-                            managedConfig = previous
-                            AppNotice.show("内置默认配置已被手动修改，托管配置未写回", long = true)
-                        }
-                        return@launch
-                    }
-                    val saved = ConfigManager.saveProfileContent(
-                        this@MainActivity, ConfigManager.DEFAULT_PROFILE_ID, rewritten
-                    )
-                    if (!saved) {
-                        withContext(Dispatchers.Main) {
-                            settingsManager.managedConfig = previous
-                            managedConfig = previous
-                            AppNotice.show("托管配置未能写回内置默认配置", long = true)
-                        }
-                        return@launch
-                    }
-                    if (vpnState.status == VpnState.Status.RUNNING &&
-                        DashboardData.activeProfile(profiles, selectedProfileId)?.id == ConfigManager.DEFAULT_PROFILE_ID
-                    ) {
-                        loadProfileInCore()
-                    }
-                }
-            }
-        }
         // Mirror the pager into state only once it has come to rest; writing it while the page is still
         // sliding recomposes the whole scene in the middle of the motion.
         LaunchedEffect(pagerState) {
@@ -542,6 +501,50 @@ class MainActivity : ComponentActivity() {
                         mainGrp?.now ?: parsed.activeNode
                     }
                     activeNodeName = effectiveMainNow
+                }
+            }
+        }
+
+        // Persist a managed-config change, rewrite the built-in default profile
+        // from it and reload the core when that profile is the active one.
+        // A profile whose rules were hand-edited is never rewritten: the
+        // setting snaps back and the user is told why.
+        // Declared after loadProfileInCore: a local function is only visible
+        // to code below its declaration.
+        val onManagedConfigChanged: (ManagedConfig) -> Unit = { updated ->
+            if (updated != managedConfig) {
+                val previous = settingsManager.managedConfig
+                settingsManager.managedConfig = updated
+                managedConfig = updated
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val rewritten = runCatching {
+                        val default = ConfigManager.getOrCreateDefaultProfile(this@MainActivity)
+                        ProfileNodeEditor.applyManagedConfig(updated, default.file.readText(), previous)
+                    }.getOrNull()
+                    if (rewritten == null) {
+                        withContext(Dispatchers.Main) {
+                            settingsManager.managedConfig = previous
+                            managedConfig = previous
+                            AppNotice.show("内置默认配置已被手动修改，托管配置未写回", long = true)
+                        }
+                        return@launch
+                    }
+                    val saved = ConfigManager.saveProfileContent(
+                        this@MainActivity, ConfigManager.DEFAULT_PROFILE_ID, rewritten
+                    )
+                    if (!saved) {
+                        withContext(Dispatchers.Main) {
+                            settingsManager.managedConfig = previous
+                            managedConfig = previous
+                            AppNotice.show("托管配置未能写回内置默认配置", long = true)
+                        }
+                        return@launch
+                    }
+                    if (vpnState.status == VpnState.Status.RUNNING &&
+                        DashboardData.activeProfile(profiles, selectedProfileId)?.id == ConfigManager.DEFAULT_PROFILE_ID
+                    ) {
+                        loadProfileInCore()
+                    }
                 }
             }
         }
