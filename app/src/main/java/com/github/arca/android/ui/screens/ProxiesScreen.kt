@@ -163,7 +163,6 @@ fun ProxiesScreen(
     nodeFocusRequest: ProxyNodeFocusRequest? = null,
     onNodeFocusConsumed: (ProxyNodeFocusRequest) -> Unit = {}
 ) {
-    var showMoreMenu by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
     var policyMoreButtonBounds by remember { mutableStateOf<Rect?>(null) }
     var hidePolicyMoreSource by remember { mutableStateOf(false) }
@@ -462,7 +461,7 @@ fun ProxiesScreen(
             headerHeight = headerInset,
             background = colors.bg,
             tag = "policy-top-glasmio-blur",
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-6).dp),
+            modifier = Modifier.align(Alignment.TopCenter),
             scrollOffsetPx = {
                 if (activeScrollState.firstVisibleItemIndex > 0) Int.MAX_VALUE
                 else activeScrollState.firstVisibleItemScrollOffset
@@ -524,7 +523,8 @@ fun ProxiesScreen(
                         .clip(CircleShape)
                         .onGloballyPositioned { policyMoreButtonBounds = it.boundsInWindow() }
                         .iosPressable(pressedScale = 0.96f, role = Role.Button) {
-                            showMoreMenu = true
+                            hidePolicyMoreSource = true
+                            showOptionsMenu = true
                         }
                         .graphicsLayer { alpha = if (hidePolicyMoreSource) 0f else 1f }
                         .testTag("policy-more-button"),
@@ -541,33 +541,6 @@ fun ProxiesScreen(
                         tint = LoonTextPrimary,
                         modifier = Modifier.size(22.dp)
                     )
-                    DropdownMenu(
-                        expanded = showMoreMenu,
-                        onDismissRequest = { showMoreMenu = false },
-                        shape = RoundedCornerShape(18.dp),
-                        containerColor = colors.card,
-                        modifier = Modifier.widthIn(min = 192.dp).testTag("policy-more-menu")
-                    ) {
-                        if (onAddNode != null) {
-                            DropdownMenuItem(
-                                text = { Text("添加节点") },
-                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-                                onClick = { showMoreMenu = false; onAddNode() },
-                                modifier = Modifier.testTag("policy-add-node")
-                            )
-                            HorizontalDivider(color = LoonCardBorder.copy(alpha = 0.35f))
-                        }
-                        DropdownMenuItem(
-                            text = { Text("显示设置") },
-                            leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) },
-                            onClick = {
-                                showMoreMenu = false
-                                hidePolicyMoreSource = true
-                                showOptionsMenu = true
-                            },
-                            modifier = Modifier.testTag("policy-display-settings")
-                        )
-                    }
                 }
             }
         }
@@ -674,6 +647,25 @@ fun ProxiesScreen(
             }
             Spacer(Modifier.height(12.dp))
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (onAddNode != null) {
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth().testTag("policy-add-node")
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { showOptionsMenu = false; onAddNode() },
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = LoonBlue, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text("添加节点", fontSize = 14.5.sp, fontWeight = FontWeight.Medium, color = LoonTextPrimary)
+                            Spacer(Modifier.weight(1f))
+                            Text("保存到默认配置", fontSize = 11.sp, color = LoonTextSecondary)
+                        }
+                    }
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("显示方式", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = LoonTextSecondary)
                     AnimatedGlassSegmentGroup(

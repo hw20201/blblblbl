@@ -31,6 +31,48 @@ class DefaultProfileTest {
         ConfigManager.invalidateProfilesCache()
     }
 
+    @Test fun freshDefaultShipsWithFullSplitRules() {
+        val initial = ConfigManager.getOrCreateDefaultProfile(context)
+        val content = initial.file.readText()
+        assertTrue(content.contains("GEOSITE,CN,DIRECT"))
+        assertTrue(content.contains("GEOIP,CN,DIRECT"))
+        assertTrue(content.contains("IP-CIDR,192.168.0.0/16,DIRECT,no-resolve"))
+        assertTrue(content.contains("MATCH,GLOBAL"))
+        assertFalse(content.contains("MATCH,DIRECT"))
+    }
+
+    @Test fun pristineLegacyDefaultIsUpgradedOnLoad() {
+        val dir = ConfigManager.getProfilesDir(context)
+        dir.resolve("${ConfigManager.DEFAULT_PROFILE_ID}.yaml").writeText(
+            "proxies: []\nproxy-groups:\n  - name: GLOBAL\n    type: select\n    proxies:\n      - DIRECT\nrules:\n  - MATCH,DIRECT\n"
+        )
+        ConfigManager.invalidateProfilesCache()
+        val loaded = ConfigManager.getOrCreateDefaultProfile(context)
+        val content = loaded.file.readText()
+        assertTrue(content.contains("GEOSITE,CN,DIRECT"))
+        assertTrue(content.contains("MATCH,GLOBAL"))
+        assertFalse(content.contains("MATCH,DIRECT"))
+    }
+
+    @Test fun legacyDefaultWithNodesKeepsNodesAndGainsSplitRules() {
+        val default = ConfigManager.getOrCreateDefaultProfile(context)
+        val legacy = """
+            proxies:
+              - {name: Old, type: socks5, server: example.com, port: 1080}
+            proxy-groups:
+              - {name: GLOBAL, type: select, proxies: [Old, DIRECT]}
+            rules: ["MATCH,DIRECT"]
+        """.trimIndent()
+        default.file.writeText(legacy)
+        ConfigManager.invalidateProfilesCache()
+        val loaded = ConfigManager.getOrCreateDefaultProfile(context)
+        val content = loaded.file.readText()
+        assertTrue(content.contains("Old"))
+        assertTrue(content.contains("GEOSITE,CN,DIRECT"))
+        assertTrue(content.contains("MATCH,GLOBAL"))
+        assertFalse(content.contains("MATCH,DIRECT"))
+    }
+
     @Test fun defaultHasStableIdentityAndKeepsUserContentAndScriptOverrides() {
         val initial = ConfigManager.getOrCreateDefaultProfile(context)
         assertEquals(ConfigManager.DEFAULT_PROFILE_ID, initial.id)

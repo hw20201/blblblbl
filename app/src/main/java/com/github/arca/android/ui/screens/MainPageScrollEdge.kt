@@ -3,6 +3,7 @@ package com.github.arca.android.ui.screens
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -30,7 +31,10 @@ internal fun MainPageScrollEdge(
 ) {
     val latestOffset by rememberUpdatedState(scrollOffsetPx)
     val glasmioBlurAvailable = GlassDefaults.enabled
-    val edge = modifier.fillMaxWidth().height(headerHeight + 28.dp)
+    // The blur and its fade sit 12dp higher than the measured header on every
+    // main page, so the fade ends before the first scrolling card. The header
+    // itself keeps its full measured height for layout.
+    val edge = modifier.fillMaxWidth().height(headerHeight + 28.dp).offset(y = (-12).dp)
     if (glasmioBlurAvailable && backdrop != null) {
         Box(edge.graphicsLayer {
             // Read scroll in the layer, so each pixel of scrolling does not recompose the page.

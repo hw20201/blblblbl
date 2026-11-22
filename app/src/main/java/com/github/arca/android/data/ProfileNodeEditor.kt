@@ -12,6 +12,34 @@ internal object ProfileNodeEditor {
 
     private fun isReserved(name: String) = reserved.any { it.equals(name, ignoreCase = true) }
 
+    /** Full domestic-direct split for the built-in default profile. */
+    internal val defaultSplitRules = listOf(
+        "GEOSITE,CN,DIRECT",
+        "GEOIP,CN,DIRECT",
+        "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+        "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+        "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+        "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+        "IP-CIDR,224.0.0.0/4,DIRECT,no-resolve",
+        "IP-CIDR,240.0.0.0/4,DIRECT,no-resolve",
+        "MATCH,GLOBAL"
+    )
+
+    /**
+     * Replace the legacy single `MATCH,DIRECT` rule with the full split rules,
+     * keeping every proxy and group untouched. Returns null when the content
+     * is not a legacy built-in default (user content is never rewritten).
+     */
+    fun upgradeLegacyDefaultRules(raw: String): String? {
+        val config = parse(raw)
+        val rules = config["rules"] as? List<*> ?: return null
+        if (rules.size != 1 || rules[0].toString().trim().uppercase() != "MATCH,DIRECT") return null
+        val groups = entries(config, "proxy-groups")
+        if (groups.none { it["name"] == "GLOBAL" && it["type"] == "select" }) return null
+        config["rules"] = defaultSplitRules
+        return dump(config)
+    }
+
     fun proxyNames(raw: String): List<String> = entries(parse(raw), "proxies").mapNotNull { it["name"] as? String }
 
     /** Only unambiguous, visible raw groups whose explicit membership can be updated. */
