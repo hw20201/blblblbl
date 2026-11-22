@@ -41,6 +41,74 @@ class DefaultProfileTest {
         assertFalse(content.contains("MATCH,DIRECT"))
     }
 
+    @Test fun freshDefaultShipsWithBettBoxServiceGroups() {
+        val initial = ConfigManager.getOrCreateDefaultProfile(context)
+        val content = initial.file.readText()
+        // Service groups (BettBox's managed structure, GLOBAL as the node group).
+        for (name in listOf("AI", "YouTube", "FCM", "Google", "Telegram", "GitHub", "Microsoft", "Apple", "Steam", "TikTok", "Twitter", "Meta", "Netflix", "Spotify", "Crypto", "AdBlock")) {
+            assertTrue("Missing service group $name", content.contains("name: $name"))
+        }
+        assertTrue(content.contains("name: AdBlock"))
+        // Service domain rules.
+        assertTrue(content.contains("GEOSITE,CATEGORY-AI-!CN,AI"))
+        assertTrue(content.contains("GEOSITE,YOUTUBE,YouTube"))
+        assertTrue(content.contains("GEOSITE,GOOGLEFCM,FCM"))
+        assertTrue(content.contains("GEOSITE,TELEGRAM,Telegram"))
+        assertTrue(content.contains("GEOSITE,GITHUB,GitHub"))
+        assertTrue(content.contains("GEOSITE,CATEGORY-CRYPTOCURRENCY,Crypto"))
+        // Ads are rejected early, QUIC is blocked so traffic falls back to TCP.
+        assertTrue(content.contains("GEOSITE,CATEGORY-ADS,REJECT"))
+        assertTrue(content.contains("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT"))
+        // Non-CN catch-all goes to the node group.
+        assertTrue(content.contains("GEOSITE,GEOLOCATION-!CN,GLOBAL"))
+        // GEOIP service rules only use codes the bundled geoip.metadb has.
+        assertTrue(content.contains("GEOIP,google,Google"))
+        assertTrue(content.contains("GEOIP,telegram,Telegram"))
+        assertTrue(content.contains("GEOIP,facebook,Meta"))
+        assertFalse(content.contains("GEOIP,openai"))
+        assertFalse(content.contains("GEOIP,microsoft"))
+        assertFalse(content.contains("GEOIP,apple"))
+        assertFalse(content.contains("GEOIP,steam"))
+        assertFalse(content.contains("GEOIP,tiktok"))
+        assertFalse(content.contains("GEOIP,spotify"))
+        // Rule order: service rules before the non-CN catch-all, catch-all before MATCH.
+        val ai = content.indexOf("GEOSITE,CATEGORY-AI-!CN,AI")
+        val catchAll = content.indexOf("GEOSITE,GEOLOCATION-!CN,GLOBAL")
+        val match = content.indexOf("MATCH,GLOBAL")
+        assertTrue(ai in 0 until catchAll)
+        assertTrue(catchAll in 0 until match)
+    }
+
+    @Test fun round1DefaultIsUpgradedToServiceSplitAndKeepsNodes() {
+        val default = ConfigManager.getOrCreateDefaultProfile(context)
+        val round1 = """
+            proxies:
+              - {name: Old, type: socks5, server: example.com, port: 1080}
+            proxy-groups:
+              - {name: GLOBAL, type: select, proxies: [Old, DIRECT]}
+            rules:
+              - GEOSITE,CN,DIRECT
+              - GEOIP,CN,DIRECT
+              - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+              - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+              - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+              - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+              - IP-CIDR,224.0.0.0/4,DIRECT,no-resolve
+              - IP-CIDR,240.0.0.0/4,DIRECT,no-resolve
+              - MATCH,GLOBAL
+        """.trimIndent()
+        default.file.writeText(round1)
+        ConfigManager.invalidateProfilesCache()
+        val loaded = ConfigManager.getOrCreateDefaultProfile(context)
+        val content = loaded.file.readText()
+        assertTrue(content.contains("Old"))
+        assertTrue(content.contains("GEOSITE,CATEGORY-AI-!CN,AI"))
+        assertTrue(content.contains("GEOSITE,CATEGORY-ADS,REJECT"))
+        assertTrue(content.contains("name: AI"))
+        assertTrue(content.contains("name: AdBlock"))
+        assertTrue(content.contains("MATCH,GLOBAL"))
+    }
+
     @Test fun pristineLegacyDefaultIsUpgradedOnLoad() {
         val dir = ConfigManager.getProfilesDir(context)
         dir.resolve("${ConfigManager.DEFAULT_PROFILE_ID}.yaml").writeText(

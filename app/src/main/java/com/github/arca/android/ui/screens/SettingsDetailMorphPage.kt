@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Rule
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Terminal
@@ -71,6 +72,7 @@ internal enum class SettingsDetailPage(
     APPEARANCE("外观与显示", "主题、语言与策略节点排版", Icons.Default.Palette),
     GLASS_EFFECTS("玻璃效果", "主材质、光学与跟手动态", Icons.Default.AutoAwesome),
     DNS("DNS 设置", "Fake-IP、解析诊断与 DNS 记录", Icons.Default.Public),
+    MANAGED_CONFIG("托管配置", "服务分流、拦截与每组目标", Icons.Default.Rule),
     CONNECTIONS("活动连接", "查看实时连接并管理断开操作", Icons.Default.SwapHoriz),
     CORE_LOGS("核心日志", "查看、筛选与导出核心运行记录", Icons.Default.Terminal),
     CONFIGURATION_CENTER("配置中心", "配置文件、订阅、脚本与路由资源", Icons.Default.FolderZip)
@@ -90,6 +92,7 @@ internal val SettingsDetailPage.preferredPanelHeight: androidx.compose.ui.unit.D
             SettingsDetailPage.APPEARANCE -> 620.dp
             SettingsDetailPage.GLASS_EFFECTS -> 680.dp
             SettingsDetailPage.DNS -> 620.dp
+            SettingsDetailPage.MANAGED_CONFIG -> 620.dp
             SettingsDetailPage.CONNECTIONS -> 660.dp
             SettingsDetailPage.CORE_LOGS -> 660.dp
             SettingsDetailPage.CONFIGURATION_CENTER -> 620.dp
@@ -119,6 +122,7 @@ internal fun SettingsDetailMorphPage(
     appearanceContent: (@Composable () -> Unit)? = null,
     glassEffectsContent: (@Composable () -> Unit)? = null,
     dnsContent: (@Composable () -> Unit)? = null,
+    managedConfigContent: (@Composable () -> Unit)? = null,
     connectionsContent: (@Composable () -> Unit)? = null,
     logsContent: (@Composable () -> Unit)? = null,
     configurationCenterContent: (@Composable (onClose: () -> Unit) -> Unit)? = null,
@@ -165,6 +169,9 @@ internal fun SettingsDetailMorphPage(
             SettingsDetailPage.DNS -> Box(
                 Modifier.weight(1f).fillMaxWidth().testTag("settings-detail-scroll-content")
             ) { dnsContent?.invoke() }
+            SettingsDetailPage.MANAGED_CONFIG -> Box(
+                Modifier.weight(1f).fillMaxWidth().testTag("settings-detail-scroll-content")
+            ) { managedConfigContent?.invoke() }
             SettingsDetailPage.CONNECTIONS -> Box(
                 Modifier.weight(1f).fillMaxWidth().testTag("settings-detail-scroll-content")
             ) { connectionsContent?.invoke() }
@@ -312,6 +319,7 @@ internal fun SettingsDetailMorphPage(
                 SettingsDetailPage.APPEARANCE,
                 SettingsDetailPage.GLASS_EFFECTS,
                 SettingsDetailPage.DNS,
+                SettingsDetailPage.MANAGED_CONFIG,
                 SettingsDetailPage.CONNECTIONS,
                 SettingsDetailPage.CORE_LOGS,
                 SettingsDetailPage.CONFIGURATION_CENTER -> Unit
