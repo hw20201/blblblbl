@@ -11,21 +11,23 @@ internal fun buildProxyDisplayGroups(
     baseGroups: Map<String, ProxyGroup>,
     liveGroups: Map<String, ProxyGroup>,
     selectedNodes: Map<String, String?>,
-    delayCache: Map<String, Int>
+    delayCache: Map<String, Int>,
+    allowLiveData: Boolean = true
 ): Map<String, ProxyGroup> = baseGroups.mapValues { (groupName, baseGroup) ->
-    val live = liveGroups[groupName]
+    val live = liveGroups[groupName]?.takeIf { allowLiveData }
     val liveProxyMap = live?.proxies?.associateBy { it.name } ?: emptyMap()
     val savedNode = selectedNodes[groupName]
     val resolvedNow = if (!savedNode.isNullOrBlank() && baseGroup.proxies.any { it.name == savedNode }) {
         savedNode
     } else {
-        live?.now?.ifBlank { baseGroup.now } ?: baseGroup.now
+        live?.now?.takeIf { name -> baseGroup.proxies.any { it.name == name } } ?: baseGroup.now
     }
 
     baseGroup.copy(
         now = resolvedNow,
         proxies = baseGroup.proxies.map { baseProxy ->
-            val proxy = liveProxyMap[baseProxy.name] ?: baseProxy
+            // Runtime values never replace the parsed card's type or provenance.
+            val proxy = liveProxyMap[baseProxy.name]?.let { baseProxy.copy(delay = it.delay) } ?: baseProxy
             val scopedKey = "$groupName:${baseProxy.name}"
             val cachedDelay = delayCache[baseProxy.name] ?: delayCache[scopedKey]
             if (cachedDelay != null) proxy.copy(delay = cachedDelay) else proxy

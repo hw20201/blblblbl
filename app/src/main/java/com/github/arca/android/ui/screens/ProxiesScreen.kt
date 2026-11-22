@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.core.model.ProxyGroup
 import com.github.arca.android.ui.components.*
@@ -155,7 +156,12 @@ fun ProxiesScreen(
     glassScene: NavigationLensState? = null,
     onAddNode: (() -> Unit)? = null,
     onEditNode: ((String) -> Unit)? = null,
-    editableNodeNames: Set<String>? = null
+    onRenameNode: ((String) -> Unit)? = null,
+    onDeleteNode: ((String) -> Unit)? = null,
+    editableNodeNames: Set<String>? = null,
+    editableNodeNamesByGroup: Map<String, Set<String>>? = null,
+    nodeFocusRequest: ProxyNodeFocusRequest? = null,
+    onNodeFocusConsumed: (ProxyNodeFocusRequest) -> Unit = {}
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
     var showOptionsMenu by remember { mutableStateOf(false) }
@@ -165,10 +171,58 @@ fun ProxiesScreen(
         perGroupTabStates.getOrPut(selectedGroupName) { LazyListState() }
     } else tabsListState
 
+    val nodeActions = if (onEditNode != null || onRenameNode != null || onDeleteNode != null) {
+        ProxyNodeActions(onEditNode, onRenameNode, onDeleteNode)
+    } else null
+    fun actionsFor(groupName: String, proxy: Proxy) = nodeActions?.takeIf {
+        val editableNames = editableNodeNamesByGroup?.get(groupName) ?: if (editableNodeNamesByGroup == null) editableNodeNames else emptySet()
+        proxy.name !in groupMap && canManageProxyNode(proxy, editableNames)
+    }
+
     val isListMode = currentViewMode == "LIST"
     val visibleGroups = remember(groups, groupMap) {
         groups.filter { gName -> groupMap[gName]?.hidden != true }
     }
+    LaunchedEffect(nodeFocusRequest, groups, groupMap, currentGroup, selectedGroupName, currentViewMode, nodeColumns, expandedGroups.toMap()) {
+        val request = nodeFocusRequest ?: return@LaunchedEffect
+        val target = findProxyNodeFocusTarget(request, groups, groupMap) ?: return@LaunchedEffect
+        if (selectedGroupName != target.groupName) {
+            onSelectGroup(target.groupName)
+            return@LaunchedEffect
+        }
+        if (expandedGroups[target.groupName] != true) {
+            expandedGroups[target.groupName] = true
+            return@LaunchedEffect
+        }
+        val columns = nodeColumns.coerceIn(1, 3)
+        val targetGroup = groupMap[target.groupName] ?: return@LaunchedEffect
+        val row = target.nodeIndex / columns
+        val state: LazyListState
+        val index: Int
+        val expectedKey: String
+        val expectedCount: Int
+        if (isListMode) {
+            state = listModeState
+            index = proxyNodeFocusListIndex(target, groups, groupMap, expandedGroups, columns)
+            expectedKey = proxyGroupRowKeys(target.groupName, targetGroup.proxies, columns)[row]
+            expectedCount = visibleGroups.sumOf { name ->
+                1 + if (expandedGroups[name] == true) (groupMap[name]?.proxies.orEmpty().size + columns - 1) / columns else 0
+            }
+        } else {
+            // Group selection must have reached the actual card list before scrolling it.
+            if (currentGroup?.proxies != targetGroup.proxies) return@LaunchedEffect
+            state = activeTabState
+            index = row
+            val rows = targetGroup.proxies.chunked(columns)
+            expectedKey = proxyRowKeysOf(rows)[row]
+            expectedCount = rows.size
+        }
+        snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == expectedCount }
+        state.scrollToItem(index)
+        snapshotFlow { state.layoutInfo.visibleItemsInfo.any { it.key == expectedKey } }.first { it }
+        onNodeFocusConsumed(request)
+    }
+
     val isAnyTesting = if (isListMode) {
         testingNodes.isNotEmpty()
     } else {
@@ -269,7 +323,7 @@ fun ProxiesScreen(
                                             isTesting = isItemTesting,
                                             onClick = { onSelectProxy(selectedGroupName, proxy) },
                                             onTestSingleNode = { onTestSingleNode(selectedGroupName, proxy.name) },
-                                            onEditNode = onEditNode?.takeIf { canEditProxyNode(proxy, editableNodeNames) }
+                                            onNodeActions = actionsFor(selectedGroupName, proxy)
                                         )
                                     }
                                 }
@@ -386,7 +440,7 @@ fun ProxiesScreen(
                                                             isTesting = isItemTesting,
                                                             onClick = { onSelectProxy(groupName, proxy) },
                                                             onTestSingleNode = { onTestSingleNode(groupName, proxy.name) },
-                                                            onEditNode = onEditNode?.takeIf { canEditProxyNode(proxy, editableNodeNames) }
+                                                            onNodeActions = actionsFor(groupName, proxy)
                                                         )
                                                     }
                                                 }
@@ -402,12 +456,13 @@ fun ProxiesScreen(
         }
     }
 
+        // Keep the full measured header for layout. Shift only the blur and its fade.
         MainPageScrollEdge(
             backdrop = pageBackdrop,
             headerHeight = headerInset,
             background = colors.bg,
             tag = "policy-top-glasmio-blur",
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-6).dp),
             scrollOffsetPx = {
                 if (activeScrollState.firstVisibleItemIndex > 0) Int.MAX_VALUE
                 else activeScrollState.firstVisibleItemScrollOffset
@@ -797,9 +852,20 @@ internal fun proxyGroupDisplayName(name: String): String {
         .ifBlank { "策略组" }
 }
 
-/** A missing profile allowlist must never expose provider or runtime-only nodes for editing. */
-internal fun canEditProxyNode(proxy: Proxy, editableNodeNames: Set<String>?): Boolean =
-    !proxy.isGroup && editableNodeNames?.contains(proxy.name) == true
+private val BuiltInProxyNames = setOf("DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL")
+private val NonNodeProxyTypes = setOf("GROUP", "DIRECT", "REJECT", "REJECTDROP", "PASS", "COMPATIBLE", "GLOBAL")
+
+/** Require a concrete node in the active profile's explicit management allowlist. */
+internal fun canManageProxyNode(proxy: Proxy, editableNodeNames: Set<String>?): Boolean =
+    editableNodeNames?.contains(proxy.name) == true && !proxy.isGroup &&
+        proxy.name.uppercase() !in BuiltInProxyNames &&
+        proxy.type.uppercase().replace("-", "").replace("_", "") !in NonNodeProxyTypes
+
+private data class ProxyNodeActions(
+    val edit: ((String) -> Unit)?,
+    val rename: ((String) -> Unit)?,
+    val delete: ((String) -> Unit)?
+)
 
 // Keep the selected node perceptibly pressed without changing its measured layout size.
 internal fun selectedProxyCardScale(isSelected: Boolean): Float = if (isSelected) 0.97f else 1f
@@ -821,40 +887,35 @@ private fun LoonProxyItemCard(
     isTesting: Boolean = false,
     onClick: () -> Unit,
     onTestSingleNode: () -> Unit = {},
-    onEditNode: ((String) -> Unit)? = null
+    onNodeActions: ProxyNodeActions? = null
 ) {
-    var showRenameMenu by remember(proxy.name) { mutableStateOf(false) }
-    LaunchedEffect(proxy.name, onEditNode != null) {
-        if (onEditNode == null) showRenameMenu = false
-    }
-    val nodeInteraction = if (onEditNode == null) {
+    var showNodeMenu by remember(proxy.name, onNodeActions != null) { mutableStateOf(false) }
+    val openNodeMenu: (() -> Unit)? = if (onNodeActions != null) {
+        { showNodeMenu = true }
+    } else null
+    val nodeInteraction = if (openNodeMenu == null) {
         Modifier.iosPressable(onClick = onClick)
     } else {
         Modifier.combinedClickable(
-            interactionSource = remember { MutableInteractionSource() },
+            interactionSource = null,
             indication = null,
             role = Role.Button,
             onClick = onClick,
-            onLongClickLabel = "重命名",
-            onLongClick = { showRenameMenu = true }
+            onLongClickLabel = "管理节点",
+            onLongClick = openNodeMenu
         )
     }
-    val latencyInteraction = if (onEditNode == null) {
-        Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onTestSingleNode
-        )
-    } else {
-        Modifier.combinedClickable(
-            interactionSource = remember { MutableInteractionSource() },
+    // The nested latency target owns its tap and shares the card's long-press menu.
+    val latencyInteraction = Modifier.testTag("proxy-latency-${proxy.name}")
+        .combinedClickable(
+            interactionSource = null,
             indication = null,
             role = Role.Button,
             onClick = onTestSingleNode,
-            onLongClickLabel = "重命名",
-            onLongClick = { showRenameMenu = true }
+            onClickLabel = "测速",
+            onLongClickLabel = "管理节点",
+            onLongClick = openNodeMenu
         )
-    }
     val nodeEmoji = extractLeadingEmoji(proxy.name)
     val displayName = if (nodeEmoji != null && proxy.name.startsWith(nodeEmoji)) {
         proxy.name.removePrefix(nodeEmoji).trim()
@@ -1193,19 +1254,39 @@ private fun LoonProxyItemCard(
             }
         }
     }
-        DropdownMenu(
-            expanded = showRenameMenu && onEditNode != null,
-            onDismissRequest = { showRenameMenu = false },
-            shape = RoundedCornerShape(16.dp),
-            containerColor = colors.card,
-            modifier = Modifier.widthIn(min = 180.dp).testTag("proxy-rename-menu-${proxy.name}")
-        ) {
-            DropdownMenuItem(
-                text = { Text("重命名") },
-                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                onClick = { showRenameMenu = false; onEditNode?.invoke(proxy.name) },
-                modifier = Modifier.testTag("proxy-rename-action-${proxy.name}")
-            )
+        if (onNodeActions != null) {
+            DropdownMenu(
+                expanded = showNodeMenu,
+                onDismissRequest = { showNodeMenu = false },
+                shape = RoundedCornerShape(16.dp),
+                containerColor = colors.card,
+                modifier = Modifier.widthIn(min = 180.dp).testTag("proxy-node-menu-${proxy.name}")
+            ) {
+                onNodeActions.delete?.let { delete ->
+                    DropdownMenuItem(
+                        text = { Text("删除", color = IosRed) },
+                        leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = IosRed) },
+                        onClick = { showNodeMenu = false; delete(proxy.name) },
+                        modifier = Modifier.testTag("proxy-delete-action-${proxy.name}")
+                    )
+                }
+                onNodeActions.edit?.let { edit ->
+                    DropdownMenuItem(
+                        text = { Text("编辑") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        onClick = { showNodeMenu = false; edit(proxy.name) },
+                        modifier = Modifier.testTag("proxy-edit-action-${proxy.name}")
+                    )
+                }
+                onNodeActions.rename?.let { rename ->
+                    DropdownMenuItem(
+                        text = { Text("重命名") },
+                        leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null) },
+                        onClick = { showNodeMenu = false; rename(proxy.name) },
+                        modifier = Modifier.testTag("proxy-rename-action-${proxy.name}")
+                    )
+                }
+            }
         }
     }
 }

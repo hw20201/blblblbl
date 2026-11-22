@@ -23,7 +23,9 @@ data class ParsedProfile(
     val totalNodes: Int = 0,
     val totalRules: Int = 0,
     val activeNode: String = "",
-    val rules: List<ParsedRule> = emptyList()
+    val rules: List<ParsedRule> = emptyList(),
+    val inlineNodeNames: Set<String> = emptySet(),
+    val inlineNodeNamesByGroup: Map<String, Set<String>> = emptyMap()
 )
 
 object ProfileParser {
@@ -94,6 +96,7 @@ object ProfileParser {
         var content = file.readText()
         // Parse once and reuse it for the provider fingerprints below.
         var data: Map<String, Any?>? = runCatching { yaml.load<Map<String, Any?>>(content) }.getOrNull()
+        val inlineNodeNames = data?.let(::extractProxyMap)?.keys?.toSet().orEmpty()
         val providerFiles = if (data != null) providerFilesFromData(data, file, context) else emptyList()
 
         if (context != null) {
@@ -125,8 +128,12 @@ object ProfileParser {
             // 1. Extract inline and locally cached provider proxies. Mihomo rewrites
             // provider paths under filesDir/clash/providers at runtime; user paths
             // are also checked relative to the profile and Clash home.
-            val proxyMap = extractProxyMap(parsedData).toMutableMap()
-            proxyMap.putAll(extractCachedProviderProxies(parsedData, file, context))
+            val inlineProxies = extractProxyMap(parsedData)
+            val providerProxies = extractCachedProviderProxies(parsedData, file, context)
+            // Explicit inline members keep their identity even when a provider reuses a name.
+            val proxyMap = inlineProxies.toMutableMap().apply {
+                providerProxies.forEach { (name, type) -> putIfAbsent(name, type) }
+            }
 
             // 2. Extract rules (support 'rules' and 'Rule')
             val rawRules = (parsedData["rules"] ?: parsedData["Rule"]) as? List<*>
@@ -139,6 +146,7 @@ object ProfileParser {
             val groupNames = mutableListOf<String>()
             val groupMap = mutableMapOf<String, ProxyGroup>()
             val groupIcons = mutableMapOf<String, String>()
+            val inlineNamesByGroup = mutableMapOf<String, Set<String>>()
             val rawGroups = (parsedData["proxy-groups"] ?: parsedData["Proxy Group"]) as? List<*>
             val rawGroupNames = rawGroups?.mapNotNull { (it as? Map<*, *>)?.get("name")?.toString() }?.toSet() ?: emptySet()
             if (rawGroups != null) {
@@ -151,8 +159,9 @@ object ProfileParser {
                         if (!gIcon.isNullOrBlank()) {
                             groupIcons[gName] = gIcon.trim()
                         }
-                        val explicitProxies = ((item["proxies"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()) +
-                            resolveUsedProviderNames(item["use"], parsedData, proxyMap.keys, file, context)
+                        val explicitNames = (item["proxies"] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty()
+                        val usedProviderNames = resolveUsedProviderNames(item["use"], parsedData, proxyMap.keys, file, context)
+                        val explicitProxies = explicitNames + usedProviderNames
                         val filterPattern = item["filter"]?.toString()?.trim()
                         val excludePattern = item["exclude-filter"]?.toString()?.trim()
                         val includeAll = item["include-all"] == true ||
@@ -167,8 +176,19 @@ object ProfileParser {
                             excludePattern = excludePattern,
                             includeAll = includeAll
                         )
+                        // include-all(-proxies) adds real local members without listing them
+                        // explicitly; a provider-only filter must not grant the same provenance.
+                        val localMemberNames = resolveGroupMembers(
+                            explicitProxies = explicitNames,
+                            proxyNames = if (includeAll) inlineProxies.keys else emptySet(),
+                            filterPattern = filterPattern,
+                            excludePattern = excludePattern,
+                            includeAll = includeAll
+                        ).toSet()
+                        val providerMemberNames = usedProviderNames.toSet() - localMemberNames
                         val proxies = memberNames.mapNotNull { mName ->
-                            val mType = proxyMap[mName] ?: if (mName in listOf("DIRECT", "REJECT", "GLOBAL")) mName else "Group"
+                            val memberType = if (mName in providerMemberNames) providerProxies[mName] else proxyMap[mName]
+                            val mType = memberType ?: if (mName in listOf("DIRECT", "REJECT", "GLOBAL")) mName else "Group"
                             val isSubGroup = rawGroupNames.contains(mName)
                             Proxy(
                                 name = mName,
@@ -180,6 +200,10 @@ object ProfileParser {
                             )
                         }
 
+                        inlineNamesByGroup[gName] = proxies.filter { proxy ->
+                            !proxy.isGroup && proxy.name in inlineNodeNames && proxy.name in inlineProxies &&
+                                proxy.name !in providerMemberNames
+                        }.mapTo(linkedSetOf()) { it.name }
                         val saved = savedNodes[gName]
                         val now = if (saved != null && proxies.any { it.name == saved }) {
                             saved
@@ -203,6 +227,7 @@ object ProfileParser {
                 val now = if (saved != null && proxies.any { it.name == saved }) saved else (proxies.firstOrNull()?.name ?: "")
                 groupNames.add("节点选择")
                 groupMap["节点选择"] = ProxyGroup(type = "select", proxies = proxies, now = now)
+                inlineNamesByGroup["节点选择"] = inlineNodeNames.intersect(inlineProxies.keys)
             }
 
             val totalNodes = proxyMap.keys.count { !it.equals("DIRECT", true) && !it.equals("REJECT", true) && !it.equals("GLOBAL", true) }
@@ -216,7 +241,9 @@ object ProfileParser {
                 totalNodes = totalNodes,
                 totalRules = rulesCount,
                 activeNode = activeNode,
-                rules = parsedRules
+                rules = parsedRules,
+                inlineNodeNames = inlineNodeNames,
+                inlineNodeNamesByGroup = inlineNamesByGroup
             )
             parsedCache[path] = CacheEntry(lm, len, savedHash, scriptKey, providerFiles, result)
             return result

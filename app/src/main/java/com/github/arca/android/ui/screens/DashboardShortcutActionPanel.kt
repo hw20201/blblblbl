@@ -2,6 +2,7 @@ package com.github.arca.android.ui.screens
 
 import android.os.Build
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,15 +31,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -105,6 +114,7 @@ internal fun DashboardShortcutActionPanel(
     profiles: List<ProfileItem>,
     selectedProfileId: String?,
     onSelectProfile: (ProfileItem) -> Unit,
+    onReorderProfiles: (List<ProfileItem>) -> Unit = {},
     rules: List<ParsedRule>,
     requestMonitoringEnabled: Boolean,
     fakeIpEnabled: Boolean,
@@ -134,6 +144,50 @@ internal fun DashboardShortcutActionPanel(
     var dnsLoading by remember { mutableStateOf(false) }
     var dnsAnswer by remember { mutableStateOf<String?>(null) }
     var dnsError by remember { mutableStateOf<String?>(null) }
+    val profileBounds = remember { mutableStateMapOf<String, Rect>() }
+    var profileOrderIds by remember(shortcut.id) { mutableStateOf(profiles.map { it.id }) }
+    var dragOriginalProfileOrder by remember(shortcut.id) { mutableStateOf<List<String>?>(null) }
+    var draggedProfileId by remember(shortcut.id) { mutableStateOf<String?>(null) }
+    var draggedProfileCenterY by remember(shortcut.id) { mutableFloatStateOf(0f) }
+    val profilesById = remember(profiles) { profiles.associateBy { it.id } }
+    val orderedProfiles = remember(profiles, profileOrderIds) {
+        profileOrderIds.mapNotNull(profilesById::get) + profiles.filter { it.id !in profileOrderIds }
+    }
+    LaunchedEffect(profiles.map { it.id }) {
+        val availableIds = profiles.mapTo(mutableSetOf()) { it.id }
+        profileOrderIds = profileOrderIds.filter { it in availableIds } +
+            profiles.map { it.id }.filterNot { it in profileOrderIds }
+    }
+    val beginProfileDrag = rememberUpdatedState<(String) -> Unit>(newValue = { id ->
+        profileBounds[id]?.let { bounds ->
+            dragOriginalProfileOrder = profileOrderIds
+            draggedProfileId = id
+            draggedProfileCenterY = bounds.center.y
+        }
+    })
+    val moveProfileDrag = rememberUpdatedState<(String, Float) -> Unit>(newValue = { draggedId, centerY ->
+        draggedProfileCenterY = centerY
+        val targetId = orderedProfiles.firstOrNull { profile ->
+            profile.id != draggedId && profileBounds[profile.id]?.let { centerY >= it.top && centerY < it.bottom } == true
+        }?.id
+        if (targetId != null) {
+            val reordered = moveQuickProfile(orderedProfiles, draggedId, targetId)
+            if (reordered != orderedProfiles) profileOrderIds = reordered.map { it.id }
+        }
+    })
+    val finishProfileDrag = rememberUpdatedState<(Boolean) -> Unit>(newValue = { commit ->
+        val original = dragOriginalProfileOrder
+        if (original != null) {
+            if (commit && profileOrderIds != original) {
+                val reordered = profileOrderIds.mapNotNull(profilesById::get) + profiles.filter { it.id !in profileOrderIds }
+                onReorderProfiles(reordered)
+            } else if (!commit) {
+                profileOrderIds = original
+            }
+        }
+        dragOriginalProfileOrder = null
+        draggedProfileId = null
+    })
 
     LaunchedEffect(shortcut.id) {
         if (shortcut.id == "routing") onEnsureAppsLoaded()
@@ -216,14 +270,42 @@ internal fun DashboardShortcutActionPanel(
                         colors = ButtonDefaults.buttonColors(containerColor = LoonBlue)
                     ) { Text("添加配置：本地文件 / 订阅") }
                     if (profiles.isEmpty()) QuickHint("暂无可用配置；可通过上方入口导入本地文件或订阅")
-                    profiles.forEach { profile ->
+                    orderedProfiles.forEach { profile ->
                         val isSelected = profile.id == selectedProfileId
                         QuickRow(
                             title = profile.name,
                             subtitle = if (isSelected) "当前使用" else if (profile.canRefresh) "远程订阅" else "本地配置",
-                            trailing = if (isSelected) "当前" else "切换",
+                            trailing = if (isSelected) "当前 · 长按拖动" else "切换 · 长按拖动",
                             selected = isSelected,
-                            onClick = { if (!isSelected) { onSelectProfile(profile); onClose() } }
+                            onClick = { if (!isSelected && draggedProfileId == null) { onSelectProfile(profile); onClose() } },
+                            modifier = Modifier
+                                .testTag("quick-profile-choice-${profile.id}")
+                                .onGloballyPositioned { profileBounds[profile.id] = it.boundsInRoot() }
+                                .graphicsLayer {
+                                    val bounds = profileBounds[profile.id]
+                                    translationY = if (draggedProfileId == profile.id && bounds != null) draggedProfileCenterY - bounds.center.y else 0f
+                                    scaleX = if (draggedProfileId == profile.id) 1.025f else 1f
+                                    scaleY = if (draggedProfileId == profile.id) 1.025f else 1f
+                                    shadowElevation = if (draggedProfileId == profile.id) 12f else 0f
+                                }
+                                .pointerInput(profile.id) {
+                                    var centerY = 0f
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            profileBounds[profile.id]?.let { bounds ->
+                                                centerY = bounds.center.y
+                                                beginProfileDrag.value(profile.id)
+                                            }
+                                        },
+                                        onDragEnd = { finishProfileDrag.value(true) },
+                                        onDragCancel = { finishProfileDrag.value(false) },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            centerY += dragAmount.y
+                                            moveProfileDrag.value(profile.id, centerY)
+                                        }
+                                    )
+                                }
                         )
                     }
                 }
@@ -448,7 +530,8 @@ private fun QuickRow(
     subtitle: String,
     trailing: String,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Box(
         modifier = Modifier
@@ -456,6 +539,7 @@ private fun QuickRow(
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) LoonEditBlueBg else LoonCard)
             .clickable(onClick = onClick)
+            .then(modifier)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),

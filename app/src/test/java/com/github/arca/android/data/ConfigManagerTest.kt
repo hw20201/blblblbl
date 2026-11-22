@@ -62,6 +62,38 @@ class ConfigManagerTest {
     }
 
     @Test
+    fun `extractProfileName decodes percent-encoded fragment exactly once`() {
+        val url = "https://example.invalid/sub?name=Ignored#HK%2B%20100%2520"
+        assertEquals("HK+ 100%20", ConfigManager.extractProfileName(null, null, "", url))
+    }
+
+    @Test
+    fun `extractProfileName splits raw query without interpreting encoded separators as parameters`() {
+        val url = "https://example.invalid/sub?token=ignored%26name%3Dnot-the-title&TITLE=Tokyo%26Osaka=50%25%2B"
+        assertEquals("Tokyo&Osaka=50%+", ConfigManager.extractProfileName(null, null, "", url))
+    }
+
+    @Test
+    fun `extractProfileName prefers extended filename regardless of case and ignores trailing parameters`() {
+        assertEquals("东+京 VIP", contentDispositionName(
+            "attachment; filename=fallback.yaml; FILENAME* = uTf-8'zh'%E4%B8%9C+%E4%BA%AC%20VIP.YAML; size=147"))
+    }
+
+    @Test
+    fun `extractProfileName accepts quoted semicolons and falls back from malformed extended filename`() {
+        assertEquals("Tokyo; VIP", contentDispositionName(
+            "attachment; FILENAME=\"Tokyo; VIP.YmL\"; filename*=UTF-8''broken%ZZ; size=147"))
+    }
+
+    private fun contentDispositionName(header: String): String {
+        val url = "https://example.invalid/sub"
+        val request = okhttp3.Request.Builder().url(url).build()
+        return fakeResponse(request, 200, "", "Content-Disposition" to header).use { response ->
+            ConfigManager.extractProfileName(null, response, "", url)
+        }
+    }
+
+    @Test
     fun `extractProfileName extracts from yaml top comment`() {
         val body = """
             # title: Premium Service 2026

@@ -33,15 +33,23 @@ class ProxiesScreenTest {
     }
 
     @Test
-    fun editingRequiresConcreteNodeInActiveProfileAllowlist() {
-        val local = Proxy("Local", type = "Shadowsocks")
-        val provider = Proxy("Provider", type = "Trojan")
-        val group = Proxy("Group", type = "GROUP", isGroup = true)
-        val allowed = setOf("Local", "Group")
-        assertTrue(canEditProxyNode(local, allowed))
-        assertFalse(canEditProxyNode(provider, allowed))
-        assertFalse(canEditProxyNode(group, allowed))
-        assertFalse(canEditProxyNode(local, emptySet()))
-        assertFalse(canEditProxyNode(local, null))
+    fun managementRequiresAnAllowlistedOrdinaryNode() {
+        val local = Proxy("🇯🇵 Local", type = "Shadowsocks")
+        val remote = Proxy("Remote", type = "Trojan")
+        val excluded = listOf(
+            Proxy("Nested", type = "Selector", isGroup = true),
+            Proxy("Group placeholder", type = "Group"),
+            Proxy("direct"), Proxy("REJECT"), Proxy("REJECT-DROP"),
+            Proxy("PASS"), Proxy("COMPATIBLE"), Proxy("GLOBAL"),
+            Proxy("Built-in alias", type = "Reject-Drop")
+        )
+        val allowed = (listOf(local) + excluded).map { it.name }.toSet()
+
+        assertTrue(canManageProxyNode(local, allowed))
+        assertFalse(canManageProxyNode(remote, allowed))
+        excluded.forEach { assertFalse(it.name, canManageProxyNode(it, allowed)) }
+        assertFalse(canManageProxyNode(local, setOf("Local")))
+        assertFalse(canManageProxyNode(local, emptySet()))
+        assertFalse(canManageProxyNode(local, null))
     }
 }

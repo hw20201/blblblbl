@@ -45,11 +45,7 @@ import com.github.arca.android.data.subscription.SubscriptionUpdate
 import com.github.arca.android.service.MihomoVpnService
 import com.github.arca.android.service.VpnState
 import androidx.compose.animation.*
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -57,7 +53,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.arca.android.ui.glass.GlassSettings
-import com.github.arca.android.ui.glass.GlassAlertDialog
 import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.glass.LocalGlassSettings
 import com.github.arca.android.ui.glass.GlassPalettes
@@ -285,39 +280,24 @@ class MainActivity : ComponentActivity() {
         }
 
         var parsedProfile by remember { mutableStateOf(ParsedProfile()) }
+        var parsedProfileId by remember { mutableStateOf<String?>(null) }
         var proxyGroups by remember { mutableStateOf(listOf<String>()) }
         var liveGroupMap by remember { mutableStateOf<Map<String, ProxyGroup>>(emptyMap()) }
+        // Unknown after Activity recreation; preparing a file does not prove a successful load.
+        var successfullyLoadedProfileId by remember { mutableStateOf<String?>(null) }
+        val runtimeProfileLoads = remember { PolicyProfileLoadQueue() }
+        val delayCache = remember { mutableStateMapOf<String, Int>() }
         var selectedGroupName by rememberSaveable { mutableStateOf("") }
         var currentGroupData by remember { mutableStateOf<ProxyGroup?>(null) }
         var activeNodeName by remember { mutableStateOf("") }
-        var addNodeDialogVisible by rememberSaveable { mutableStateOf(false) }
-        var addNodeProfileId by rememberSaveable { mutableStateOf<String?>(null) }
-        var addNodeRaw by rememberSaveable { mutableStateOf("") }
-        var addNodeProfileMenuExpanded by remember { mutableStateOf(false) }
-        var renameNodeDialogVisible by rememberSaveable { mutableStateOf(false) }
-        var renameNodeOldName by rememberSaveable { mutableStateOf("") }
-        var renameNodeNewName by rememberSaveable { mutableStateOf("") }
-        var nodeEditInProgress by remember { mutableStateOf(false) }
-
-        val editableProfiles = profiles.filter { !it.managed && !it.canRefresh }
         val activeProfile = DashboardData.activeProfile(profiles, selectedProfileId)
-        val editableNodeNames = if (activeProfile != null && !activeProfile.managed && !activeProfile.canRefresh) {
-            parsedProfile.groups.values.flatMap { group -> group.proxies }
-                .filter { proxy ->
-                    !proxy.isGroup &&
-                        proxy.name.uppercase() !in setOf("DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL") &&
-                        proxy.type.lowercase().replace("-", "") !in setOf("direct", "reject", "rejectdrop", "pass", "compatible")
-                }
-                .map { it.name }
-                .toSet()
-        } else {
-            emptySet()
-        }
-
-        LaunchedEffect(addNodeDialogVisible, editableProfiles) {
-            if (addNodeDialogVisible && editableProfiles.none { it.id == addNodeProfileId }) {
-                addNodeProfileId = editableProfiles.firstOrNull()?.id
-            }
+        var pendingAddedNodeFocus by remember { mutableStateOf<ProxyNodeFocusRequest?>(null) }
+        val editableNodeNamesByGroup = if (activeProfile?.id == ConfigManager.DEFAULT_PROFILE_ID && parsedProfileId == activeProfile.id) {
+            parsedProfile.inlineNodeNamesByGroup
+        } else emptyMap()
+        val policyRuntimeProfileId = successfullyLoadedProfileId?.takeIf {
+            vpnState.status == VpnState.Status.RUNNING && parsedProfileId == activeProfile?.id &&
+                canUsePolicyRuntime(activeProfile?.id, it)
         }
 
         val mainProxyGroupName = remember(proxyGroups, parsedProfile.groups) {
@@ -415,7 +395,8 @@ class MainActivity : ComponentActivity() {
             }
 
             // 3. Asynchronously dispatch to core without blocking UI
-            if (vpnState.status == VpnState.Status.RUNNING) {
+            if (vpnState.status == VpnState.Status.RUNNING && parsedProfileId == activeProfile?.id &&
+                canUsePolicyRuntime(parsedProfileId, successfullyLoadedProfileId)) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     ClashCore.patchSelector(group, proxy.name)
                 }
@@ -423,6 +404,54 @@ class MainActivity : ComponentActivity() {
         }
 
         var parseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+        // Settings resolve the current target after prior selections commit. Explicit choices
+        // use the same queue even when no core reload is requested.
+        suspend fun loadProfileInCore(
+            switchTo: ProfileItem? = null,
+            loadInCore: Boolean = true,
+            selectOnFailure: Boolean = false,
+            onSelected: () -> Unit = {}
+        ): Result<Unit> = runtimeProfileLoads.run(
+            resolveProfile = {
+                withContext(Dispatchers.Main.immediate) {
+                    switchTo ?: DashboardData.activeProfile(profiles, selectedProfileId)
+                }
+            },
+            load = { profile ->
+                if (!loadInCore) {
+                    Result.success(Unit)
+                } else {
+                    withContext(Dispatchers.Main.immediate) {
+                        successfullyLoadedProfileId = null
+                        liveGroupMap = emptyMap()
+                        delayCache.clear()
+                    }
+                    try {
+                        withContext(Dispatchers.IO) {
+                            ClashCore.load(ConfigManager.prepareConfig(this@MainActivity, profile?.file))
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Result.failure(error)
+                    }
+                }
+            },
+            commitOnFailure = selectOnFailure,
+            commit = { profile, result ->
+                withContext(Dispatchers.Main.immediate) {
+                    if (loadInCore && result.isSuccess && MihomoVpnService.vpnState.value.status == VpnState.Status.RUNNING) {
+                        successfullyLoadedProfileId = profile?.id
+                    }
+                    if (switchTo != null) {
+                        selectedProfileId = switchTo.id
+                        settingsManager.selectedProfileId = switchTo.id
+                        onSelected()
+                    }
+                }
+            }
+        )
 
         // Settings affecting the active TUN take effect by rebuilding its service.
         fun restartTunnelForSettings() {
@@ -441,6 +470,7 @@ class MainActivity : ComponentActivity() {
                 val parsed = ProfileParser.parse(active?.file, savedMap, this@MainActivity)
                 withContext(Dispatchers.Main) {
                     parsedProfile = parsed
+                    parsedProfileId = active?.id
                     proxyGroups = parsed.groupNames
                     if (selectedGroupName.isBlank() || !parsed.groupNames.contains(selectedGroupName)) {
                         selectedGroupName = parsed.groupNames.firstOrNull() ?: ""
@@ -479,46 +509,63 @@ class MainActivity : ComponentActivity() {
             selectedProfileId = DashboardData.activeProfile(profiles, selectedProfileId)?.id
             settingsManager.selectedProfileId = selectedProfileId
             liveGroupMap = emptyMap()
+            successfullyLoadedProfileId = null
+            delayCache.clear()
+            parsedProfileId = null
             parseActiveProfile()
         }
 
-        fun finishNodeEdit(profileId: String, successMessage: String) {
-            val editedProfile = profiles.firstOrNull { it.id == profileId }
-            val active = DashboardData.activeProfile(profiles, selectedProfileId)
-            if (editedProfile == null || editedProfile.id != active?.id || vpnState.status != VpnState.Status.RUNNING) {
-                AppNotice.success(successMessage)
-                return
+        val nodeActions = NodeManagementDialogs(activeProfile, selectedGroupName) { updated, group, oldName, newName, message, addedNodeNames ->
+            if (oldName != null && newName != null) {
+                val affectedGroups = parsedProfile.inlineNodeNamesByGroup.filterValues { oldName in it }.keys
+                settingsManager.renameSelectedNodes(affectedGroups, oldName, newName)
             }
-            val editedFile = editedProfile.file
-            lifecycleScope.launch(Dispatchers.IO) {
-                val result: Result<Unit> = try {
-                    ClashCore.load(ConfigManager.prepareConfig(this@MainActivity, editedFile))
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    Result.failure(error)
-                }
-                withContext(Dispatchers.Main) {
-                    result.fold(
-                        onSuccess = { AppNotice.success(successMessage) },
-                        onFailure = { error ->
-                            AppNotice.error("$successMessage，但核心加载失败：${error.message ?: "未知错误"}")
+            lifecycleScope.launch {
+                // Saving a node is an explicit default-profile choice, not a reload-current.
+                // Its saved nodes remain visible even when the subsequent core load fails.
+                val result = loadProfileInCore(
+                    switchTo = updated,
+                    loadInCore = MihomoVpnService.vpnState.value.status == VpnState.Status.RUNNING,
+                    selectOnFailure = true,
+                    onSelected = {
+                        profiles = ConfigManager.getProfiles(this@MainActivity)
+                        pendingAddedNodeFocus = addedNodeNames.takeIf { it.isNotEmpty() }?.let {
+                            ProxyNodeFocusRequest(updated.id, group, it)
                         }
-                    )
-                }
+                        if (!group.isNullOrBlank()) selectedGroupName = group
+                        liveGroupMap = emptyMap()
+                        delayCache.clear()
+                        parsedProfileId = null
+                        parseActiveProfile()
+                    }
+                )
+                // Reuse the policy page's saved-name focus path, including collision suffixes.
+                // The saved default profile remains visible even if hot loading failed.
+                if (addedNodeNames.isNotEmpty()) pagerState.scrollToPage(1)
+                result.fold(
+                    onSuccess = { AppNotice.success(message) },
+                    onFailure = { error ->
+                        AppNotice.error("$message，但核心加载失败：${error.message ?: "未知错误"}")
+                    }
+                )
             }
         }
 
         // Refresh proxy groups dynamically when core is running
-        val delayCache = remember { mutableStateMapOf<String, Int>() }
-        val delaySnapshot by remember { derivedStateOf { delayCache.toMap() } }
         val nodeLastTestedTimes = remember { mutableMapOf<String, Long>() }
-        var computedGroupMap by remember { mutableStateOf<Map<String, ProxyGroup>>(emptyMap()) }
+        var computedDisplay by remember { mutableStateOf(PolicyProxyDisplay(), referentialEqualityPolicy()) }
+        val computedGroupMap = if (parsedProfileId == activeProfile?.id) {
+            if (computedDisplay.matches(activeProfile?.id, parsedProfile.groups, policyRuntimeProfileId)) {
+                computedDisplay.groups
+            } else parsedProfile.groups
+        } else emptyMap()
 
         // A large subscription can contain thousands of proxy objects. Coalesce bursts of
         // per-node delay updates, then build the display-only copies off the UI thread.
-        LaunchedEffect(parsedProfile.groups, liveGroupMap) {
+        LaunchedEffect(parsedProfileId, parsedProfile, liveGroupMap, policyRuntimeProfileId) {
+            val baseProfileId = parsedProfileId
             val baseGroups = parsedProfile.groups
+            val runtimeProfileId = policyRuntimeProfileId
             val liveGroups = liveGroupMap
             val selectedNodes = withContext(Dispatchers.IO) {
                 baseGroups.keys.associateWith { settingsManager.getSelectedNode(it) }
@@ -526,22 +573,28 @@ class MainActivity : ComponentActivity() {
             snapshotFlow { delayCache.toMap() }.collectLatest { delays ->
                 delay(48L)
                 val displayGroups = withContext(Dispatchers.Default) {
-                    buildProxyDisplayGroups(baseGroups, liveGroups, selectedNodes, delays)
+                    buildProxyDisplayGroups(
+                        baseGroups, liveGroups, selectedNodes,
+                        if (runtimeProfileId != null) delays else emptyMap(),
+                        allowLiveData = runtimeProfileId != null
+                    )
                 }
-                computedGroupMap = displayGroups
+                computedDisplay = PolicyProxyDisplay(baseProfileId, baseGroups, displayGroups, runtimeProfileId)
             }
         }
 
         val proxyRefresh = remember { SingleFlightRefresh() }
         suspend fun refreshProxiesOnline() = withContext(Dispatchers.Main.immediate) {
             fun canRefresh() = testingNodes.isEmpty() &&
+                parsedProfileId == DashboardData.activeProfile(profiles, selectedProfileId)?.id &&
+                canUsePolicyRuntime(parsedProfileId, successfullyLoadedProfileId) &&
                 MihomoVpnService.vpnState.value.status == VpnState.Status.RUNNING &&
                 lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
             if (!canRefresh()) return@withContext
             try {
                 val delays = delayCache.toMap()
                 proxyRefresh.run(
-                    currentKey = { settingsManager.selectedProfileId to MihomoVpnService.vpnState.value },
+                    currentKey = { Triple(settingsManager.selectedProfileId, successfullyLoadedProfileId, MihomoVpnService.vpnState.value) },
                     load = {
                         withContext(Dispatchers.IO) {
                             // The native group-name query already excludes hidden groups.
@@ -563,16 +616,10 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     canPublish = { canRefresh() },
-                    publish = { (groups, data) ->
-                        if (groups.isNotEmpty()) {
-                            proxyGroups = groups
-                            liveGroupMap = data
-                            if (selectedGroupName.isBlank() || selectedGroupName !in groups) {
-                                selectedGroupName = groups.firstOrNull().orEmpty()
-                            }
-                            data[selectedGroupName]?.let { currentGroupData = it }
-                            data[mainProxyGroupName]?.now?.takeIf { it.isNotBlank() }?.let { activeNodeName = it }
-                        }
+                    publish = { (_, data) ->
+                        // Parsed data owns group order and membership; polling supplies runtime values.
+                        liveGroupMap = data
+                        data[mainProxyGroupName]?.now?.takeIf { it.isNotBlank() }?.let { activeNodeName = it }
                     }
                 )
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -834,14 +881,20 @@ class MainActivity : ComponentActivity() {
                         delay(3000)
                     }
                 }
-            } else if (vpnState.status == VpnState.Status.STOPPED) {
+            } else {
+                successfullyLoadedProfileId = null
                 liveGroupMap = emptyMap()
-                parseActiveProfile()
+                delayCache.clear()
+                if (vpnState.status == VpnState.Status.STOPPED) parseActiveProfile()
             }
         }
 
         // Load apps when entering App Routing screen (delayed so the transition completes smoothly)
         LaunchedEffect(currentSubScreen) {
+            if (currentSubScreen == SubScreen.PROFILE_OVERRIDE) {
+                successfullyLoadedProfileId = null
+                liveGroupMap = emptyMap()
+            }
             if (currentSubScreen == SubScreen.APP_ROUTING && installedApps.isEmpty()) {
                 isAppsLoading = true
                 try {
@@ -982,17 +1035,8 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().graphicsLayer { clip = false }) {
                     when (page) {
                         0 -> {
-                            val mainGroupProxies = computedGroupMap[mainProxyGroupName]?.proxies
-                                ?: buildDashboardProxyList(
-                                    liveGroupMap[mainProxyGroupName]?.proxies
-                                        ?: parsedProfile.groups[mainProxyGroupName]?.proxies.orEmpty(),
-                                    mainProxyGroupName,
-                                    delaySnapshot
-                                )
-                            val currentMainActiveNode = (liveGroupMap[mainProxyGroupName]?.now
-                                ?: parsedProfile.groups[mainProxyGroupName]?.now
-                                ?: settingsManager.getSelectedNode(mainProxyGroupName)
-                                ?: activeNodeName).ifBlank { parsedProfile.activeNode }
+                            val mainGroupProxies = computedGroupMap[mainProxyGroupName]?.proxies.orEmpty()
+                            val currentMainActiveNode = computedGroupMap[mainProxyGroupName]?.now.orEmpty()
                             DashboardScreen(
                                 scrollState = dashboardScrollState,
                                 vpnState = vpnState,
@@ -1002,17 +1046,12 @@ class MainActivity : ComponentActivity() {
                                 onQuickProfileSelect = { profile ->
                                     lifecycleScope.launch {
                                         val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
-                                        val loaded = if (shouldHotSwitch) {
-                                            runCatching {
-                                                withContext(Dispatchers.IO) {
-                                                    val conf = ConfigManager.prepareConfig(this@MainActivity, profile.file)
-                                                    ClashCore.load(conf)
-                                                }
+                                        val loaded = runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                loadProfileInCore(profile, loadInCore = shouldHotSwitch).getOrThrow()
                                             }
-                                        } else Result.success(Unit)
+                                        }
                                         if (loaded.isSuccess) {
-                                            selectedProfileId = profile.id
-                                            settingsManager.selectedProfileId = profile.id
                                             parseActiveProfile()
                                             liveGroupMap = emptyMap()
                                             if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
@@ -1022,6 +1061,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                onQuickProfileOrderChanged = { newOrderList ->
+                                    profiles = newOrderList
+                                    ConfigManager.saveProfileOrder(this@MainActivity, newOrderList.map { it.id })
+                                },
                                 onQuickProfileImported = profileImported,
                                 rules = parsedProfile.rules,
                                 fakeIpEnabled = fakeIpEnabled,
@@ -1030,9 +1073,7 @@ class MainActivity : ComponentActivity() {
                                     settingsManager.fakeIpEnabled = enabled
                                     if (vpnState.status == VpnState.Status.RUNNING) {
                                         lifecycleScope.launch(Dispatchers.IO) {
-                                            val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                            val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                            ClashCore.load(conf)
+                                            loadProfileInCore()
                                         }
                                     }
                                 },
@@ -1069,9 +1110,7 @@ class MainActivity : ComponentActivity() {
                                     settingsManager.allowLan = enabled
                                     if (vpnState.status == VpnState.Status.RUNNING) {
                                         lifecycleScope.launch(Dispatchers.IO) {
-                                            val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                            val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                            ClashCore.load(conf)
+                                            loadProfileInCore()
                                         }
                                     }
                                 },
@@ -1091,6 +1130,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSelectProxy = { group, proxy -> handleSelectProxy(mainProxyGroupName, proxy) },
                                 onHealthCheck = { group -> runSpeedTestForGroup(group) },
+                                onAddNode = nodeActions.add,
+                                onRenameNode = nodeActions.rename,
+                                onDeleteNode = nodeActions.delete,
+                                editableNodeNames = editableNodeNamesByGroup[mainProxyGroupName].orEmpty(),
                                 onNavigateToProfiles = { currentSubScreen = SubScreen.PROFILES },
                                 onNavigateToAppRouting = { currentSubScreen = SubScreen.APP_ROUTING },
                                 onNavigateToLogs = { currentSubScreen = SubScreen.LOGS },
@@ -1112,7 +1155,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         1 -> {
-                            val effectiveCurrentGroup = computedGroupMap[selectedGroupName] ?: currentGroupData
+                            val effectiveCurrentGroup = computedGroupMap[selectedGroupName]
 
                             ProxiesScreen(
                                 glassScene = cardScene,
@@ -1143,36 +1186,24 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSelectGroup = { gName ->
                                     selectedGroupName = gName
-                                    val savedNode = settingsManager.getSelectedNode(gName)
-                                    if (vpnState.status == VpnState.Status.RUNNING) {
-                                        lifecycleScope.launch(Dispatchers.IO) {
-                                            val gData = ClashCore.queryGroup(gName)
-                                            withContext(Dispatchers.Main) {
-                                                currentGroupData = gData
-                                            }
-                                        }
-                                    } else {
-                                        val gData = parsedProfile.groups[gName]
-                                        val effectiveNow = if (savedNode != null && gData?.proxies?.any { it.name == savedNode } == true) savedNode else (gData?.now ?: "")
-                                        currentGroupData = gData?.copy(now = effectiveNow)
-                                    }
+                                    currentGroupData = computedGroupMap[gName]
                                 },
                                 onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
                                 onHealthCheck = { group -> runSpeedTestForGroup(group) },
                                 testingNodes = testingNodes,
                                 onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) },
-                                onAddNode = {
-                                    addNodeProfileId = activeProfile?.takeIf { !it.managed && !it.canRefresh }?.id
-                                        ?: editableProfiles.firstOrNull()?.id
-                                    addNodeRaw = ""
-                                    addNodeDialogVisible = true
-                                },
-                                onEditNode = { nodeName ->
-                                    renameNodeOldName = nodeName
-                                    renameNodeNewName = nodeName
-                                    renameNodeDialogVisible = true
-                                },
-                                editableNodeNames = editableNodeNames
+                                onAddNode = nodeActions.add,
+                                onEditNode = nodeActions.edit,
+                                onRenameNode = nodeActions.rename,
+                                onDeleteNode = nodeActions.delete,
+                                editableNodeNames = emptySet(),
+                                editableNodeNamesByGroup = editableNodeNamesByGroup,
+                                nodeFocusRequest = if (parsedProfileId == activeProfile?.id) computedDisplay.readyFocus(
+                                    pendingAddedNodeFocus, activeProfile?.id, parsedProfile.groups, policyRuntimeProfileId
+                                ) else null,
+                                onNodeFocusConsumed = { consumed ->
+                                    if (pendingAddedNodeFocus == consumed) pendingAddedNodeFocus = null
+                                }
                             )
                         }
                         2 -> SettingsScreen(
@@ -1213,9 +1244,7 @@ class MainActivity : ComponentActivity() {
                                 settingsManager.allowLan = enabled
                                 if (vpnState.status == VpnState.Status.RUNNING) {
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                        val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                        ClashCore.load(conf)
+                                        loadProfileInCore()
                                     }
                                 }
                             },
@@ -1235,9 +1264,7 @@ class MainActivity : ComponentActivity() {
                                 if (vpnState.status == VpnState.Status.RUNNING) {
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         runCatching {
-                                            val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                            val config = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                            ClashCore.load(config).getOrThrow()
+                                            loadProfileInCore().getOrThrow()
                                         }.onFailure { error ->
                                             withContext(Dispatchers.Main) {
                                                 unifiedDelayEnabled = previous
@@ -1305,9 +1332,7 @@ class MainActivity : ComponentActivity() {
                                         settingsManager.fakeIpEnabled = enabled
                                         if (vpnState.status == VpnState.Status.RUNNING) {
                                             lifecycleScope.launch(Dispatchers.IO) {
-                                                val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                                ClashCore.load(conf)
+                                                loadProfileInCore()
                                             }
                                         }
                                     },
@@ -1349,18 +1374,17 @@ class MainActivity : ComponentActivity() {
                                         onSelectProfile = { profile ->
                                             lifecycleScope.launch {
                                                 val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
-                                                val loaded = if (shouldHotSwitch) withContext(Dispatchers.IO) {
+                                                val loaded = withContext(Dispatchers.IO) {
                                                     runCatching {
-                                                        val config = ConfigManager.prepareConfig(this@MainActivity, profile.file)
-                                                        ClashCore.load(config).getOrThrow()
-                                                        settingsManager.getAllSelectedNodes().forEach { (group, node) ->
-                                                            runCatching { ClashCore.patchSelector(group, node) }
+                                                        loadProfileInCore(profile, loadInCore = shouldHotSwitch).getOrThrow()
+                                                        if (shouldHotSwitch) {
+                                                            settingsManager.getAllSelectedNodes().forEach { (group, node) ->
+                                                                runCatching { ClashCore.patchSelector(group, node) }
+                                                            }
                                                         }
                                                     }
-                                                } else Result.success(Unit)
+                                                }
                                                 if (loaded.isSuccess) {
-                                                    selectedProfileId = profile.id
-                                                    settingsManager.selectedProfileId = profile.id
                                                     parseActiveProfile()
                                                     liveGroupMap = emptyMap()
                                                     if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
@@ -1583,19 +1607,18 @@ class MainActivity : ComponentActivity() {
                                     onSelectProfile = { profile ->
                                         lifecycleScope.launch {
                                             val shouldHotSwitch = vpnState.status == VpnState.Status.RUNNING && settingsManager.profileHotSwitchEnabled
-                                            val loaded = if (shouldHotSwitch) withContext(Dispatchers.IO) {
+                                            val loaded = withContext(Dispatchers.IO) {
                                                 runCatching {
-                                                    val config = ConfigManager.prepareConfig(this@MainActivity, profile.file)
-                                                    ClashCore.load(config).getOrThrow()
-                                                    // Reapply remembered selectors where the new profile exposes the same groups/nodes.
-                                                    settingsManager.getAllSelectedNodes().forEach { (group, node) ->
-                                                        runCatching { ClashCore.patchSelector(group, node) }
+                                                    loadProfileInCore(profile, loadInCore = shouldHotSwitch).getOrThrow()
+                                                    if (shouldHotSwitch) {
+                                                        // Reapply remembered selectors where the new profile exposes the same groups/nodes.
+                                                        settingsManager.getAllSelectedNodes().forEach { (group, node) ->
+                                                            runCatching { ClashCore.patchSelector(group, node) }
+                                                        }
                                                     }
                                                 }
-                                            } else Result.success(Unit)
+                                            }
                                             if (loaded.isSuccess) {
-                                                selectedProfileId = profile.id
-                                                settingsManager.selectedProfileId = profile.id
                                                 parseActiveProfile()
                                                 liveGroupMap = emptyMap()
                                                 if (shouldHotSwitch) lifecycleScope.launch(Dispatchers.IO) { refreshProxiesOnline() }
@@ -1690,9 +1713,7 @@ class MainActivity : ComponentActivity() {
                                         settingsManager.fakeIpEnabled = enabled
                                         if (vpnState.status == VpnState.Status.RUNNING) {
                                             lifecycleScope.launch(Dispatchers.IO) {
-                                                val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                                ClashCore.load(conf)
+                                                loadProfileInCore()
                                             }
                                         }
                                     },
@@ -1721,9 +1742,7 @@ class MainActivity : ComponentActivity() {
                                         settingsManager.allowLan = enabled
                                         if (vpnState.status == VpnState.Status.RUNNING) {
                                             lifecycleScope.launch(Dispatchers.IO) {
-                                                val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                                ClashCore.load(conf)
+                                                loadProfileInCore()
                                             }
                                         }
                                     },
@@ -1731,9 +1750,7 @@ class MainActivity : ComponentActivity() {
                                         lanCredentials = settingsManager.regenerateLanCredentials()
                                         if (vpnState.status == VpnState.Status.RUNNING) {
                                             lifecycleScope.launch(Dispatchers.IO) {
-                                                val active = DashboardData.activeProfile(profiles, selectedProfileId)
-                                                val conf = ConfigManager.prepareConfig(this@MainActivity, active?.file)
-                                                ClashCore.load(conf)
+                                                loadProfileInCore()
                                             }
                                         }
                                     },
@@ -1849,160 +1866,6 @@ class MainActivity : ComponentActivity() {
                                 AppNotice.error("导入失败：${res.exceptionOrNull()?.message}")
                             }
                         }
-                    }
-                )
-            }
-            if (addNodeDialogVisible) {
-                val targetProfile = editableProfiles.firstOrNull { it.id == addNodeProfileId }
-                GlassAlertDialog(
-                    onDismissRequest = {
-                        if (!nodeEditInProgress) {
-                            addNodeDialogVisible = false
-                            addNodeProfileMenuExpanded = false
-                        }
-                    },
-                    title = { Text("添加节点") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("目标配置")
-                            TextButton(
-                                enabled = !nodeEditInProgress && editableProfiles.isNotEmpty(),
-                                onClick = { addNodeProfileMenuExpanded = true }
-                            ) {
-                                Text(targetProfile?.name ?: "选择本地配置")
-                            }
-                            DropdownMenu(
-                                expanded = addNodeProfileMenuExpanded,
-                                onDismissRequest = { addNodeProfileMenuExpanded = false }
-                            ) {
-                                editableProfiles.forEach { profile ->
-                                    DropdownMenuItem(
-                                        text = { Text(profile.name) },
-                                        onClick = {
-                                            addNodeProfileId = profile.id
-                                            addNodeProfileMenuExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                            OutlinedTextField(
-                                value = addNodeRaw,
-                                onValueChange = { addNodeRaw = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = !nodeEditInProgress,
-                                label = { Text("节点分享链接或 YAML") },
-                                minLines = 4,
-                                maxLines = 10
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(
-                            enabled = !nodeEditInProgress && targetProfile != null && addNodeRaw.isNotBlank(),
-                            onClick = {
-                                val profileId = targetProfile?.id ?: return@TextButton
-                                lifecycleScope.launch {
-                                    nodeEditInProgress = true
-                                    try {
-                                        val result = ConfigManager.appendNodeToProfile(
-                                            this@MainActivity,
-                                            profileId,
-                                            addNodeRaw
-                                        )
-                                        result.fold(
-                                            onSuccess = { updated ->
-                                                addNodeDialogVisible = false
-                                                addNodeProfileMenuExpanded = false
-                                                addNodeRaw = ""
-                                                reloadProfiles()
-                                                finishNodeEdit(updated.id, "节点已添加")
-                                            },
-                                            onFailure = { error ->
-                                                AppNotice.error(error.message ?: "节点添加失败")
-                                            }
-                                        )
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
-                                        AppNotice.error(error.message ?: "节点添加失败")
-                                    } finally {
-                                        nodeEditInProgress = false
-                                    }
-                                }
-                            }
-                        ) { Text(if (nodeEditInProgress) "添加中…" else "添加") }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            enabled = !nodeEditInProgress,
-                            onClick = {
-                                addNodeDialogVisible = false
-                                addNodeProfileMenuExpanded = false
-                            }
-                        ) { Text("取消") }
-                    }
-                )
-            }
-            if (renameNodeDialogVisible) {
-                GlassAlertDialog(
-                    onDismissRequest = { if (!nodeEditInProgress) renameNodeDialogVisible = false },
-                    title = { Text("重命名节点") },
-                    text = {
-                        OutlinedTextField(
-                            value = renameNodeNewName,
-                            onValueChange = { renameNodeNewName = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !nodeEditInProgress,
-                            singleLine = true,
-                            label = { Text("新名称") }
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            enabled = !nodeEditInProgress && renameNodeNewName.isNotBlank() && renameNodeNewName != renameNodeOldName,
-                            onClick = {
-                                val profile = activeProfile ?: return@TextButton
-                                val oldName = renameNodeOldName
-                                val newName = renameNodeNewName.trim()
-                                val affectedGroups = parsedProfile.groups
-                                    .filterValues { group -> group.proxies.any { it.name == oldName } }
-                                    .keys
-                                lifecycleScope.launch {
-                                    nodeEditInProgress = true
-                                    try {
-                                        val result = ConfigManager.renameProfileNode(
-                                            this@MainActivity,
-                                            profile.id,
-                                            oldName,
-                                            newName
-                                        )
-                                        result.fold(
-                                            onSuccess = { updated ->
-                                                settingsManager.renameSelectedNodes(affectedGroups, oldName, newName)
-                                                renameNodeDialogVisible = false
-                                                reloadProfiles()
-                                                finishNodeEdit(updated.id, "节点已重命名")
-                                            },
-                                            onFailure = { error ->
-                                                AppNotice.error(error.message ?: "节点重命名失败")
-                                            }
-                                        )
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
-                                        AppNotice.error(error.message ?: "节点重命名失败")
-                                    } finally {
-                                        nodeEditInProgress = false
-                                    }
-                                }
-                            }
-                        ) { Text(if (nodeEditInProgress) "保存中…" else "保存") }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            enabled = !nodeEditInProgress,
-                            onClick = { renameNodeDialogVisible = false }
-                        ) { Text("取消") }
                     }
                 )
             }

@@ -35,7 +35,7 @@ data class ImportInspection(
     }
 }
 
-/** URL and token are private data; UI and diagnostics display the user-assigned label only. */
+/** URL and token are private data; UI and diagnostics display the assigned or inferred label only. */
 @Serializable
 data class SubscriptionSource(
     val id: String,
@@ -60,7 +60,8 @@ data class SourceSnapshot(
     val userInfo: String? = null,
     val status: String = "已校验",
     val retained: Boolean = false,
-    val attemptedAt: Long = fetchedAt
+    val attemptedAt: Long = fetchedAt,
+    val suggestedName: String = ""
 )
 
 data class SourceDraft(
@@ -72,6 +73,10 @@ data class SourceDraft(
 )
 
 data class ImportPreview(val sources: List<SourceSnapshot>, val failures: List<ImportDiagnostic> = emptyList()) {
+    val suggestedName: String get() = sources.firstOrNull()?.let {
+        it.source.name.ifBlank { it.suggestedName }
+    }.orEmpty()
+    val supportsStandalone: Boolean get() = sources.singleOrNull()?.inspection?.completeValid == true
     val nodes: Int get() = sources.sumOf { it.inspection.nodes.size }
     val rejected: Int get() = failures.size + sources.sumOf {
         it.inspection.diagnostics.size.coerceAtLeast(if (it.inspection.usable) 0 else 1)

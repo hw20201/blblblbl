@@ -164,6 +164,7 @@ fun GlassSurface(
      */
     honorShape: Boolean = false,
     solidFill: Color? = null,
+    quietPanelElevation: Dp = 2.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     if (solidFill != null) {
@@ -193,9 +194,11 @@ fun GlassSurface(
         surfaceCategory == GlassSurfaceCategory.LARGE_PANELS &&
         !shortcutContactFrost && !shortcutDockLens
     if (useQuietPanel) {
+        val depthModifier = if (quietPanelElevation > 0.dp) {
+            modifier.cardDepth(effectiveShape, tokens.isDark, quietPanelElevation)
+        } else modifier
         Box(
-            modifier.cardDepth(effectiveShape, tokens.isDark, 2.dp)
-                .clip(effectiveShape).background(LoonCard, effectiveShape),
+            depthModifier.clip(effectiveShape).background(LoonCard, effectiveShape),
             content = content
         )
         return
