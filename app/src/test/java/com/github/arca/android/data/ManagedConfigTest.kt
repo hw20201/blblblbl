@@ -147,7 +147,17 @@ class ManagedConfigTest {
         val rewrittenAgain = ProfileNodeEditor.applyManagedConfig(second, rewritten, first)
         assertNotNull(rewrittenAgain)
         assertTrue(rewrittenAgain!!.contains("GEOSITE,GOOGLEFCM,FCM"))
-        assertTrue(rewrittenAgain.contains("  - name: FCM\n    type: select\n    proxies:\n      - GLOBAL\n      - DIRECT"))
+        // The FCM group must now point at GLOBAL first. Assert on the parsed
+        // structure, not the raw text: ProfileNodeEditor.dump uses SnakeYAML's
+        // indentless sequence style ("- name: FCM"), not the template's
+        // indented style ("  - name: FCM"), so a string match on the
+        // indented form can never pass.
+        @Suppress("UNCHECKED_CAST")
+        val reparsed = org.yaml.snakeyaml.Yaml().load<Map<String, Any?>>(rewrittenAgain)
+        val groups = reparsed["proxy-groups"] as List<Map<String, Any?>>
+        val fcm = groups.single { it["name"] == "FCM" }
+        assertEquals("FCM group points at GLOBAL first", listOf("GLOBAL", "DIRECT"), fcm["proxies"])
+        assertEquals("FCM group stays a select group", "select", fcm["type"])
         assertFalse(rewrittenAgain.contains("TIKTOK"))
     }
 
