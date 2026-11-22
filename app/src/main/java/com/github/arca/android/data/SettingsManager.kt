@@ -31,9 +31,13 @@ private const val LEGACY_KEY_SAVED_GLASS_PALETTES = "glass_saved_palettes_v1"
 
 private val glassSettingsJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+/** Managed split config lives under one typed JSON preference. */
+private val managedConfigJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
 class SettingsManager(context: Context) {
     private companion object {
         const val KEY_GLASS_SETTINGS = "glass_settings_v1"
+        const val KEY_MANAGED_CONFIG = "managed_config_v1"
         const val KEY_SHORTCUT_GLASS_LEVEL = "shortcut_glass_level"
         const val KEY_SHORTCUT_GLASS_REFRACTION = "shortcut_glass_refraction_dp"
         const val KEY_SHORTCUT_GLASS_DISPERSION = "shortcut_glass_dispersion_dp"
@@ -256,6 +260,18 @@ class SettingsManager(context: Context) {
         }
 
     fun resetGlassSettings() { glassSettings = GlassSettings.DEFAULT }
+
+    /** Managed split config for the built-in default profile; corrupt or absent stored JSON falls back to the default. */
+    var managedConfig: ManagedConfig
+        get() {
+            val raw = prefs.getString(KEY_MANAGED_CONFIG, null)
+            if (raw.isNullOrBlank()) return ManagedConfig.default()
+            return runCatching { managedConfigJson.decodeFromString<ManagedConfig>(raw) }
+                .getOrElse { ManagedConfig.default() }
+        }
+        set(value) = prefs.edit()
+            .putString(KEY_MANAGED_CONFIG, managedConfigJson.encodeToString(value))
+            .apply()
 
     private fun legacyGlassSettings(): GlassSettings {
         val hasOldShortcutOptics = listOf(

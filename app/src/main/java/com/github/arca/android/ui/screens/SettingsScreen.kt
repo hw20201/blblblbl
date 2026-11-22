@@ -103,9 +103,11 @@ fun SettingsScreen(
     onNavigateToConnections: () -> Unit = {},
     onNavigateToAppearance: () -> Unit = {},
     onNavigateToDns: () -> Unit = {},
+    onNavigateToManagedConfig: () -> Unit = {},
     glassScene: NavigationLensState? = null,
     appearanceDetailContent: (@Composable () -> Unit)? = null,
     dnsDetailContent: (@Composable () -> Unit)? = null,
+    managedConfigDetailContent: (@Composable () -> Unit)? = null,
     connectionsDetailContent: (@Composable () -> Unit)? = null,
     logsDetailContent: (@Composable () -> Unit)? = null,
     configurationCenterDetailContent: (@Composable (onClose: () -> Unit) -> Unit)? = null,
@@ -308,6 +310,25 @@ fun SettingsScreen(
                         onClick = {
                             if (configurationCenterDetailContent != null) openSettingsDetail(SettingsDetailPage.CONFIGURATION_CENTER)
                             else onNavigateToConfigurationCenter()
+                        }
+                    )
+                }
+                SeparatedRow(
+                    SeparatedRowPosition.Middle,
+                    modifier = Modifier
+                        .graphicsLayer { alpha = if (hiddenSettingsDetailSource == SettingsDetailPage.MANAGED_CONFIG) 0f else 1f }
+                        .onGloballyPositioned { settingsDetailBounds[SettingsDetailPage.MANAGED_CONFIG] = it.boundsInWindow(); settingsDetailRadius[SettingsDetailPage.MANAGED_CONFIG] = SeparatedRowPosition.Middle }
+                ) {
+                    CupertinoCell(
+                        modifier = Modifier.testTag("settings-managed-config-entry"),
+                        title = "托管配置",
+                        subtitle = "服务分流、拦截与每组目标",
+                        icon = Icons.Default.Rule,
+                        iconBg = AppPalette.iconYellowAmber,
+                        showChevron = true,
+                        onClick = {
+                            if (managedConfigDetailContent != null) openSettingsDetail(SettingsDetailPage.MANAGED_CONFIG)
+                            else onNavigateToManagedConfig()
                         }
                     )
                 }
@@ -601,6 +622,7 @@ fun SettingsScreen(
                 onClose = { activeSettingsDetail = null },
                 appearanceContent = appearanceDetailContent,
                 dnsContent = dnsDetailContent,
+                managedConfigContent = managedConfigDetailContent,
                 connectionsContent = connectionsDetailContent,
                 logsContent = logsDetailContent,
                 configurationCenterContent = configurationCenterDetailContent
@@ -739,6 +761,10 @@ private fun SettingsDetailSourceFace(
             SettingsDetailPage.DNS -> CupertinoCell(
                 title = "DNS 设置", value = if (fakeIpEnabled) "Fake-IP" else "Redir-Host",
                 icon = Icons.Default.Public, iconBg = AppPalette.iconTeal, showChevron = true
+            )
+            SettingsDetailPage.MANAGED_CONFIG -> CupertinoCell(
+                title = "托管配置", subtitle = "服务分流、拦截与每组目标",
+                icon = Icons.Default.Rule, iconBg = AppPalette.iconYellowAmber, showChevron = true
             )
             SettingsDetailPage.CONNECTIONS -> CupertinoCell(
                 title = "活动连接", subtitle = "查看实时连接，可单条或全部断开",

@@ -42,16 +42,19 @@ object ConfigManager {
     const val DEFAULT_PROFILE_ID = "builtin-default"
 
     /** Built-in default profile: domestic traffic stays direct, the rest follows the GLOBAL group. */
-    private val DEFAULT_PROFILE_TEMPLATE = """
-        proxies: []
-        proxy-groups:
-          - name: GLOBAL
-            type: select
-            proxies:
-              - DIRECT
-        rules:
-${ProfileNodeEditor.defaultSplitRules.joinToString("\n") { "          - $it" }}
-    """.trimIndent() + "\n"
+    internal fun defaultProfileTemplate(config: ManagedConfig = ManagedConfig.default()): String =
+        // Concatenated, not a raw string: the interpolated groups block is
+        // multi-line, and trimIndent on a raw string cannot keep its
+        // indentation aligned with the template (it broke the YAML).
+        "proxies: []\n" +
+            "proxy-groups:\n" +
+            "  - name: GLOBAL\n" +
+            "    type: select\n" +
+            "    proxies:\n" +
+            "      - DIRECT\n" +
+            config.serviceGroupsYaml() + "\n" +
+            "rules:\n" +
+            config.splitRules().joinToString("\n") { "  - $it" } + "\n"
 
     /** The previous minimal default, replaced on sight so existing installs gain the split rules. */
     private val LEGACY_DEFAULT_PROFILE_TEMPLATE = """
@@ -268,24 +271,26 @@ ${ProfileNodeEditor.defaultSplitRules.joinToString("\n") { "          - $it" }}
             invalidateProfilesCache()
         }
         if (!file.isFile) {
-            com.github.arca.android.data.subscription.atomicWrite(file, DEFAULT_PROFILE_TEMPLATE.toByteArray(Charsets.UTF_8))
+            com.github.arca.android.data.subscription.atomicWrite(file, defaultProfileTemplate(SettingsManager(context).managedConfig).toByteArray(Charsets.UTF_8))
             invalidateProfilesCache()
         } else {
-            migrateLegacyDefaultRules(file)
+            migrateLegacyDefaultRules(context, file)
         }
         file
     }
 
     /**
      * Existing installs still carry the old single-rule default; give them the
-     * full split rules. Anything the user changed is left exactly as it is.
+     * full split rules from the stored managed config. Anything the user
+     * changed is left exactly as it is.
      */
-    private fun migrateLegacyDefaultRules(file: File) {
+    private fun migrateLegacyDefaultRules(context: Context, file: File) {
         val current = runCatching { file.readText() }.getOrNull() ?: return
+        val managed = SettingsManager(context).managedConfig
         val upgraded = if (current == LEGACY_DEFAULT_PROFILE_TEMPLATE) {
-            DEFAULT_PROFILE_TEMPLATE
+            defaultProfileTemplate(managed)
         } else {
-            runCatching { ProfileNodeEditor.upgradeLegacyDefaultRules(current) }.getOrNull()
+            runCatching { ProfileNodeEditor.upgradeLegacyDefaultRules(current, managed) }.getOrNull()
         } ?: return
         if (upgraded != current) {
             com.github.arca.android.data.subscription.atomicWrite(file, upgraded.toByteArray(Charsets.UTF_8))
@@ -612,7 +617,7 @@ ${ProfileNodeEditor.defaultSplitRules.joinToString("\n") { "          - $it" }}
             Log.i(TAG, "Prepared synthesized config with user profile: ${sourceFile.name}")
         } else {
             val header = buildRuntimeHeader(settings, userDns, ipv6Enabled, tcpConcurrent = true)
-            targetFile.writeText("$header\n$DEFAULT_PROFILE_TEMPLATE")
+            targetFile.writeText("$header\n${defaultProfileTemplate(settings.managedConfig)}")
             Log.i(TAG, "Prepared default fallback config")
         }
 

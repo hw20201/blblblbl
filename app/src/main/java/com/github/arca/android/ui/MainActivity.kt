@@ -108,6 +108,7 @@ enum class SubScreen {
     PROFILE_OVERRIDE,
     RULES,
     DNS,
+    MANAGED_CONFIG,
     REQUESTS,
     NETWORK_SHARE,
     APPEARANCE,
@@ -327,6 +328,7 @@ class MainActivity : ComponentActivity() {
         var allowLan by remember { mutableStateOf(settingsManager.allowLan) }
         var lanCredentials by remember { mutableStateOf(settingsManager.lanCredentials()) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
+        var managedConfig by remember { mutableStateOf(settingsManager.managedConfig) }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
         var panelAnimationSpeed by remember { mutableStateOf(settingsManager.panelAnimationSpeed) }
@@ -499,6 +501,50 @@ class MainActivity : ComponentActivity() {
                         mainGrp?.now ?: parsed.activeNode
                     }
                     activeNodeName = effectiveMainNow
+                }
+            }
+        }
+
+        // Persist a managed-config change, rewrite the built-in default profile
+        // from it and reload the core when that profile is the active one.
+        // A profile whose rules were hand-edited is never rewritten: the
+        // setting snaps back and the user is told why.
+        // Declared after loadProfileInCore: a local function is only visible
+        // to code below its declaration.
+        val onManagedConfigChanged: (ManagedConfig) -> Unit = { updated ->
+            if (updated != managedConfig) {
+                val previous = settingsManager.managedConfig
+                settingsManager.managedConfig = updated
+                managedConfig = updated
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val rewritten = runCatching {
+                        val default = ConfigManager.getOrCreateDefaultProfile(this@MainActivity)
+                        ProfileNodeEditor.applyManagedConfig(updated, default.file.readText(), previous)
+                    }.getOrNull()
+                    if (rewritten == null) {
+                        withContext(Dispatchers.Main) {
+                            settingsManager.managedConfig = previous
+                            managedConfig = previous
+                            AppNotice.show("内置默认配置已被手动修改，托管配置未写回", long = true)
+                        }
+                        return@launch
+                    }
+                    val saved = ConfigManager.saveProfileContent(
+                        this@MainActivity, ConfigManager.DEFAULT_PROFILE_ID, rewritten
+                    )
+                    if (!saved) {
+                        withContext(Dispatchers.Main) {
+                            settingsManager.managedConfig = previous
+                            managedConfig = previous
+                            AppNotice.show("托管配置未能写回内置默认配置", long = true)
+                        }
+                        return@launch
+                    }
+                    if (vpnState.status == VpnState.Status.RUNNING &&
+                        DashboardData.activeProfile(profiles, selectedProfileId)?.id == ConfigManager.DEFAULT_PROFILE_ID
+                    ) {
+                        loadProfileInCore()
+                    }
                 }
             }
         }
@@ -1299,6 +1345,7 @@ class MainActivity : ComponentActivity() {
                             onNavigateToConnections = { currentSubScreen = SubScreen.CONNECTIONS },
                             onNavigateToAppearance = { currentSubScreen = SubScreen.APPEARANCE },
                             onNavigateToDns = { currentSubScreen = SubScreen.DNS },
+                            onNavigateToManagedConfig = { currentSubScreen = SubScreen.MANAGED_CONFIG },
                             appearanceDetailContent = {
                                 AppearanceScreen(
                                     glassSettings = glassSettings,
@@ -1336,6 +1383,14 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
+                                    onBack = {},
+                                    embeddedPanel = true
+                                )
+                            },
+                            managedConfigDetailContent = {
+                                ManagedConfigScreen(
+                                    config = managedConfig,
+                                    onConfigChanged = onManagedConfigChanged,
                                     onBack = {},
                                     embeddedPanel = true
                                 )
@@ -1717,6 +1772,13 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
+                                    onBack = { currentSubScreen = null }
+                                )
+                            }
+                            SubScreen.MANAGED_CONFIG -> {
+                                ManagedConfigScreen(
+                                    config = managedConfig,
+                                    onConfigChanged = onManagedConfigChanged,
                                     onBack = { currentSubScreen = null }
                                 )
                             }

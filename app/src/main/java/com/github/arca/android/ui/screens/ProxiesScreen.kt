@@ -358,8 +358,13 @@ fun ProxiesScreen(
             } else {
                 PullToRefreshBox(
                     isRefreshing = isAnyTesting,
-                    // Blank group = test every visible group.
-                    onRefresh = { onHealthCheck("") },
+                    // Test only the selected group, not every group: a full
+                    // sweep floods all groups at once and can stall normal
+                    // traffic while it runs.
+                    onRefresh = {
+                        if (selectedGroupName.isNotBlank()) onHealthCheck(selectedGroupName)
+                        else if (visibleGroups.isNotEmpty()) onHealthCheck(visibleGroups.first())
+                    },
                     state = pullState,
                     modifier = Modifier.fillMaxSize(),
                     indicator = { ProxiesPullIndicator(pullState, isAnyTesting, 0.dp) }
@@ -1309,11 +1314,14 @@ private fun ProxyGlassCard(
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
     if (GlassDefaults.quietPages) {
-        // One surface per header or node, with a uniform shallow lift and no inset panels.
-        Surface(
-            modifier = modifier.cardDepth(shape, LocalLoonColors.current.isDark, 1.dp),
-            color = color,
-            shape = shape
+        // Shadow first (rounded shape), then clip, then the fill — the same
+        // ordering the glass branch and the quiet panel use. Surface drew
+        // the selected card's shadow as a rectangle behind the rounded fill.
+        Box(
+            modifier = modifier
+                .cardDepth(shape, LocalLoonColors.current.isDark, if (selected) 3.dp else 1.dp)
+                .clip(shape)
+                .background(color, shape)
         ) {
             Box(content = content)
         }

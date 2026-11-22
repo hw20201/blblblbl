@@ -158,6 +158,63 @@ class ProxiesGlassRenderingTest {
         saveScreenshot("proxies-classic-fallback")
     }
 
+    @Test fun quietSelectedCardShadowFollowsRoundedCorners() {
+        // Regression test: the selected node card's shadow rendered as a
+        // rectangle behind the rounded fill on quiet pages. The card is
+        // 14dp rounded; a point 2dp diagonally outside the top-left corner
+        // and a point 2dp above the top edge centre tell them apart: a
+        // rectangular shadow darkens both, a rounded shadow only the edge.
+        GlassDefaults.enabled = true
+        GlassDefaults.quietPages = true
+        val proxies = listOf(
+            Proxy("Tokyo", type = "Shadowsocks", delay = 45),
+            Proxy("Osaka", type = "VMess", delay = 120)
+        )
+        compose.setContent {
+            MihomoTheme(ThemeMode.DARK) {
+                ProvideGlassTheme {
+                    val group = ProxyGroup("select", proxies, now = "Tokyo")
+                    ProxiesScreen(
+                        groups = listOf("Proxy"), groupMap = mapOf("Proxy" to group),
+                        currentGroup = group, selectedGroupName = "Proxy",
+                        currentViewMode = "TABS", nodeColumns = 1,
+                        onViewModeChanged = {}, onShowGroupIconsChanged = {},
+                        onSelectGroup = {}, onSelectProxy = { _, _ -> }, onHealthCheck = {}
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("proxy-card-Tokyo").assertIsDisplayed()
+        val bounds = compose.onNodeWithTag("proxy-card-Tokyo").fetchSemanticsNode().boundsInRoot
+        val density = compose.activity.resources.displayMetrics.density
+        val window = compose.activity.window
+        val view = window.decorView
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        var result = -1
+        compose.runOnIdle { PixelCopy.request(window, bitmap, { result = it }, Handler(Looper.getMainLooper())) }
+        compose.waitForIdle()
+        assertEquals("Robolectric native PixelCopy succeeds (not a real device)", PixelCopy.SUCCESS, result)
+        fun brightnessAt(xDp: Float, yDp: Float): Int {
+            val x = (xDp * density).toInt().coerceIn(0, bitmap.width - 1)
+            val y = (yDp * density).toInt().coerceIn(0, bitmap.height - 1)
+            val pixel = bitmap.getPixel(x, y)
+            return (android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel)) / 3
+        }
+        val corner = brightnessAt(bounds.left - 2f, bounds.top - 2f)
+        val edge = brightnessAt(bounds.center.x, bounds.top - 2f)
+        val bg = brightnessAt(bounds.left - 14f, bounds.top - 2f)
+        saveScreenshot("proxies-quiet-selected-shadow")
+        bitmap.recycle()
+        // Robolectric does not draw elevation shadows, so a visible shadow
+        // cannot be required here. The regression this guards is a
+        // rectangular slab: it would darken the diagonal outside the
+        // corner. Assert the corner stays page background and is never
+        // darker than the edge above the card.
+        assertTrue("Corner outside the card is page background (corner=$corner bg=$bg)", kotlin.math.abs(corner - bg) <= 6)
+        assertTrue("No rectangular shadow reaches the diagonal outside the corner (corner=$corner edge=$edge)", corner >= edge - 2)
+    }
+
     @Test fun headerAndGroupPillsLeaveSpaceAndKeepRawSelectionKeys() {
         GlassDefaults.enabled = true
         GlassDefaults.quietPages = true
