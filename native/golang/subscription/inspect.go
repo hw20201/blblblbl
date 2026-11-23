@@ -284,11 +284,104 @@ func decode64(text string) ([]byte, error) {
 	return nil, fmt.Errorf("base64")
 }
 
+// normalizeNowhereLink accepts the real-world spellings of a Nowhere share
+// link that the strict upstream parser rejects, without changing any field
+// the parser still validates. Scheme is lowercased, an uppercase-hex key is
+// lowercased, a UUID-form key is de-dashed, a bare trailing "/" path is
+// dropped, and an uppercase-hex pin is lowercased. Anything else is left
+// untouched so the existing invalid-link cases still fail.
+func normalizeNowhereLink(line string) string {
+	scheme, rest, found := strings.Cut(line, "://")
+	if !found || strings.ToLower(scheme) != "nowhere" {
+		return line
+	}
+	beforeFrag, frag, hasFrag := strings.Cut(rest, "#")
+	beforeQuery, query, hasQuery := strings.Cut(beforeFrag, "?")
+	// Only a bare trailing "/" is dropped; a real path is left so the
+	// strict parser still rejects it.
+	if idx := strings.Index(beforeQuery, "/"); idx != -1 && idx == len(beforeQuery)-1 {
+		beforeQuery = beforeQuery[:idx]
+	}
+	if at := strings.LastIndex(beforeQuery, "@"); at != -1 {
+		if norm, ok := normalizeNowhereKey(beforeQuery[:at]); ok {
+			beforeQuery = norm + beforeQuery[at:]
+		}
+	}
+	if hasQuery {
+		query = normalizeNowherePin(query)
+	}
+	out := "nowhere://" + beforeQuery
+	if hasQuery {
+		out += "?" + query
+	}
+	if hasFrag {
+		out += "#" + frag
+	}
+	return out
+}
+
+func normalizeNowhereKey(key string) (string, bool) {
+	if len(key) == 36 {
+		parts := strings.Split(key, "-")
+		if len(parts) == 5 && len(parts[0]) == 8 && len(parts[1]) == 4 && len(parts[2]) == 4 && len(parts[3]) == 4 && len(parts[4]) == 12 {
+			joined := strings.Join(parts, "")
+			if isHexString(joined) {
+				return strings.ToLower(joined), true
+			}
+		}
+		return "", false
+	}
+	if len(key) == 32 && isHexString(key) {
+		lower := strings.ToLower(key)
+		if lower != key {
+			return lower, true
+		}
+	}
+	return "", false
+}
+
+func isHexString(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeNowherePin(query string) string {
+	pairs := strings.Split(query, "&")
+	changed := false
+	for i, pair := range pairs {
+		k, v, found := strings.Cut(pair, "=")
+		if !found || k != "pin" {
+			continue
+		}
+		if len(v) == 64 && isHexString(v) {
+			lower := strings.ToLower(v)
+			if lower != v {
+				pairs[i] = k + "=" + lower
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return query
+	}
+	return strings.Join(pairs, "&")
+}
+
 func convertLine(line string) ([]map[string]any, string, string) {
 	scheme := strings.ToLower(strings.SplitN(line, "://", 2)[0])
 	if scheme == "nowhere" {
 		// Keep v99's query handling and defaults identical to native Nowhere imports.
-		converted, err := convert.ConvertsV2Ray([]byte(line))
+		// Real-world links sometimes use an uppercase key, a UUID-form key, a
+		// trailing slash, or an uppercase pin; normalize those spellings first.
+		converted, err := convert.ConvertsV2Ray([]byte(normalizeNowhereLink(line)))
 		if err != nil || len(converted) != 1 {
 			return nil, "uri", "Nowhere 分享链接格式或参数无效"
 		}

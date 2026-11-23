@@ -41,16 +41,44 @@ class ConfigDnsMergeTest {
 
     @Test fun `DNS defaults separate bootstrap and DoH transports`() {
         val dns = ConfigManager.buildDnsSection(false, null)
-        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["default-nameserver"])
-        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["proxy-server-nameserver"])
+        assertEquals(listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), dns["default-nameserver"])
+        assertEquals(listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT"), dns["proxy-server-nameserver"])
         assertEquals(listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"), dns["nameserver"])
         assertEquals(listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), dns["fallback"])
         assertEquals(mapOf("geoip" to true, "geoip-code" to "CN"), dns["fallback-filter"])
     }
 
-    @Test fun `profile DNS resolvers and policies survive with filter union`() {
-        val dns = ConfigManager.buildDnsSection(true, mapOf("nameserver" to listOf("1.1.1.1"), "nameserver-policy" to mapOf("+.corp" to "10.0.0.53"), "fake-ip-filter" to listOf("+.corp", "*.lan")))
-        assertEquals(listOf("1.1.1.1"), dns["nameserver"]); assertEquals(mapOf("+.corp" to "10.0.0.53"), dns["nameserver-policy"])
-        val filter = dns["fake-ip-filter"] as List<*>; assertTrue(filter.contains("connectivitycheck.gstatic.com")); assertEquals(filter.size, filter.toSet().size)
+    @Test fun `profile cannot override encrypted bootstrap resolvers`() {
+        val dns = ConfigManager.buildDnsSection(false, mapOf(
+            "default-nameserver" to listOf("192.0.2.1"),
+            "proxy-server-nameserver" to listOf("192.0.2.2")
+        ))
+        val encryptedBootstrap = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query")
+        assertEquals(encryptedBootstrap, dns["default-nameserver"])
+        assertEquals(encryptedBootstrap.map { "$it#DIRECT" }, dns["proxy-server-nameserver"])
+    }
+
+    @Test fun `profile DNS retains encrypted resolvers and filters plaintext ones`() {
+        val dns = ConfigManager.buildDnsSection(true, mapOf(
+            "nameserver" to listOf("1.1.1.1", "https://dns.example/dns-query"),
+            "fallback" to listOf("udp://8.8.8.8:53", "tls://dns.example:853"),
+            "nameserver-policy" to mapOf(
+                "+.corp" to "192.168.1.1",
+                "+.secure" to listOf("https://dns.example/dns-query", "114.114.114.114")
+            ),
+            "fake-ip-filter" to listOf("+.corp", "*.lan")
+        ))
+        assertEquals(listOf("https://dns.example/dns-query"), dns["nameserver"])
+        assertEquals(listOf("tls://dns.example:853"), dns["fallback"])
+        assertEquals(mapOf("+.secure" to listOf("https://dns.example/dns-query")), dns["nameserver-policy"])
+        val filter = dns["fake-ip-filter"] as List<*>
+        assertTrue(filter.contains("connectivitycheck.gstatic.com"))
+        assertTrue(filter.contains("+.corp"))
+        assertEquals(filter.size, filter.toSet().size)
+    }
+
+    @Test fun `profiles cannot re-enable native system DNS append`() {
+        val sanitized = ConfigManager.sanitizeUserConfig("clash-for-android:\n  append-system-dns: true\nproxies: []")
+        assertFalse(sanitized.contains("append-system-dns"))
     }
 }

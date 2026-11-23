@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -78,6 +79,10 @@ fun ConnectionsScreen(
     var paused by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var confirmCloseAll by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    ReportSettingsDetailScrollOffset {
+        if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else listState.firstVisibleItemScrollOffset
+    }
     val running = vpnState.status == VpnState.Status.RUNNING
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -157,6 +162,7 @@ fun ConnectionsScreen(
                     EmptyHint(if (query.isBlank()) "暂无活动连接" else "没有匹配的连接")
                 } else {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize().bounceOverscroll(),
                         contentPadding = PaddingValues(
                             start = 16.dp, end = 16.dp, top = 6.dp,

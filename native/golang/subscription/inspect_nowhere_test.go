@@ -100,3 +100,31 @@ func TestNowhereImportInvalidLinksRemainPartialAndRedacted(t *testing.T) {
 		})
 	}
 }
+
+func TestNowhereImportLenientSpellings(t *testing.T) {
+	hexKey := "abcdef0123456789abcdef0123456789"
+	upperKey := strings.ToUpper(hexKey)
+	uuidKey := "abcdef01-2345-6789-abcd-ef0123456789"
+	pin := strings.Repeat("ab", 32)
+	upperPin := strings.ToUpper(pin)
+	cases := []struct {
+		name, uri, password, pin string
+	}{
+		{"uppercase key", "nowhere://" + upperKey + "@test.example.com:12345?net=udp&morph=1#Upper", hexKey, ""},
+		{"UUID key", "nowhere://" + uuidKey + "@test.example.com:12345?net=udp&morph=1#UUID", hexKey, ""},
+		{"trailing slash", "nowhere://" + hexKey + "@test.example.com:12345/?net=udp&morph=1#Slash", hexKey, ""},
+		{"uppercase pin", "nowhere://" + hexKey + "@test.example.com:12345?net=udp&morph=1&pin=" + upperPin + "#Pin", hexKey, pin},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := Inspect(tc.uri, "uri")
+			if len(p.Nodes) != 1 || len(p.Diagnostics) != 0 {
+				t.Fatalf("lenient Nowhere spelling rejected: %+v", p.Diagnostics)
+			}
+			n := p.Nodes[0].Data
+			if n["password"] != tc.password || n["pin"] != tc.pin {
+				t.Fatalf("lenient Nowhere spelling not normalized: %+v", n)
+			}
+		})
+	}
+}

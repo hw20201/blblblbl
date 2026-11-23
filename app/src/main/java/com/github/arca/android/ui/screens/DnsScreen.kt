@@ -57,6 +57,9 @@ fun DnsScreen(
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
     val pageListState = listState ?: rememberLazyListState()
+    ReportSettingsDetailScrollOffset {
+        if (pageListState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else pageListState.firstVisibleItemScrollOffset
+    }
 
     var testDomainInput by remember { mutableStateOf("") }
     var isQuerying by remember { mutableStateOf(false) }

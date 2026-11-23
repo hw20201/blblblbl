@@ -47,7 +47,9 @@ fun ManagedConfigScreen(
     embeddedPanel: Boolean = false
 ) {
     val titleScene = rememberNavigationLens()
-
+    ReportSettingsDetailScrollOffset {
+        if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else listState.firstVisibleItemScrollOffset
+    }
     fun update(transform: (ManagedConfig) -> ManagedConfig) = onConfigChanged(transform(config))
 
     Box(

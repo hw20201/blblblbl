@@ -99,11 +99,7 @@ data class ManagedConfig(
             proxies.joinToString("\n") { "      - $it" }
     }
 
-    /**
-     * Full domestic-direct + service split, in BettBox's rule order: private,
-     * QUIC block, ads, China-specific domains, per-service domains and IPs,
-     * then broad domestic/non-domestic fallbacks and match.
-     */
+    /** Generate managed split rules with service matches before broad region fallbacks. */
     internal fun splitRules(): List<String> = buildList {
         add("GEOSITE,PRIVATE,DIRECT")
         if (blockQuic) add("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT")

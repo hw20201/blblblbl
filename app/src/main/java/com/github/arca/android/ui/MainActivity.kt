@@ -80,11 +80,9 @@ import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
 import com.github.arca.android.ui.screens.*
 import com.github.arca.android.ui.theme.LoonBg
 import com.github.arca.android.ui.theme.MihomoTheme
-import android.os.Looper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -699,10 +697,6 @@ class MainActivity : ComponentActivity() {
             if (groupName.isNotBlank() && testingNodes.contains(groupName)) {
                 return Job().apply { complete() }
             }
-            // Show the spinner on the tap itself, before any IO round-trip.
-            if (groupName.isNotBlank() && Looper.myLooper() == Looper.getMainLooper()) {
-                testingNodes = testingNodes + groupName
-            }
             return lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     if (!ClashCore.isCoreLoaded) {
@@ -720,71 +714,81 @@ class MainActivity : ComponentActivity() {
 
                                     if (isAutoTest && !isAutoGroup) return@withPermit
 
-                                    // Direct members (real nodes), skipping the virtual
-                                    // DIRECT/REJECT/COMPATIBLE entries and any member that
-                                    // is itself a subgroup.
-                                    val directNames = (grp?.proxies?.map { it.name } ?: emptyList()).filter { name ->
-                                        !name.equals("DIRECT", ignoreCase = true) &&
-                                        !name.equals("REJECT", ignoreCase = true) &&
-                                        !name.equals("COMPATIBLE", ignoreCase = true)
-                                    }
-                                    if (directNames.isEmpty()) return@withPermit
-                                    val memberSubGroups = directNames.filter { parsedProfile.groups.containsKey(it) }
-                                    val testNames = (directNames.filter { !memberSubGroups.contains(it) } +
-                                        memberSubGroups.flatMap { subG ->
-                                            parsedProfile.groups[subG]?.proxies?.map { it.name } ?: emptyList()
-                                        }).distinct().filter { name ->
-                                        !name.equals("DIRECT", ignoreCase = true) &&
-                                        !name.equals("REJECT", ignoreCase = true) &&
-                                        !name.equals("COMPATIBLE", ignoreCase = true)
-                                    }
-                                    if (testNames.isEmpty()) return@withPermit
+                                    val filterVirtual = grp?.proxies?.filter { p ->
+                                        !p.name.equals("DIRECT", ignoreCase = true) &&
+                                        !p.name.equals("REJECT", ignoreCase = true) &&
+                                        !p.name.equals("COMPATIBLE", ignoreCase = true)
+                                    } ?: emptyList()
+
+                                    val allNodeNames = filterVirtual.map { it.name }
+                                    if (allNodeNames.isEmpty()) return@withPermit
+
+                                    val memberSubGroups = allNodeNames.filter { parsedProfile.groups.containsKey(it) }
 
                                     withContext(Dispatchers.Main) {
-                                        testingNodes = if (isAutoTest) testingNodes + g else testingNodes + testNames + g
+                                        testingNodes = if (isAutoTest) testingNodes + g else testingNodes + allNodeNames + g
                                     }
 
                                     try {
                                         val curTime = System.currentTimeMillis()
-                                        // One URL test per node by name through the
-                                        // native core. The native layer caps the
-                                        // whole app at 10 concurrent URL tests, so
-                                        // this batch can never flood the core no
-                                        // matter how many groups test at once.
-                                        val delays = ClashCore.testProxyDelays(testNames) { pName, delay ->
-                                            lifecycleScope.launch(Dispatchers.Main) {
-                                                if (delay > 0 || delay == -2) {
-                                                    delayCache[pName] = delay
-                                                    delayCache["$g:$pName"] = delay
-                                                    if (delay > 0) {
-                                                        nodeLastTestedTimes[pName] = System.currentTimeMillis()
+
+                                        // Concurrently run parent group health check and member sub-groups!
+                                        val parentJob = async(Dispatchers.IO) {
+                                            ClashCore.healthCheckGroupNative(g) { pName, delay ->
+                                                lifecycleScope.launch(Dispatchers.Main) {
+                                                    if (delay > 0 || delay == -2) {
+                                                        delayCache[pName] = delay
+                                                        delayCache["$g:$pName"] = delay
+                                                        if (delay > 0) {
+                                                            nodeLastTestedTimes[pName] = System.currentTimeMillis()
+                                                        }
                                                     }
+                                                    testingNodes = testingNodes - pName
                                                 }
-                                                testingNodes = testingNodes - pName
                                             }
                                         }
 
-                                        // Subgroup delay = its best member; parent
-                                        // delay = its `now` node's delay, else the
-                                        // best member delay.
-                                        val finalGroup = ClashCore.queryGroup(g)
-                                        withContext(Dispatchers.Main) {
-                                            memberSubGroups.forEach { subG ->
-                                                val members = parsedProfile.groups[subG]?.proxies?.map { it.name } ?: emptyList()
-                                                val subDelay = ClashCore.groupDelayFromMembers(members.mapNotNull { delays[it] })
-                                                if (subDelay > 0 || subDelay == -2) {
-                                                    delayCache[subG] = subDelay
-                                                }
-                                                val subGroupData = ClashCore.queryGroup(subG)
-                                                if (subGroupData != null && subGroupData.now.isNotBlank()) {
-                                                    val existing = liveGroupMap[subG] ?: parsedProfile.groups[subG]
-                                                    if (existing != null) {
-                                                        liveGroupMap = liveGroupMap + (subG to existing.copy(now = subGroupData.now))
+                                        val subJobs = memberSubGroups.map { subG ->
+                                            async(Dispatchers.IO) {
+                                                val subDelays = ClashCore.healthCheckGroupNative(subG) { subNodeName, subNodeDelay ->
+                                                    lifecycleScope.launch(Dispatchers.Main) {
+                                                        if (subNodeDelay > 0 || subNodeDelay == -2) {
+                                                            delayCache[subNodeName] = subNodeDelay
+                                                            delayCache["$subG:$subNodeName"] = subNodeDelay
+                                                        }
+                                                        testingNodes = testingNodes - subNodeName
                                                     }
                                                 }
-                                                testingNodes = testingNodes - subG
+                                                val subGroupData = ClashCore.queryGroup(subG)
+                                                val subBestName = subGroupData?.now ?: ""
+                                                val subBestDelay = subDelays[subBestName] ?: subGroupData?.proxies?.find { it.name == subBestName }?.delay ?: -1
+                                                val finalSubDelay = if (subBestDelay in 1..65534) subBestDelay else if (subBestDelay >= 65535) -2 else -1
+                                                withContext(Dispatchers.Main) {
+                                                    if (finalSubDelay > 0 || finalSubDelay == -2) {
+                                                        delayCache[subG] = finalSubDelay
+                                                    }
+                                                    subDelays.forEach { (subNodeName, subNodeDelay) ->
+                                                        if (subNodeDelay > 0 || subNodeDelay == -2) {
+                                                            delayCache[subNodeName] = subNodeDelay
+                                                            delayCache["$subG:$subNodeName"] = subNodeDelay
+                                                        }
+                                                    }
+                                                    if (subGroupData != null && subGroupData.now.isNotBlank()) {
+                                                        val existing = liveGroupMap[subG] ?: parsedProfile.groups[subG]
+                                                        if (existing != null) {
+                                                            liveGroupMap = liveGroupMap + (subG to existing.copy(now = subGroupData.now))
+                                                        }
+                                                    }
+                                                    testingNodes = testingNodes - subG
+                                                }
                                             }
-                                            delays.forEach { (name, delay) ->
+                                        }
+
+                                        val groupDelays = parentJob.await()
+                                        subJobs.awaitAll()
+
+                                        withContext(Dispatchers.Main) {
+                                            groupDelays.forEach { (name, delay) ->
                                                 if (delay > 0 || delay == -2) {
                                                     delayCache[name] = delay
                                                     delayCache["$g:$name"] = delay
@@ -793,17 +797,17 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        val finalGroup = ClashCore.queryGroup(g)
+                                        withContext(Dispatchers.Main) {
                                             val bestNodeName = finalGroup?.now ?: ""
-                                            val bestDelay = delayCache[bestNodeName]
-                                                ?: delays[bestNodeName]
-                                                ?: finalGroup?.proxies?.find { it.name == bestNodeName }?.delay
-                                                ?: -1
-                                            val finalGroupDelay = if (bestDelay in 1..65534) bestDelay
-                                                else if (bestDelay >= 65535 || bestDelay == -2) -2
-                                                else ClashCore.groupDelayFromMembers(delays.values)
+                                            val bestDelay = delayCache[bestNodeName] ?: finalGroup?.proxies?.find { it.name == bestNodeName }?.delay ?: -1
+                                            val finalGroupDelay = if (bestDelay in 1..65534) bestDelay else if (bestDelay >= 65535) -2 else -1
                                             if (finalGroupDelay > 0 || finalGroupDelay == -2) {
                                                 delayCache[g] = finalGroupDelay
                                             }
+
                                             if (finalGroup != null && finalGroup.now.isNotBlank()) {
                                                 val existing = liveGroupMap[g] ?: parsedProfile.groups[g]
                                                 if (existing != null) {
@@ -815,8 +819,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     } finally {
-                                        withContext(NonCancellable + Dispatchers.Main) {
-                                            testingNodes = if (isAutoTest) testingNodes - g else testingNodes - testNames.toSet() - g
+                                        withContext(Dispatchers.Main) {
+                                            testingNodes = if (isAutoTest) testingNodes - g else testingNodes - allNodeNames.toSet() - g
                                         }
                                     }
                                 }
@@ -824,7 +828,7 @@ class MainActivity : ComponentActivity() {
                         }.awaitAll()
                     }
                 } catch (_: Throwable) {
-                    withContext(NonCancellable + Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         if (groupName.isNotBlank()) {
                             testingNodes = testingNodes - groupName
                         }
@@ -833,7 +837,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun runSpeedTestForSingleNode(nodeName: String) {
+        fun runSpeedTestForSingleNode(groupName: String?, nodeName: String) {
             if (testingNodes.contains(nodeName)) return
 
             if (parsedProfile.groups.containsKey(nodeName)) {
@@ -848,10 +852,7 @@ class MainActivity : ComponentActivity() {
                     if (!ClashCore.isCoreLoaded) {
                         ClashCore.ensureCoreLoaded(this@MainActivity)
                     }
-                    // The native layer has a per-proxy URL test now, so a
-                    // single node is tested directly instead of routing
-                    // through its group (which never worked for one node).
-                    val delay = ClashCore.testProxyDelay(nodeName)
+                    val delay = ClashCore.testProxyDelayNative(nodeName, groupName)
                     val curTime = System.currentTimeMillis()
                     withContext(Dispatchers.Main) {
                         if (delay > 0 || delay == -2) {
@@ -863,7 +864,7 @@ class MainActivity : ComponentActivity() {
                     }
                 } catch (_: Throwable) {
                 } finally {
-                    withContext(NonCancellable + Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         testingNodes = testingNodes - nodeName
                     }
                 }
@@ -1254,7 +1255,7 @@ class MainActivity : ComponentActivity() {
                                 onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
                                 onHealthCheck = { group -> runSpeedTestForGroup(group) },
                                 testingNodes = testingNodes,
-                                onTestSingleNode = { _, nodeName -> runSpeedTestForSingleNode(nodeName) },
+                                onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) },
                                 onAddNode = nodeActions.add,
                                 onEditNode = nodeActions.edit,
                                 onRenameNode = nodeActions.rename,
@@ -1335,6 +1336,19 @@ class MainActivity : ComponentActivity() {
                                                 AppNotice.show("统一延迟配置未能应用：${error.message}", long = true)
                                             }
                                         }
+                                    }
+                                }
+                            },
+                            onLogLevelChanged = { level ->
+                                settingsManager.logLevel = level
+                                if (vpnState.status == VpnState.Status.RUNNING) {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        runCatching { loadProfileInCore().getOrThrow() }
+                                            .onFailure { error ->
+                                                withContext(Dispatchers.Main) {
+                                                    AppNotice.show("日志级别未能应用：${error.message}", long = true)
+                                                }
+                                            }
                                     }
                                 }
                             },
