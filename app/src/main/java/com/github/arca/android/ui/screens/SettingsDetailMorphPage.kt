@@ -144,13 +144,29 @@ internal fun SettingsDetailMorphPage(
             }
         }
     }
-    if (page == SettingsDetailPage.APPEARANCE || page == SettingsDetailPage.GLASS_EFFECTS) {
+    if (page in setOf(
+        SettingsDetailPage.APPEARANCE,
+        SettingsDetailPage.GLASS_EFFECTS,
+        SettingsDetailPage.DNS,
+        SettingsDetailPage.MANAGED_CONFIG,
+        SettingsDetailPage.CONNECTIONS,
+        SettingsDetailPage.CORE_LOGS,
+        SettingsDetailPage.CONFIGURATION_CENTER
+    )) {
         // Scrolling bodies run under the pinned title and dissolve into a progressive blur.
         Box(Modifier.fillMaxSize().testTag("settings-detail-content-body")) {
             SettingsDetailEdgeViewport(header = header, modifier = Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().testTag("settings-detail-scroll-content")) {
-                    if (page == SettingsDetailPage.APPEARANCE) appearanceContent?.invoke()
-                    else glassEffectsContent?.invoke()
+                    when (page) {
+                        SettingsDetailPage.APPEARANCE -> appearanceContent?.invoke()
+                        SettingsDetailPage.GLASS_EFFECTS -> glassEffectsContent?.invoke()
+                        SettingsDetailPage.DNS -> dnsContent?.invoke()
+                        SettingsDetailPage.MANAGED_CONFIG -> managedConfigContent?.invoke()
+                        SettingsDetailPage.CONNECTIONS -> connectionsContent?.invoke()
+                        SettingsDetailPage.CORE_LOGS -> logsContent?.invoke()
+                        SettingsDetailPage.CONFIGURATION_CENTER -> configurationCenterContent?.invoke(onClose)
+                        else -> Unit
+                    }
                 }
             }
         }
@@ -219,7 +235,7 @@ internal fun SettingsDetailMorphPage(
                         Triple("info", "INFO", "记录标准网络调度与运行输出"),
                         Triple("warning", "WARN", "仅记录警告告警与异常"),
                         Triple("error", "ERROR", "仅记录严重崩溃与错误"),
-                        Triple("debug", "DEBUG", "输出底层全部调试报文")
+                        Triple("debug", "DEBUG", "临时排查 DNS、端口绑定与连接故障；详细输出可在核心日志查看")
                     ).forEach { (key, label, description) ->
                         SettingsDetailOption(
                             title = label,

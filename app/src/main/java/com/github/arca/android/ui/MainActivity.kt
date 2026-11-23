@@ -92,6 +92,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -329,6 +330,8 @@ class MainActivity : ComponentActivity() {
         var lanCredentials by remember { mutableStateOf(settingsManager.lanCredentials()) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var managedConfig by remember { mutableStateOf(settingsManager.managedConfig) }
+        var committedManagedConfig by remember { mutableStateOf(settingsManager.managedConfig) }
+        val managedConfigWriteLock = remember { Mutex() }
         var hapticEnabled by remember { mutableStateOf(settingsManager.hapticEnabled) }
         var shortcutTouchVariant by remember { mutableStateOf(settingsManager.shortcutTouchVariant) }
         var panelAnimationSpeed by remember { mutableStateOf(settingsManager.panelAnimationSpeed) }
@@ -513,37 +516,52 @@ class MainActivity : ComponentActivity() {
         // to code below its declaration.
         val onManagedConfigChanged: (ManagedConfig) -> Unit = { updated ->
             if (updated != managedConfig) {
-                val previous = settingsManager.managedConfig
-                settingsManager.managedConfig = updated
                 managedConfig = updated
                 lifecycleScope.launch(Dispatchers.IO) {
-                    val rewritten = runCatching {
-                        val default = ConfigManager.getOrCreateDefaultProfile(this@MainActivity)
-                        ProfileNodeEditor.applyManagedConfig(updated, default.file.readText(), previous)
-                    }.getOrNull()
-                    if (rewritten == null) {
-                        withContext(Dispatchers.Main) {
-                            settingsManager.managedConfig = previous
-                            managedConfig = previous
-                            AppNotice.show("内置默认配置已被手动修改，托管配置未写回", long = true)
+                    managedConfigWriteLock.lock()
+                    try {
+                        val current = withContext(Dispatchers.Main) { managedConfig }
+                        if (updated != current) return@launch
+                        val previous = withContext(Dispatchers.Main) { committedManagedConfig }
+                        val rewritten = runCatching {
+                            val default = ConfigManager.getOrCreateDefaultProfile(this@MainActivity)
+                            ProfileNodeEditor.applyManagedConfig(updated, default.file.readText(), previous)
+                        }.getOrNull()
+                        if (rewritten == null) {
+                            withContext(Dispatchers.Main) {
+                                if (managedConfig == updated) {
+                                    managedConfig = previous
+                                    settingsManager.managedConfig = previous
+                                    AppNotice.show("内置默认配置已被手动修改，托管配置未写回", long = true)
+                                }
+                            }
+                            return@launch
                         }
-                        return@launch
-                    }
-                    val saved = ConfigManager.saveProfileContent(
-                        this@MainActivity, ConfigManager.DEFAULT_PROFILE_ID, rewritten
-                    )
-                    if (!saved) {
-                        withContext(Dispatchers.Main) {
-                            settingsManager.managedConfig = previous
-                            managedConfig = previous
-                            AppNotice.show("托管配置未能写回内置默认配置", long = true)
+                        if (withContext(Dispatchers.Main) { managedConfig != updated }) return@launch
+                        val saved = ConfigManager.saveProfileContent(
+                            this@MainActivity, ConfigManager.DEFAULT_PROFILE_ID, rewritten
+                        )
+                        if (!saved) {
+                            withContext(Dispatchers.Main) {
+                                if (managedConfig == updated) {
+                                    managedConfig = previous
+                                    settingsManager.managedConfig = previous
+                                    AppNotice.show("托管配置未能写回内置默认配置", long = true)
+                                }
+                            }
+                            return@launch
                         }
-                        return@launch
-                    }
-                    if (vpnState.status == VpnState.Status.RUNNING &&
-                        DashboardData.activeProfile(profiles, selectedProfileId)?.id == ConfigManager.DEFAULT_PROFILE_ID
-                    ) {
-                        loadProfileInCore()
+                        withContext(Dispatchers.Main) {
+                            settingsManager.managedConfig = updated
+                            committedManagedConfig = updated
+                        }
+                        if (vpnState.status == VpnState.Status.RUNNING &&
+                            DashboardData.activeProfile(profiles, selectedProfileId)?.id == ConfigManager.DEFAULT_PROFILE_ID
+                        ) {
+                            withContext(Dispatchers.Main) { loadProfileInCore() }
+                        }
+                    } finally {
+                        managedConfigWriteLock.unlock()
                     }
                 }
             }
@@ -1318,6 +1336,19 @@ class MainActivity : ComponentActivity() {
                                                 AppNotice.show("统一延迟配置未能应用：${error.message}", long = true)
                                             }
                                         }
+                                    }
+                                }
+                            },
+                            onLogLevelChanged = { level ->
+                                settingsManager.logLevel = level
+                                if (vpnState.status == VpnState.Status.RUNNING) {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        runCatching { loadProfileInCore().getOrThrow() }
+                                            .onFailure { error ->
+                                                withContext(Dispatchers.Main) {
+                                                    AppNotice.show("日志级别未能应用：${error.message}", long = true)
+                                                }
+                                            }
                                     }
                                 }
                             },

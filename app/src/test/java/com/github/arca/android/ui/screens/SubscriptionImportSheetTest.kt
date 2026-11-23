@@ -57,14 +57,18 @@ class SubscriptionImportSheetTest {
         compose.onNodeWithTag("profile-add-submit").assertIsNotEnabled()
         compose.onNodeWithTag("profile-add-local-file").assertIsDisplayed()
         compose.onNodeWithTag("profile-add-clipboard").assertIsDisplayed()
+        compose.onNodeWithText("自动识别").assertDoesNotExist()
+        compose.onNodeWithText("YAML").assertDoesNotExist()
+        compose.onNodeWithText("Base64").assertDoesNotExist()
     }
 
     @Test fun completeRemotePreviewSuggestsANameAndSavesTheWholeConfigurationByDefault() {
         var draftName: String? = null
         var committedName: String? = null
         var keptComplete: Boolean? = null
-        show(initial = SourceDraft("", "https://example.invalid/config.yaml"), onPreview = { _, drafts ->
+        show(initial = SourceDraft("", "https://example.invalid/config.yaml", mode = "proxy"), onPreview = { _, drafts ->
             draftName = drafts.single().name
+            assertEquals("auto", drafts.single().mode)
             completePreview()
         }, onCommit = { title, _, standalone, _ ->
             committedName = title; keptComplete = standalone

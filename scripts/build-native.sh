@@ -3,6 +3,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}/ndk/28.2.13676358}}"
 API=26
+# NW3 fork: Arca's core is built from the hw20201/mihomo-arca fork, not upstream
+# metacubex/mihomo, because only the fork implements the Nowhere (NW3) protocol.
+# Pinned to the exact commit so builds are reproducible. The fork's go.mod module
+# path is still github.com/metacubex/mihomo, so the replace directive below works.
+MIHOMO_FORK_REPO="https://github.com/hw20201/mihomo-arca.git"
+MIHOMO_FORK_REF="5d965f69acfaddd6f81bb26feb1cccde102f98db"
 ABI=arm64-v8a
 PREPARE_ONLY=false
 while [[ $# -gt 0 ]]; do
@@ -23,16 +29,19 @@ ABI_OUT="$BUILD/out/$ABI"
 OUT="$ROOT/app/src/main/jniLibs/$ABI"
 mkdir -p "$ABI_OUT" "$OUT"
 cd "$ROOT/native/golang"
-echo '[native] Preparing pinned Mihomo v1.19.33 source'
-SOURCE=$(go mod download -json github.com/metacubex/mihomo@v1.19.33 | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["Dir"])')
-# Re-prepare only when the exact local patches change. Never alter the shared module cache.
-PATCH_KEY=$(sha256sum "$ROOT/native/patches/mihomo-borrowed-fd.patch" "$ROOT/native/patches/mihomo-proxy-only-traffic.patch" "$ROOT/native/patches/mihomo-inspection-assets.patch" | sha256sum | cut -d ' ' -f 1)
+echo '[native] Preparing pinned Mihomo NW3 fork source'
+# Re-prepare when the fork ref or the exact local patches change.
+PATCH_KEY=$(printf '%s' "$MIHOMO_FORK_REF" | sha256sum | cut -d ' ' -f 1)$(sha256sum "$ROOT/native/patches/mihomo-borrowed-fd.patch" "$ROOT/native/patches/mihomo-proxy-only-traffic.patch" "$ROOT/native/patches/mihomo-inspection-assets.patch" | sha256sum | cut -d ' ' -f 1)
 if [[ ! -f "$BUILD/mihomo/.arca-patch-$PATCH_KEY" ]]; then
   # Check the resolved path before removing an earlier, private prepared tree.
   TARGET=$(realpath -m "$BUILD/mihomo")
   [[ "$TARGET" == "$ROOT/native/build/mihomo" && ! -L "$BUILD/mihomo" ]] || { echo 'Unsafe prepared source path' >&2; exit 1; }
   if [[ -e "$TARGET" ]]; then rm -rf -- "$TARGET"; fi
-  cp -R "$SOURCE" "$TARGET"
+  # Shallow-fetch only the pinned commit; a raw SHA cannot be --branch-cloned.
+  git init -q "$TARGET"
+  git -C "$TARGET" remote add origin "$MIHOMO_FORK_REPO"
+  git -C "$TARGET" fetch -q --depth 1 origin "$MIHOMO_FORK_REF"
+  git -C "$TARGET" checkout -q FETCH_HEAD
   chmod -R u+w "$TARGET"
   patch -d "$TARGET" -p1 < "$ROOT/native/patches/mihomo-borrowed-fd.patch"
   patch -d "$TARGET" -p1 < "$ROOT/native/patches/mihomo-proxy-only-traffic.patch"
@@ -50,7 +59,7 @@ echo "[native] Building $ABI Go core"
 go build -mod=readonly -modfile="$BUILD/native.go.mod" -trimpath -buildmode=c-shared \
   -tags 'foss with_gvisor cmfa' -ldflags='-s -w -buildid= -extldflags=-Wl,-z,max-page-size=16384' \
   -o "$ABI_OUT/libclash.so" .
-printf '#define GIT_VERSION v1.19.33_3f27ef3_native-v98\n#define make_Str(x) #x\n#define make_String(x) make_Str(x)\n' > "$ABI_OUT/version.h"
+printf '#define GIT_VERSION v1.19.33_nw3-5d965f6_native-v99\n#define make_Str(x) #x\n#define make_String(x) make_Str(x)\n' > "$ABI_OUT/version.h"
 echo '[native] Building checked JNI bridge'
 "$CC" -std=c11 -fPIC -shared -O2 -I"$ROOT/native/cpp" -I"$ROOT/native/golang" -I"$ABI_OUT" \
   -Wl,-z,max-page-size=16384 -Wl,-soname,libbridge.so -Wl,--no-undefined \

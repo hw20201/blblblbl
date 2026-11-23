@@ -4,6 +4,24 @@ import com.github.arca.android.data.ProfileItem
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+internal fun quickProfileDragTarget(
+    originalOrder: List<String>,
+    startCenters: Map<String, Float>,
+    draggedId: String,
+    currentCenterY: Float
+): String? {
+    val originIndex = originalOrder.indexOf(draggedId)
+    if (originIndex !in originalOrder.indices) return null
+    val originCenter = startCenters[draggedId] ?: return null
+    return when {
+        currentCenterY > originCenter -> originalOrder.drop(originIndex + 1)
+            .lastOrNull { currentCenterY >= (startCenters[it] ?: Float.POSITIVE_INFINITY) }
+        currentCenterY < originCenter -> originalOrder.take(originIndex)
+            .firstOrNull { currentCenterY <= (startCenters[it] ?: Float.NEGATIVE_INFINITY) }
+        else -> null
+    }
+}
+
 /** Move one profile into the target row's slot without changing the other rows' relative order. */
 internal fun moveQuickProfile(profiles: List<ProfileItem>, draggedId: String, targetId: String): List<ProfileItem> {
     val from = profiles.indexOfFirst { it.id == draggedId }

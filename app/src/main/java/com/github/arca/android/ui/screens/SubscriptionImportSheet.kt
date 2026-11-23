@@ -6,7 +6,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,6 +28,8 @@ import com.github.arca.android.data.subscription.*
 import com.github.arca.android.ui.components.AppNotice
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +55,6 @@ internal fun SubscriptionImportSheet(
     var automaticName by remember { mutableStateOf(initial?.name.isNullOrBlank()) }
     var text by remember { mutableStateOf(initial?.text ?: "") }
     var token by remember { mutableStateOf(initial?.token ?: "") }
-    var mode by remember { mutableStateOf(initial?.mode ?: "auto") }
     var remote by remember { mutableStateOf(initial?.remote) }
     var queue by remember { mutableStateOf(emptyList<SourceDraft>()) }
     var preview by remember { mutableStateOf<ImportPreview?>(null) }
@@ -66,8 +66,8 @@ internal fun SubscriptionImportSheet(
     var failure by remember { mutableStateOf<String?>(null) }
     var work by remember { mutableStateOf<Job?>(null) }
     var expanded by remember { mutableStateOf(emptySet<String>()) }
-    fun draft() = SourceDraft("", text, mode, token, remote)
-    val currentDraftIsRemote = remote ?: (mode != "proxy" && !text.contains('\n') &&
+    fun draft() = SourceDraft("", text, "auto", token, remote)
+    val currentDraftIsRemote = remote ?: (!text.contains('\n') &&
         (text.trim().startsWith("https://", true) || text.trim().startsWith("http://", true)))
     fun rename(value: String) { name = value.take(100); automaticName = name.isBlank() }
     fun close() { work?.cancel(); onDismiss() }
@@ -80,13 +80,17 @@ internal fun SubscriptionImportSheet(
             catch (_: Exception) { failure = "文件读取失败，请检查大小与 UTF-8 编码" }
         }
     }
+    val sheetBackdrop = rememberArcaGlasmioBackdrop()
     GlassModalBottomSheet(onDismissRequest = ::close,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = LoonBg,
         heightFraction = 0.96f, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Box(Modifier.fillMaxSize()) {
+        if (sheetBackdrop != null) MainPageScrollEdge(sheetBackdrop, 78.dp, LoonBg, "subscription-import-top-blur",
+            modifier = Modifier.align(Alignment.TopCenter), scrollOffsetPx = { 96 })
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).imePadding()) {
             SheetHeading(if (addingSources) "添加来源" else "添加配置",
                 if (preview == null) "选择来源  ·  01 / 02" else "检查结果  ·  02 / 02", ::close)
-            LazyColumn(Modifier.weight(1f).testTag("subscription-import-content"),
+            LazyColumn(Modifier.weight(1f).recordArcaGlasmioBackdropSource(sheetBackdrop).testTag("subscription-import-content"),
                 verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                 if (preview == null) {
                     item {
@@ -115,13 +119,6 @@ internal fun SubscriptionImportSheet(
                     }
                     item { SubscriptionField(text, { text = it; remote = null }, "订阅 / 远程配置文件 URL 或内容", "profile-add-url", singleLine = false) }
                     item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            items(listOf("auto" to "自动识别", "yaml" to "YAML", "uri" to "节点链接", "base64" to "Base64", "proxy" to "HTTP / SOCKS 代理")) { (value, title) ->
-                                FilterChip(selected = mode == value, onClick = { mode = value; if (value == "proxy") remote = false }, label = { Text(title) })
-                            }
-                        }
-                    }
-                    item {
                         SubscriptionField(token, { token = it }, "自有云端设备令牌（选填）", password = true)
                         Text("令牌仅通过 HTTPS 请求头发送。已有 Sub-Store 等服务的 Mihomo 输出可直接作为来源。",
                             color = LoonTextSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
@@ -136,7 +133,7 @@ internal fun SubscriptionImportSheet(
                                 val remaining = queue.filterIndexed { i, _ -> i != index }
                                 queue = if (text.isNotBlank()) remaining + draft() else remaining
                                 text = selected.text; token = selected.token
-                                mode = selected.mode; remote = selected.remote; failure = null
+                                remote = selected.remote; failure = null
                                 }) { Icon(Icons.Default.Edit, "编辑来源", tint = IosBlue) }
                                 IconButton(enabled = !busy, onClick = { queue = queue.filterIndexed { i, _ -> i != index } }) { Icon(Icons.Default.Close, "移除来源", tint = LoonTextSecondary) }
                             }
@@ -144,7 +141,7 @@ internal fun SubscriptionImportSheet(
                     }
                     item {
                         TextButton(enabled = text.isNotBlank() && queue.size < SUBSCRIPTION_MAX_SOURCES - 1, onClick = {
-                            queue = queue + draft(); text = ""; token = ""; mode = "auto"; remote = null
+                            queue = queue + draft(); text = ""; token = ""; remote = null
                         }) { Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Text("再加一个来源  ·  ${queue.size + if (text.isBlank()) 0 else 1} / 20") }
                     }
                 } else {
@@ -257,6 +254,7 @@ internal fun SubscriptionImportSheet(
                 modifier = Modifier.align(Alignment.CenterHorizontally).testTag("profile-add-cancel")) {
                 Text(if (busy) "取消本次操作" else "取消", color = LoonTextSecondary)
             }
+        }
         }
     }
 }

@@ -40,10 +40,8 @@ class ManagedConfigTest {
         "GEOSITE,PRIVATE,DIRECT",
         "AND,((NETWORK,UDP),(DST-PORT,443)),REJECT",
         "GEOSITE,CATEGORY-ADS,REJECT",
-        "GEOSITE,CN,DIRECT",
         "GEOSITE,APPLE-CN,DIRECT",
         "GEOSITE,CATEGORY-GAMES-CN,DIRECT",
-        "GEOIP,CN,DIRECT",
         "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
         "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
         "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
@@ -66,12 +64,14 @@ class ManagedConfigTest {
         "GEOSITE,PIKPAK,PikPak",
         "GEOSITE,SPOTIFY,Spotify",
         "GEOSITE,CATEGORY-CRYPTOCURRENCY,Crypto",
-        "GEOSITE,GEOLOCATION-!CN,GLOBAL",
         "GEOIP,google,Google",
         "GEOIP,telegram,Telegram",
         "GEOIP,facebook,Meta",
         "GEOIP,netflix,Netflix",
         "GEOIP,twitter,Twitter",
+        "GEOSITE,CN,DIRECT",
+        "GEOIP,CN,DIRECT",
+        "GEOSITE,GEOLOCATION-!CN,GLOBAL",
         "MATCH,GLOBAL"
     )
 

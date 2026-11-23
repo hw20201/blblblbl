@@ -65,6 +65,9 @@ fun LogsScreen(
     var showClearConfirmDialog by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
+    ReportSettingsDetailScrollOffset {
+        if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else listState.firstVisibleItemScrollOffset
+    }
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()) }
 
     val filteredLogs = remember(logs, selectedLevel, searchQuery) {

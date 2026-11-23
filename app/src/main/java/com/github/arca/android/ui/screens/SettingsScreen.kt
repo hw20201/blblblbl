@@ -91,6 +91,7 @@ fun SettingsScreen(
     onShortcutTouchVariantChanged: (ShortcutTouchVariant) -> Unit = {},
     onIpv6EnabledChanged: (Boolean) -> Unit = {},
     onUnifiedDelayChanged: (Boolean) -> Unit = {},
+    onLogLevelChanged: ((String) -> Unit)? = null,
     onProfileHotSwitchChanged: (Boolean) -> Unit = {},
     onTunMtuChanged: (Int) -> Unit = {},
     onMipsCongestionControllerChanged: (String) -> Unit = {},
@@ -474,6 +475,7 @@ fun SettingsScreen(
                     CupertinoCell(
                         modifier = Modifier.testTag("settings-log-level-entry"),
                         title = "日志级别",
+                        subtitle = "临时排查端口、DNS 与连接问题",
                         value = currentLogLevel.uppercase(),
                         icon = Icons.Default.Tune,
                         iconBg = AppPalette.iconIndigo,
@@ -608,7 +610,8 @@ fun SettingsScreen(
                 logLevel = currentLogLevel,
                 onLogLevelChanged = { level ->
                     currentLogLevel = level
-                    settingsManager.logLevel = level
+                    val applyLogLevel = onLogLevelChanged
+                    if (applyLogLevel != null) applyLogLevel(level) else settingsManager.logLevel = level
                 },
                 shortcutTouchVariant = shortcutTouchVariant,
                 onShortcutTouchVariantChanged = onShortcutTouchVariantChanged,

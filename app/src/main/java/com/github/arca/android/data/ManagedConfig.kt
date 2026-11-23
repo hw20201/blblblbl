@@ -99,19 +99,13 @@ data class ManagedConfig(
             proxies.joinToString("\n") { "      - $it" }
     }
 
-    /**
-     * Full domestic-direct + service split, in BettBox's rule order: private,
-     * QUIC block, ads, domestic direct, per-service domains, non-CN
-     * catch-all, per-service IPs, match.
-     */
+    /** Generate managed split rules with service matches before broad region fallbacks. */
     internal fun splitRules(): List<String> = buildList {
         add("GEOSITE,PRIVATE,DIRECT")
         if (blockQuic) add("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT")
         if (blockAds) add("GEOSITE,CATEGORY-ADS,${serviceOption("AdBlock").target}")
-        add("GEOSITE,CN,DIRECT")
         add("GEOSITE,APPLE-CN,DIRECT")
         add("GEOSITE,CATEGORY-GAMES-CN,DIRECT")
-        add("GEOIP,CN,DIRECT")
         add("IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
         add("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve")
         add("IP-CIDR,172.16.0.0/12,DIRECT,no-resolve")
@@ -126,11 +120,13 @@ data class ManagedConfig(
             // switching it in the UI actually moves the traffic.
             if (option.enabled) add("GEOSITE,${def.geosite},${def.name}")
         }
-        add("GEOSITE,GEOLOCATION-!CN,GLOBAL")
         for (def in SERVICE_DEFS.filter { it.geoip != null }.sortedBy { GEOIP_ORDER.indexOf(it.name) }) {
             val option = serviceOption(def.name)
             if (option.enabled) add("GEOIP,${def.geoip},${def.name}")
         }
+        add("GEOSITE,CN,DIRECT")
+        add("GEOIP,CN,DIRECT")
+        add("GEOSITE,GEOLOCATION-!CN,GLOBAL")
         add("MATCH,GLOBAL")
     }
 }
