@@ -149,6 +149,7 @@ internal fun DashboardShortcutActionPanel(
     var dragOriginalProfileOrder by remember(shortcut.id) { mutableStateOf<List<String>?>(null) }
     var draggedProfileId by remember(shortcut.id) { mutableStateOf<String?>(null) }
     var draggedProfileCenterY by remember(shortcut.id) { mutableFloatStateOf(0f) }
+    var dragStartCenters by remember(shortcut.id) { mutableStateOf<Map<String, Float>>(emptyMap()) }
     val profilesById = remember(profiles) { profiles.associateBy { it.id } }
     val orderedProfiles = remember(profiles, profileOrderIds) {
         profileOrderIds.mapNotNull(profilesById::get) + profiles.filter { it.id !in profileOrderIds }
@@ -161,18 +162,21 @@ internal fun DashboardShortcutActionPanel(
     val beginProfileDrag = rememberUpdatedState<(String) -> Unit>(newValue = { id ->
         profileBounds[id]?.let { bounds ->
             dragOriginalProfileOrder = profileOrderIds
+            dragStartCenters = profileBounds.mapValues { (_, rect) -> rect.center.y }
             draggedProfileId = id
             draggedProfileCenterY = bounds.center.y
         }
     })
     val moveProfileDrag = rememberUpdatedState<(String, Float) -> Unit>(newValue = { draggedId, centerY ->
         draggedProfileCenterY = centerY
-        val targetId = orderedProfiles.firstOrNull { profile ->
-            profile.id != draggedId && profileBounds[profile.id]?.let { centerY >= it.top && centerY < it.bottom } == true
-        }?.id
-        if (targetId != null) {
-            val reordered = moveQuickProfile(orderedProfiles, draggedId, targetId)
-            if (reordered != orderedProfiles) profileOrderIds = reordered.map { it.id }
+        val originalOrder = dragOriginalProfileOrder ?: return@rememberUpdatedState
+        val targetId = quickProfileDragTarget(originalOrder, dragStartCenters, draggedId, centerY)
+        if (targetId != null && targetId in profilesById) {
+            val originalProfiles = originalOrder.mapNotNull(profilesById::get)
+            val reordered = moveQuickProfile(originalProfiles, draggedId, targetId)
+            if (reordered.map { it.id } != profileOrderIds) profileOrderIds = reordered.map { it.id }
+        } else if (profileOrderIds != originalOrder) {
+            profileOrderIds = originalOrder
         }
     })
     val finishProfileDrag = rememberUpdatedState<(Boolean) -> Unit>(newValue = { commit ->
@@ -186,6 +190,7 @@ internal fun DashboardShortcutActionPanel(
             }
         }
         dragOriginalProfileOrder = null
+        dragStartCenters = emptyMap()
         draggedProfileId = null
     })
 
@@ -284,8 +289,13 @@ internal fun DashboardShortcutActionPanel(
                                 .graphicsLayer {
                                     val bounds = profileBounds[profile.id]
                                     translationY = if (draggedProfileId == profile.id && bounds != null) draggedProfileCenterY - bounds.center.y else 0f
-                                    scaleX = if (draggedProfileId == profile.id) 1.025f else 1f
-                                    scaleY = if (draggedProfileId == profile.id) 1.025f else 1f
+                                    // No scale on the dragged row: pointerInput sits inside this
+                                    // graphicsLayer, so a scale makes the accumulated drag deltas
+                                    // (local) lag the pointer in root coordinates, and the drag
+                                    // falls short of the neighbour's centre (b,a,c instead of
+                                    // b,c,a). Translation + shadow are the drag feedback.
+                                    scaleX = 1f
+                                    scaleY = 1f
                                     shadowElevation = if (draggedProfileId == profile.id) 12f else 0f
                                 }
                                 .pointerInput(profile.id) {

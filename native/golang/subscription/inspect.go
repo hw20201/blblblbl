@@ -287,12 +287,13 @@ func decode64(text string) ([]byte, error) {
 func convertLine(line string) ([]map[string]any, string, string) {
 	scheme := strings.ToLower(strings.SplitN(line, "://", 2)[0])
 	if scheme == "nowhere" {
-		// Keep v99's query handling and defaults identical to native Nowhere imports.
-		converted, err := convert.ConvertsV2Ray([]byte(line))
-		if err != nil || len(converted) != 1 {
+		// Upstream ConvertsV2Ray does not know the nowhere scheme; parse it here
+		// so a valid share link is not rejected as malformed.
+		converted, err := parseNowhereLink(line)
+		if err != nil {
 			return nil, "uri", "Nowhere 分享链接格式或参数无效"
 		}
-		return converted, "", ""
+		return []map[string]any{converted}, "", ""
 	}
 	allowed := map[string]string{
 		"ss": "plugin,udp-over-tcp,uot", "ssr": "",

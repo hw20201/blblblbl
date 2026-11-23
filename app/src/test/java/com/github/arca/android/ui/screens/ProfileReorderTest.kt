@@ -9,6 +9,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProfileReorderTest {
+    @Test fun quickProfileDragUsesFrozenRowCentersForDownUpAndReturnPaths() {
+        val ids = listOf("a", "b", "c", "d")
+        val centers = mapOf("a" to 100f, "b" to 180f, "c" to 260f, "d" to 340f)
+
+        assertEquals("b", quickProfileDragTarget(ids, centers, "a", 180f))
+        assertEquals("c", quickProfileDragTarget(ids, centers, "a", 300f))
+        assertEquals("b", quickProfileDragTarget(ids, centers, "a", 220f))
+        assertEquals(null, quickProfileDragTarget(ids, centers, "a", 100f))
+        assertEquals("b", quickProfileDragTarget(ids, centers, "c", 180f))
+        assertEquals("a", quickProfileDragTarget(ids, centers, "c", 80f))
+        assertEquals(null, quickProfileDragTarget(ids, centers, "c", 220f))
+        assertEquals(null, quickProfileDragTarget(ids, centers, "missing", 200f))
+    }
+
     @Test fun selectedProfileCardHasNoRestingDepthShadow() {
         assertEquals(0.dp, profileCardQuietElevation(isSelected = true))
         assertEquals(2.dp, profileCardQuietElevation(isSelected = false))

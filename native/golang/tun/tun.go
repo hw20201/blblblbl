@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/netip"
 	"strings"
 
@@ -67,9 +66,14 @@ func parseStartOptions(raw string) (uint32, string, error) {
 	return mtu, controller, nil
 }
 
+// DNS queries to arbitrary resolver IPs must not escape through ordinary route rules.
+func dnsHijackTargets() []string {
+	return []string{"0.0.0.0:53"}
+}
+
 // Start borrows fd. The patched Mihomo tunNew duplicates it at the ownership
 // boundary; successful and failed listeners both close only their own duplicate.
-func Start(fd int, stack, gateway, portal, dns, rawOptions string) (io.Closer, error) {
+func Start(fd int, stack, gateway string, _, _ string, rawOptions string) (io.Closer, error) {
 	if fd <= 0 {
 		return nil, fmt.Errorf("invalid borrowed tun fd: %d", fd)
 	}
@@ -99,17 +103,7 @@ func Start(fd int, stack, gateway, portal, dns, rawOptions string) (io.Closer, e
 	if len(prefix4)+len(prefix6) == 0 {
 		return nil, fmt.Errorf("TUN requires at least one local address")
 	}
-	var dnsHijack []string
-	for _, raw := range strings.Split(dns, ",") {
-		if raw = strings.TrimSpace(raw); raw == "" {
-			continue
-		}
-		addr, err := netip.ParseAddr(raw)
-		if err != nil {
-			return nil, fmt.Errorf("invalid TUN DNS address: %w", err)
-		}
-		dnsHijack = append(dnsHijack, net.JoinHostPort(addr.String(), "53"))
-	}
+	dnsHijack := dnsHijackTargets()
 	options := LC.Tun{
 		Enable: true, Device: sing_tun.InterfaceName, Stack: tunStack,
 		DNSHijack: dnsHijack, AutoRoute: false, AutoDetectInterface: false,

@@ -76,7 +76,7 @@ object ConfigManager {
         "authentication", "skip-auth-prefixes", "lan-allowed-ips", "lan-disallowed-ips",
         "external-ui", "external-ui-name", "external-ui-url",
         "tun", "dns", "interface-name", "routing-mark",
-        "geodata-mode", "geo-auto-update", "geox-url", "tcp-concurrent"
+        "geodata-mode", "geo-auto-update", "geox-url", "tcp-concurrent", "clash-for-android"
     )
 
     /** Bundled core release; used when the native library has not been loaded yet. */
@@ -650,7 +650,10 @@ object ConfigManager {
         LinkedHashMap<String, Any?>().apply { dns.forEach { (k, v) -> if (k != null) put(k.toString(), v) } }
     }.getOrNull()
 
-    private val runtimeOwnedDns = setOf("enable", "listen", "ipv6", "enhanced-mode", "fake-ip-range")
+    private val runtimeOwnedDns = setOf(
+        "enable", "listen", "ipv6", "enhanced-mode", "fake-ip-range",
+        "default-nameserver", "proxy-server-nameserver", "respect-rules"
+    )
 
     /** IPv6 capture controls client packets/DNS, not the address family used to reach a proxy server. */
     internal data class RuntimeIpv6Flags(val proxyServerResolution: Boolean, val clientDns: Boolean)
@@ -662,14 +665,47 @@ object ConfigManager {
     internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
         val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:1053", "ipv6" to ipv6Enabled,
             "enhanced-mode" to if (fakeIp) "fake-ip" else "redir-host", "fake-ip-range" to "198.18.0.1/16",
-            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"), "nameserver" to listOf("https://223.5.5.5/dns-query", "https://doh.pub/dns-query", "223.5.5.5", "119.29.29.29", "180.76.76.76"),
-            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query", "1.1.1.1", "8.8.8.8"), "fake-ip-filter" to defaultFakeIpFilter)
+            "default-nameserver" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
+            "proxy-server-nameserver" to listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT"),
+            "nameserver" to listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"),
+            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
+            "fallback-filter" to linkedMapOf("geoip" to true, "geoip-code" to "CN"),
+            "respect-rules" to true,
+            "fake-ip-filter" to defaultFakeIpFilter)
         userDns?.forEach { (key, value) ->
-            if (key.lowercase() !in runtimeOwnedDns) {
-                dns[key] = if (key == "fake-ip-filter") (defaultFakeIpFilter + ((value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList())).distinct() else value
+            val normalizedKey = key.lowercase()
+            if (normalizedKey in runtimeOwnedDns) return@forEach
+            when (normalizedKey) {
+                "nameserver", "fallback" -> {
+                    val encrypted = (value as? List<*>)
+                        ?.mapNotNull { it?.toString()?.takeIf(::isEncryptedDnsResolver) }
+                        .orEmpty()
+                    if (encrypted.isNotEmpty()) dns[normalizedKey] = encrypted
+                }
+                "nameserver-policy" -> {
+                    val policies = (value as? Map<*, *>)?.mapNotNull { (domain, resolver) ->
+                        val filtered = filterEncryptedDnsPolicy(resolver)
+                        if (domain != null && filtered != null) domain.toString() to filtered else null
+                    }.orEmpty()
+                    if (policies.isNotEmpty()) dns[normalizedKey] = policies.toMap()
+                }
+                "fake-ip-filter" -> dns[normalizedKey] =
+                    (defaultFakeIpFilter + ((value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList())).distinct()
+                else -> dns[normalizedKey] = value
             }
         }
         return dns
+    }
+
+    private fun isEncryptedDnsResolver(value: String): Boolean =
+        value.startsWith("https://", ignoreCase = true) ||
+            value.startsWith("tls://", ignoreCase = true) ||
+            value.startsWith("quic://", ignoreCase = true)
+
+    private fun filterEncryptedDnsPolicy(value: Any?): Any? = when (value) {
+        is String -> value.takeIf(::isEncryptedDnsResolver)
+        is List<*> -> value.mapNotNull { filterEncryptedDnsPolicy(it) }.takeIf { it.isNotEmpty() }
+        else -> null
     }
 
     internal fun buildRuntimeHeader(
@@ -688,6 +724,7 @@ object ConfigManager {
         values["geo-auto-update"] = false
         values["geox-url"] = linkedMapOf("geoip" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb", "geosite" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat", "mmdb" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb")
         values["dns"] = buildDnsSection(settings.fakeIpEnabled, userDns, ipv6Flags.clientDns)
+        values["clash-for-android"] = linkedMapOf("append-system-dns" to false)
         val opts = org.yaml.snakeyaml.DumperOptions().apply { defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK; isPrettyFlow = true; indent = 2 }
         return "# Mihomo Android Injected Runtime Config\n" + org.yaml.snakeyaml.Yaml(opts).dump(values).trimEnd()
     }

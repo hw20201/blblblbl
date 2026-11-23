@@ -76,7 +76,7 @@ class SubscriptionValidatorInstrumentedTest {
         val inputs = listOf(uri, Base64.encodeToString(uri.toByteArray(), Base64.NO_WRAP))
         for (input in inputs) {
             val preview = SubscriptionManager.preview(context, listOf(SourceDraft("Nowhere fixture", input)))
-            assertEquals(0, preview.rejected)
+            assertEquals("${preview.failures} ${preview.sources.map { it.inspection.diagnostics }}", 0, preview.rejected)
             assertEquals(1, preview.nodes)
             val node = preview.sources.single().inspection.nodes.single()
             assertEquals("nowhere", node.type)
