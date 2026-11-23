@@ -14,10 +14,11 @@ import com.github.kr328.clash.core.model.Traffic
 import com.github.kr328.clash.core.model.TunnelState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -25,6 +26,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.net.InetSocketAddress
+import java.util.concurrent.ConcurrentHashMap
 
 object ClashCore {
     private const val TAG = "ClashCore"
@@ -285,127 +287,67 @@ object ClashCore {
         }.getOrDefault(false)
     }
 
-    suspend fun healthCheckGroupNative(
-        name: String,
+    /**
+     * Per-proxy delay test (FlClash/BettBox style): measures one proxy by
+     * name through the core's URL test. Returns the delay in ms, or -2 when
+     * the proxy is missing, the test times out, or it fails. Every call
+     * returns a result; nothing is silently dropped. The old group
+     * HealthCheck path is gone: it only accepted groups, so a single-node
+     * tap was a no-op and a group the core could not return produced no
+     * results at all.
+     */
+    suspend fun testProxyDelay(name: String, testUrl: String = "", timeoutMs: Long = 5_000L): Int = withContext(Dispatchers.IO) {
+        if (name.equals("DIRECT", ignoreCase = true)) return@withContext 0
+        if (name.equals("REJECT", ignoreCase = true)) return@withContext -2
+        if (name.equals("COMPATIBLE", ignoreCase = true)) return@withContext -2
+        runCatching {
+            Bridge.nativeTestProxyDelay(name, testUrl, timeoutMs)
+        }.onFailure {
+            Log.w(TAG, "Delay test failed for $name", it)
+        }.getOrDefault(-2)
+    }
+
+    /**
+     * Tests a list of proxies, each with its own timeout, reporting each
+     * result through onProgress as it arrives. Every name gets exactly one
+     * result (ms or -2); the returned map covers all names. testOne is
+     * injectable so unit tests can run the batch without the native core.
+     * The Kotlin semaphore only bounds how many coroutines are in flight;
+     * the real global cap lives in the native layer (a shared capacity-10
+     * channel), so no amount of concurrent app-triggered tests can push
+     * more than 10 URL tests into the core at once.
+     */
+    suspend fun testProxyDelays(
+        names: List<String>,
+        testUrl: String = "",
+        timeoutMs: Long = 5_000L,
+        concurrency: Int = 10,
+        testOne: suspend (String) -> Int = { testProxyDelay(it, testUrl, timeoutMs) },
         onProgress: ((String, Int) -> Unit)? = null
     ): Map<String, Int> = withContext(Dispatchers.IO) {
-        val initialGroup = queryGroup(name)
-        val initialDelays = initialGroup?.proxies?.associate { it.name to it.delay } ?: emptyMap()
-        val proxyCount = initialGroup?.proxies?.size ?: 0
-        val deferred = CompletableDeferred<Unit>()
-        var pollJob: Job? = null
-        var nativeFinished = false
-        try {
-            Bridge.nativeHealthCheck(deferred, name)
-            if (onProgress != null) {
-                val reported = mutableSetOf<String>()
-                pollJob = launch {
-                    while (isActive && !deferred.isCompleted) {
-                        delay(150L)
-                        val currentGroup = queryGroup(name)
-                        val proxies = currentGroup?.proxies ?: emptyList()
-                        proxies.forEach { p ->
-                            if (!reported.contains(p.name)) {
-                                val oldDelay = initialDelays[p.name]
-                                val newDelay = p.delay
-                                if (oldDelay != newDelay && newDelay > 0) {
-                                    reported.add(p.name)
-                                    val finalD = if (newDelay in 1..65534) newDelay else -2
-                                    onProgress(p.name, finalD)
-                                }
-                            }
-                        }
+        if (names.isEmpty()) return@withContext emptyMap()
+        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+        val results = ConcurrentHashMap<String, Int>()
+        coroutineScope {
+            names.map { name ->
+                async {
+                    semaphore.withPermit {
+                        val delay = testOne(name)
+                        results[name] = delay
+                        onProgress?.invoke(name, delay)
                     }
                 }
-            }
-            // Wait for the core to finish the whole group. The core tests at
-            // most 10 proxies at a time with a 5s per-proxy timeout, so the
-            // old flat 5.5s wait cut large groups off before most nodes had
-            // reported anything and the UI stayed at "--". Scale the wait
-            // with the group size instead.
-            kotlinx.coroutines.withTimeoutOrNull(healthCheckWaitMs(proxyCount)) { deferred.await() }
-            nativeFinished = deferred.isCompleted
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            // Native work may still finish later and owns its JNI reference until then.
-            throw cancelled
-        } catch (failure: Exception) {
-            Log.w(TAG, "Health check failed for $name", failure)
-        } finally {
-            pollJob?.cancel()
+            }.awaitAll()
         }
-        val group = queryGroup(name)
-        val result = mutableMapOf<String, Int>()
-        group?.proxies?.forEach { p ->
-            val d = normalizeHealthDelay(p.delay, nativeFinished)
-            result[p.name] = d
-            onProgress?.invoke(p.name, d)
-        }
-        result
+        results.toMap()
     }
 
     /**
-     * How long to wait for a group health check to finish. The core tests at
-     * most 10 proxies concurrently with a 5s per-proxy timeout, so the wait
-     * has to cover ceil(count / 10) batches plus margin. Minimum 15s so
-     * small groups still get a full round.
+     * The delay to show for a group: the lowest positive member delay, or
+     * -2 (timeout) when no member reported one.
      */
-    internal fun healthCheckWaitMs(proxyCount: Int): Long {
-        if (proxyCount <= 0) return 15_000L
-        val batches = (proxyCount + 9) / 10
-        return maxOf(15_000L, batches * 6_000L + 5_000L)
-    }
-
-    /**
-     * Normalize one raw delay from the core. A member that never reported a
-     * delay once the core has finished the whole check is a timeout, not
-     * "not tested yet": report it as -2 so the UI shows 超时 instead of a
-     * stale value or "--". While the check is still running, keep -1.
-     */
-    internal fun normalizeHealthDelay(rawDelay: Int, nativeFinished: Boolean): Int {
-        return if (rawDelay in 1..65534) rawDelay
-        else if (rawDelay >= 65535 || rawDelay == -2) -2
-        else if (nativeFinished) -2
-        else -1
-    }
-
-    suspend fun healthCheck(name: String, onProgress: ((String, Int) -> Unit)? = null): Map<String, Int> =
-        healthCheckGroupNative(name, onProgress)
-
-    suspend fun testProxyDelayNative(proxyName: String, groupName: String? = null): Int = withContext(Dispatchers.IO) {
-        if (proxyName.equals("DIRECT", ignoreCase = true)) return@withContext 0
-        if (proxyName.equals("REJECT", ignoreCase = true)) return@withContext -2
-        if (proxyName.equals("COMPATIBLE", ignoreCase = true)) return@withContext -2
-
-        val deferred = CompletableDeferred<Unit>()
-        try {
-            Bridge.nativeHealthCheck(deferred, proxyName)
-            // A single proxy test is bounded by the core's 5s per-proxy
-            // timeout; 12s leaves margin for the native round-trip so a
-            // slow node can still report instead of being cut off at 5.5s.
-            kotlinx.coroutines.withTimeoutOrNull(12_000L) { deferred.await() }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            Log.w(TAG, "Delay test failed for $proxyName", failure)
-        }
-
-        if (!groupName.isNullOrBlank()) {
-            val group = queryGroup(groupName)
-            val p = group?.proxies?.find { it.name == proxyName }
-            if (p != null) {
-                return@withContext if (p.delay in 1..65534) p.delay else -2
-            }
-        }
-
-        val groups = queryGroupNames()
-        for (g in groups) {
-            val group = queryGroup(g)
-            val p = group?.proxies?.find { it.name == proxyName }
-            if (p != null) {
-                return@withContext if (p.delay in 1..65534) p.delay else -2
-            }
-        }
-        -2
+    internal fun groupDelayFromMembers(memberDelays: Collection<Int>): Int {
+        return memberDelays.filter { it in 1..65534 }.minOrNull() ?: -2
     }
 
     /** null = native library predates the connection contract (rebuild native to enable). */
@@ -435,10 +377,6 @@ object ClashCore {
 
     fun closeAllConnections() {
         runCatching { Bridge.nativeCloseAllConnections() }
-    }
-
-    fun healthCheckAll() {
-        runCatching { Bridge.nativeHealthCheckAll() }
     }
 
     fun reset() {

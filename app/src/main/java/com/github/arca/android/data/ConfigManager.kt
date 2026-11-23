@@ -662,8 +662,12 @@ object ConfigManager {
     internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
         val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:1053", "ipv6" to ipv6Enabled,
             "enhanced-mode" to if (fakeIp) "fake-ip" else "redir-host", "fake-ip-range" to "198.18.0.1/16",
-            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"), "nameserver" to listOf("https://223.5.5.5/dns-query", "https://doh.pub/dns-query", "223.5.5.5", "119.29.29.29", "180.76.76.76"),
-            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query", "1.1.1.1", "8.8.8.8"), "fake-ip-filter" to defaultFakeIpFilter)
+            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"),
+            "proxy-server-nameserver" to listOf("223.5.5.5", "119.29.29.29"),
+            "nameserver" to listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"),
+            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
+            "fallback-filter" to linkedMapOf("geoip" to true, "geoip-code" to "CN"),
+            "fake-ip-filter" to defaultFakeIpFilter)
         userDns?.forEach { (key, value) ->
             if (key.lowercase() !in runtimeOwnedDns) {
                 dns[key] = if (key == "fake-ip-filter") (defaultFakeIpFilter + ((value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList())).distinct() else value

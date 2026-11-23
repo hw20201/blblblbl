@@ -102,11 +102,11 @@ object Bridge {
     external fun nativeStopHttp()
     external fun nativeQueryGroupNames(excludeNotSelectable: Boolean): String
     external fun nativeQueryGroup(name: String, sort: String): String?
-    external fun nativeHealthCheck(completable: CompletableDeferred<Unit>, name: String)
+    /** Per-proxy URL test (needs the rebuilt native pair); returns ms, or -2 on failure/timeout. */
+    external fun nativeTestProxyDelay(name: String, testUrl: String, timeoutMs: Long): Int
     /** V98 diagnostics; callers using an older native pair must handle UnsatisfiedLinkError. */
     external fun nativeGlobalReferenceCount(): Long
     external fun nativePendingHealthChecks(): Long
-    external fun nativeHealthCheckAll()
     external fun nativePatchSelector(selector: String, name: String): Boolean
     external fun nativeFetchAndValid(
         completable: FetchCallback,

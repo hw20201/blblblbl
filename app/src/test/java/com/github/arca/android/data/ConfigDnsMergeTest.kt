@@ -39,6 +39,15 @@ class ConfigDnsMergeTest {
         assertFalse(sanitized.contains("tcp-concurrent"))
     }
 
+    @Test fun `DNS defaults separate bootstrap and DoH transports`() {
+        val dns = ConfigManager.buildDnsSection(false, null)
+        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["default-nameserver"])
+        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["proxy-server-nameserver"])
+        assertEquals(listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"), dns["nameserver"])
+        assertEquals(listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), dns["fallback"])
+        assertEquals(mapOf("geoip" to true, "geoip-code" to "CN"), dns["fallback-filter"])
+    }
+
     @Test fun `profile DNS resolvers and policies survive with filter union`() {
         val dns = ConfigManager.buildDnsSection(true, mapOf("nameserver" to listOf("1.1.1.1"), "nameserver-policy" to mapOf("+.corp" to "10.0.0.53"), "fake-ip-filter" to listOf("+.corp", "*.lan")))
         assertEquals(listOf("1.1.1.1"), dns["nameserver"]); assertEquals(mapOf("+.corp" to "10.0.0.53"), dns["nameserver-policy"])

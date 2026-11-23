@@ -258,7 +258,7 @@ class ProfilesDragRegressionTest {
     private fun card(id: String) = compose.onNodeWithTag("profile-card-$id")
     private fun centerY(id: String): Float {
         // Unclipped semantics bounds combine a transformed origin with unscaled size.
-        // Map the actual center, including pickup scale and offscreen pinned cards.
+        // Map the actual center, including offscreen pinned cards.
         val coordinates = card(id).fetchSemanticsNode().layoutInfo.coordinates
         return coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)).y
     }

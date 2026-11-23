@@ -59,6 +59,8 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import androidx.compose.ui.graphics.Shape
 import com.github.arca.android.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -140,6 +142,7 @@ fun ProfilesScreen(
     val currentOnReorderProfiles by rememberUpdatedState(onReorderProfiles)
     val lazyListState = rememberLazyListState()
     val pullState = rememberPullToRefreshState()
+    val pageBackdrop = rememberArcaGlasmioBackdrop()
     var pullRefreshing by remember { mutableStateOf(false) }
 
     LaunchedEffect(profiles) {
@@ -205,6 +208,9 @@ fun ProfilesScreen(
         targetReplacingProfile = null
     }
 
+    Box(Modifier.fillMaxSize()) {
+    if (pageBackdrop != null) MainPageScrollEdge(pageBackdrop, 58.dp, LoonBg, "profiles-top-blur",
+        modifier = Modifier.align(Alignment.TopCenter), scrollOffsetPx = { lazyListState.firstVisibleItemScrollOffset })
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -318,6 +324,7 @@ fun ProfilesScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .clipToBounds()
+                    .recordArcaGlasmioBackdropSource(pageBackdrop)
                     .testTag("profiles-list-viewport"),
                 indicator = {
                     PullToRefreshDefaults.Indicator(
@@ -448,9 +455,9 @@ fun ProfilesScreen(
                                     .firstOrNull { it.key == item.id }?.offset
                                     ?: retainedDragItem?.takeIf { it.id == item.id }?.offset
                                 translationY = if (drag?.id == item.id && slotOffset != null) drag.translationY(slotOffset) else 0f
-                                scaleX = if (isBeingDragged) 1.03f else 1f
-                                scaleY = if (isBeingDragged) 1.03f else 1f
-                                shadowElevation = if (isBeingDragged) 12f else 0f
+                                scaleX = 1f
+                                scaleY = 1f
+                                shadowElevation = 0f
                             }
                             .then(if (isSelected) Modifier.border(1.dp, IosBlue.copy(alpha = 0.16f), cardShape) else Modifier)
                             .testTag("profile-card-${item.id}"),
@@ -640,6 +647,7 @@ fun ProfilesScreen(
             }
             } // pull-to-refresh
         }
+    }
     }
 
     // =========================================================================

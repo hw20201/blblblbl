@@ -275,6 +275,18 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeHealthCheck(JNIEnv *env, jo
     healthCheck(_completable, _name);
 }
 
+JNIEXPORT jint JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativeTestProxyDelay(JNIEnv *env, jobject thiz,
+                                                                    jstring name, jstring test_url,
+                                                                    jlong timeout_ms) {
+    TRACE_METHOD();
+
+    scoped_string _name = get_string(name);
+    scoped_string _test_url = get_string(test_url);
+
+    return (jint) testProxyDelay(_name, _test_url, (int64_t) timeout_ms);
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_github_kr328_clash_core_bridge_Bridge_nativeGlobalReferenceCount(JNIEnv *env, jobject thiz) {
     return (jlong) jni_global_reference_count();

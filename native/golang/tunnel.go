@@ -90,6 +90,11 @@ func healthCheck(completable unsafe.Pointer, name C.c_string) {
 	}(C.GoString(name))
 }
 
+//export testProxyDelay
+func testProxyDelay(name C.c_string, testURL C.c_string, timeoutMs C.int64_t) C.int32_t {
+	return C.int32_t(tunnel.TestProxyDelay(C.GoString(name), C.GoString(testURL), int64(timeoutMs)))
+}
+
 //export queryPendingHealthChecks
 func queryPendingHealthChecks() C.int64_t {
 	return C.int64_t(pendingHealthChecks.Load())
