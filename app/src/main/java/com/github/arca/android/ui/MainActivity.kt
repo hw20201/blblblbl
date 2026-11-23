@@ -833,7 +833,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun runSpeedTestForSingleNode(groupName: String?, nodeName: String) {
+        fun runSpeedTestForSingleNode(nodeName: String) {
             if (testingNodes.contains(nodeName)) return
 
             if (parsedProfile.groups.containsKey(nodeName)) {
@@ -1254,7 +1254,7 @@ class MainActivity : ComponentActivity() {
                                 onSelectProxy = { group, proxy -> handleSelectProxy(group, proxy) },
                                 onHealthCheck = { group -> runSpeedTestForGroup(group) },
                                 testingNodes = testingNodes,
-                                onTestSingleNode = { group, nodeName -> runSpeedTestForSingleNode(group, nodeName) },
+                                onTestSingleNode = { _, nodeName -> runSpeedTestForSingleNode(nodeName) },
                                 onAddNode = nodeActions.add,
                                 onEditNode = nodeActions.edit,
                                 onRenameNode = nodeActions.rename,
