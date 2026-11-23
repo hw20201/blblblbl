@@ -289,8 +289,13 @@ internal fun DashboardShortcutActionPanel(
                                 .graphicsLayer {
                                     val bounds = profileBounds[profile.id]
                                     translationY = if (draggedProfileId == profile.id && bounds != null) draggedProfileCenterY - bounds.center.y else 0f
-                                    scaleX = if (draggedProfileId == profile.id) 1.025f else 1f
-                                    scaleY = if (draggedProfileId == profile.id) 1.025f else 1f
+                                    // No scale on the dragged row: pointerInput sits inside this
+                                    // graphicsLayer, so a scale makes the accumulated drag deltas
+                                    // (local) lag the pointer in root coordinates, and the drag
+                                    // falls short of the neighbour's centre (b,a,c instead of
+                                    // b,c,a). Translation + shadow are the drag feedback.
+                                    scaleX = 1f
+                                    scaleY = 1f
                                     shadowElevation = if (draggedProfileId == profile.id) 12f else 0f
                                 }
                                 .pointerInput(profile.id) {
