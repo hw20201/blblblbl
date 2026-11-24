@@ -1439,8 +1439,16 @@ class MainActivity : ComponentActivity() {
                             configurationCenterDetailContent = { closePanel ->
                                 var destination by remember { mutableStateOf<ConfigurationCenterDestination?>(null) }
                                 BackHandler(enabled = destination != null) { destination = null }
-                                when (destination) {
-                                    null -> ConfigurationCenterScreen(
+                                // Hub fades out (淡出） when navigating to a sub-screen; the
+                                // sub-screens are transparent under glass, so the fade reads
+                                // through them. Enter is instant — the cards' own fade-in +
+                                // slide-up is the entrance. Navigation is not delayed.
+                                AnimatedVisibility(
+                                    visible = destination == null,
+                                    enter = fadeIn(animationSpec = tween(1)),
+                                    exit = fadeOut(animationSpec = tween(200))
+                                ) {
+                                    ConfigurationCenterScreen(
                                         onNavigateToProfiles = { destination = ConfigurationCenterDestination.PROFILES },
                                         onNavigateToScripts = {
                                             overrideTargetProfile = null
@@ -1453,6 +1461,9 @@ class MainActivity : ComponentActivity() {
                                         scrollState = configurationCenterScrollState,
                                         embeddedPanel = true
                                     )
+                                }
+                                when (destination) {
+                                    null -> { /* hub shown by the AnimatedVisibility above */ }
                                     ConfigurationCenterDestination.PROFILES -> ProfilesScreen(
                                         profiles = profiles,
                                         selectedProfileId = selectedProfileId,

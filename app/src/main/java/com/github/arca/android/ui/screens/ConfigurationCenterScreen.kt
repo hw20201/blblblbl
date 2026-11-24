@@ -17,9 +17,6 @@ import androidx.compose.material.icons.filled.Rule
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,18 +64,6 @@ fun ConfigurationCenterScreen(
     // the screen first composes so the animation runs on entry.
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
-    // Exit (淡出）: when a card is tapped, fade the four entries out first,
-    // then navigate once the fade is done. The reverse of the entrance.
-    var leaving by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    fun navigateAfterFade(navigate: () -> Unit) {
-        if (leaving) return
-        leaving = true
-        scope.launch {
-            delay(200)
-            navigate()
-        }
-    }
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
 
@@ -105,19 +90,19 @@ fun ConfigurationCenterScreen(
             ConfigurationCenterSection("配置 / 订阅", "configuration-center-section-header-0") {
                 CupertinoCell(
                     modifier = Modifier.testTag("configuration-center-profiles-entry")
-                        .then(configCenterEntrance(index = 0, entered = entered, leaving = leaving)),
+                        .then(configCenterEntrance(index = 0, entered = entered)),
                     title = "配置文件与订阅", subtitle = "导入本地配置、管理配置及刷新订阅",
                     icon = Icons.Default.FolderOpen, iconBg = AppPalette.iconBrightBlue,
-                    showChevron = true, onClick = { navigateAfterFade(onNavigateToProfiles) }
+                    showChevron = true, onClick = onNavigateToProfiles
                 )
             }
             ConfigurationCenterSection("脚本", "configuration-center-section-header-1") {
                 CupertinoCell(
                     modifier = Modifier.testTag("configuration-center-scripts-entry")
-                        .then(configCenterEntrance(index = 1, entered = entered, leaving = leaving)),
+                        .then(configCenterEntrance(index = 1, entered = entered)),
                     title = "脚本管理", subtitle = "管理全局脚本；单配置覆写仍在配置详情中设置",
                     icon = Icons.Default.Code, iconBg = AppPalette.iconBrightBlue,
-                    showChevron = true, onClick = { navigateAfterFade(onNavigateToScripts) }
+                    showChevron = true, onClick = onNavigateToScripts
                 )
             }
             ConfigurationCenterSection(
@@ -127,18 +112,18 @@ fun ConfigurationCenterScreen(
             ) {
                 CupertinoCell(
                     modifier = Modifier.testTag("configuration-center-rules-entry")
-                        .then(configCenterEntrance(index = 2, entered = entered, leaving = leaving)),
+                        .then(configCenterEntrance(index = 2, entered = entered)),
                     title = "规则资源", subtitle = "查看与筛选当前配置中的规则",
                     icon = Icons.Default.Rule, iconBg = AppPalette.iconYellowAmber,
-                    showChevron = true, onClick = { navigateAfterFade(onNavigateToRules) }
+                    showChevron = true, onClick = onNavigateToRules
                 )
                 CupertinoIndentedDivider(startIndent = 56.dp)
                 CupertinoCell(
                     modifier = Modifier.testTag("configuration-center-app-routing-entry")
-                        .then(configCenterEntrance(index = 3, entered = entered, leaving = leaving)),
+                        .then(configCenterEntrance(index = 3, entered = entered)),
                     title = "应用分流", subtitle = "管理按应用代理设置",
                     icon = Icons.Default.Apps, iconBg = AppPalette.iconViolet,
-                    showChevron = true, onClick = { navigateAfterFade(onNavigateToAppRouting) }
+                    showChevron = true, onClick = onNavigateToAppRouting
                 )
             }
         }
@@ -172,22 +157,16 @@ fun ConfigurationCenterScreen(
  * partial alpha with a short travel keeps the text above undisturbed.
  */
 @Composable
-private fun configCenterEntrance(index: Int, entered: Boolean, leaving: Boolean = false): Modifier {
+private fun configCenterEntrance(index: Int, entered: Boolean): Modifier {
     val spec = tween<Float>(durationMillis = 320, delayMillis = index * 70, easing = FastOutSlowInEasing)
     val alpha by animateFloatAsState(
-        targetValue = when {
-            leaving -> 0f
-            entered -> 1f
-            else -> 0.35f
-        },
-        animationSpec = if (leaving) tween(durationMillis = 200, delayMillis = index * 30)
-        else spec,
+        targetValue = if (entered) 1f else 0.35f,
+        animationSpec = spec,
         label = "config-center-entrance-alpha"
     )
     val offsetY by animateDpAsState(
-        targetValue = if (entered && !leaving) 0.dp else 12.dp,
-        animationSpec = if (leaving) tween(durationMillis = 200, delayMillis = index * 30)
-        else tween(durationMillis = 320, delayMillis = index * 70, easing = FastOutSlowInEasing),
+        targetValue = if (entered) 0.dp else 12.dp,
+        animationSpec = tween(durationMillis = 320, delayMillis = index * 70, easing = FastOutSlowInEasing),
         label = "config-center-entrance-offset"
     )
     return Modifier.graphicsLayer { this.alpha = alpha }.offset(y = offsetY)
