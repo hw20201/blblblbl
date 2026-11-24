@@ -31,7 +31,8 @@ import com.github.arca.android.data.PerAppProxyMode
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
-import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
+import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
+import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import com.github.arca.android.ui.theme.*
 
 private val iconBitmapCache = androidx.collection.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(300)
@@ -49,6 +50,9 @@ fun AppRoutingScreen(
     embeddedPanel: Boolean = false
 ) {
     val listState = rememberLazyListState()
+    // Local backdrop that samples this list, so the top-edge blur has real
+    // content to blur. The morph page provides no backdrop of its own.
+    val pageBackdrop = rememberArcaGlasmioBackdrop()
     var searchQuery by remember { mutableStateOf("") }
     var showSystemApps by remember { mutableStateOf(false) }
     val lang = LocalAppLanguage.current
@@ -73,7 +77,8 @@ fun AppRoutingScreen(
     Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().testTag("app-routing-list").bounceOverscroll(),
+            modifier = Modifier.fillMaxSize().testTag("app-routing-list").bounceOverscroll()
+                .recordArcaGlasmioBackdropSource(pageBackdrop),
             contentPadding = PaddingValues(
                 top = (if (embeddedPanel) (LocalSettingsDetailEdgeInsets.current?.top ?: 0.dp) else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 56.dp,
                 bottom = if (embeddedPanel) 24.dp else 120.dp
@@ -224,7 +229,7 @@ fun AppRoutingScreen(
         // so content never pops in or out suddenly under the header.
         // (Nav bar height here is the 56.dp used in the list's top padding.)
         MainPageScrollEdge(
-            backdrop = LocalArcaGlasmioBackdrop.current,
+            backdrop = pageBackdrop,
             headerHeight = 56.dp,
             background = LoonBg,
             tag = "app-routing-top-blur",
