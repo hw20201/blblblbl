@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import com.github.arca.android.data.PerAppProxyMode
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
+import com.github.arca.android.ui.glass.LocalArcaGlasmioBackdrop
 import com.github.arca.android.ui.theme.*
 
 private val iconBitmapCache = androidx.collection.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(300)
@@ -46,6 +48,7 @@ fun AppRoutingScreen(
     onTogglePackage: (String) -> Unit,
     embeddedPanel: Boolean = false
 ) {
+    val listState = rememberLazyListState()
     var searchQuery by remember { mutableStateOf("") }
     var showSystemApps by remember { mutableStateOf(false) }
     val lang = LocalAppLanguage.current
@@ -69,6 +72,7 @@ fun AppRoutingScreen(
     // the panel host already handles system insets, so only the full-screen page adds status-bar space.
     Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().testTag("app-routing-list").bounceOverscroll(),
             contentPadding = PaddingValues(
                 top = (if (embeddedPanel) (LocalSettingsDetailEdgeInsets.current?.top ?: 0.dp) else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 56.dp,
@@ -215,6 +219,22 @@ fun AppRoutingScreen(
         // this screen; clear it with the published edge insets so our floating nav
         // bar sits below the morph title instead of overlapping it.
         val edgeInsets = LocalSettingsDetailEdgeInsets.current
+        // Top-edge blur: starting just below the title text, blur the
+        // scrolling content gradually, then the frosted nav bar covers it —
+        // so content never pops in or out suddenly under the header.
+        // (Nav bar height here is the 56.dp used in the list's top padding.)
+        MainPageScrollEdge(
+            backdrop = LocalArcaGlasmioBackdrop.current,
+            headerHeight = 56.dp,
+            background = LoonBg,
+            tag = "app-routing-top-blur",
+            modifier = Modifier.align(Alignment.TopCenter)
+                .then(if (edgeInsets != null) Modifier.padding(top = edgeInsets.top) else Modifier),
+            scrollOffsetPx = {
+                if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE
+                else listState.firstVisibleItemScrollOffset
+            }
+        )
         Box(
             Modifier.fillMaxWidth()
                 .then(
