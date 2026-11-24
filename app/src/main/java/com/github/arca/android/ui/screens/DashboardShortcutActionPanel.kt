@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.InstalledApp
+import com.github.arca.android.data.DEFAULT_LOCAL_MIXED_PROXY_PORT
 import com.github.arca.android.data.LogRepository
 import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.data.PerAppProxyMode
@@ -130,6 +131,7 @@ internal fun DashboardShortcutActionPanel(
     onAllowLanChanged: (Boolean) -> Unit,
     trafficMetrics: StateFlow<TrafficMetrics>,
     coreVersion: String,
+    mixedProxyPort: Int = DEFAULT_LOCAL_MIXED_PROXY_PORT,
     onClose: () -> Unit,
     onProfileImported: (ProfileItem) -> Unit = {},
     isPanelActive: Boolean = true,
@@ -264,6 +266,7 @@ internal fun DashboardShortcutActionPanel(
                 "ip_test" -> OutboundIpPanel(
                     isVpnRunning = vpnStatus == VpnState.Status.RUNNING,
                     state = ipLookupState,
+                    mixedProxyPort = mixedProxyPort,
                     settingsOpenState = ipConfigEntry.settingsOpen,
                     onConfigLinkAvailabilityChanged = { ipConfigEntry.linkEnabled = it }
                 )
@@ -456,7 +459,7 @@ internal fun DashboardShortcutActionPanel(
                 "network_share" -> {
                     QuickInfoCard {
                         Text("局域网共享", color = LoonTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("代理端口：127.0.0.1:7890", color = LoonTextSecondary, fontSize = 12.sp)
+                        Text("代理端口：127.0.0.1:$mixedProxyPort", color = LoonTextSecondary, fontSize = 12.sp)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(if (allowLan) "允许局域网设备连接" else "仅本机可连接", color = LoonTextPrimary, fontSize = 12.sp)
                             ArcaGlasmioSwitch(checked = allowLan, onCheckedChange = onAllowLanChanged, modifier = Modifier.testTag("quick-network-share-toggle"))

@@ -396,12 +396,16 @@ class PolicySettingsGlassMorphTest {
         assertSettingsMorphTopBlur()
         compose.onNodeWithTag("dns-page-list").assertExists()
         compose.onNodeWithTag("dns-page-header").assertDoesNotExist()
+        val dnsHeaderBottom = compose.onNodeWithTag("settings-detail-fixed-header").fetchSemanticsNode().boundsInRoot.bottom
+        val dnsStatusTop = compose.onNodeWithTag("dns-panel-status").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("the first DNS card stays below the pinned morph title", dnsStatusTop >= dnsHeaderBottom + 8f)
         compose.onNodeWithTag("dns-fakeip-switch").assertIsOn().performClick().assertIsOff()
         val dnsPanelBottom = compose.onNodeWithTag("settings-detail-page").fetchSemanticsNode().boundsInRoot.bottom
         val hint = compose.onNodeWithTag("dns-panel-bottom-hint").assertIsDisplayed()
         val hintBounds = hint.fetchSemanticsNode().boundsInRoot
         val hintBottom = hintBounds.bottom
         assertTrue("DNS explanation remains fully inside the morph above the Dock", dnsPanelBottom - hintBottom >= 8f)
+        assertTrue("DNS hint text stays above the viewport's bottom blur ramp", dnsPanelBottom - hintBottom >= 19f)
         val dnsList = compose.onNodeWithTag("dns-page-list")
         assertTrue("the DNS list viewport must end before the pinned hint", dnsList.fetchSemanticsNode().boundsInRoot.bottom <= hintBounds.top + 1f)
         compose.runOnIdle { dnsListState.dispatchRawDelta(100_000f) }
@@ -550,6 +554,11 @@ class PolicySettingsGlassMorphTest {
             compose.onNodeWithTag(requiredTag).assertExists()
             compose.onNodeWithTag("settings-detail-page-glasmio-main-material", useUnmergedTree = true).assertExists()
             assertSettingsMorphTopBlur()
+            if (entryTag == "settings-connections-entry") {
+                val headerBottom = compose.onNodeWithTag("settings-detail-fixed-header").fetchSemanticsNode().boundsInRoot.bottom
+                val toolbarTop = compose.onNodeWithTag("connections-embedded-toolbar").fetchSemanticsNode().boundsInRoot.top
+                assertTrue("the embedded connection toolbar stays below the pinned morph title", toolbarTop >= headerBottom + 8f)
+            }
             if (entryTag == "settings-logs-entry") {
                 compose.onNodeWithTag("logs-toggle-search").performClick()
                 compose.waitForIdle()
@@ -697,5 +706,6 @@ class PolicySettingsGlassMorphTest {
         compose.onNodeWithTag("settings-detail-edge-viewport", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("settings-detail-edge-header", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("settings-detail-edge-body", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("settings-detail-edge-bottom-blur", useUnmergedTree = true).assertExists()
     }
 }

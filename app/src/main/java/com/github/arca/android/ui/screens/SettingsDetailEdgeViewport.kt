@@ -158,6 +158,21 @@ internal fun SettingsDetailEdgeViewport(
                     )
                     .testTag("settings-detail-edge-blur")
             )
+            Box(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .height(EdgeBottomFade + bleed)
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                        blendMode = BlendMode.Plus
+                    }
+                    .bottomBlurEdgeMask()
+                    .progressiveBlurBackdrop(
+                        backdrop,
+                        progress = 1f,
+                        maxRadius = EdgeBlurRadius
+                    )
+                    .testTag("settings-detail-edge-bottom-blur")
+            )
         }
         Box(
             Modifier.align(Alignment.TopCenter).fillMaxWidth()
@@ -186,7 +201,10 @@ private fun Modifier.sharpEdgeMask(
             stops += ((s + (e - s) * t) / h) to Color.White.copy(alpha = 1f - reveal * (1f - smooth(t)))
         }
         stops += (bottomStart / h) to Color.White
-        stops += 1f to Color.Transparent
+        EdgeSteps.forEach { t ->
+            val y = (bottomStart + (h - bottomStart) * t) / h
+            stops += y to Color.White.copy(alpha = 1f - smooth(t))
+        }
         val mask = Brush.verticalGradient(colorStops = stops.toTypedArray())
         onDrawWithContent {
             drawContent()
@@ -207,6 +225,20 @@ private fun Modifier.blurEdgeMask(
     stops += 0f to Color.White.copy(alpha = reveal)
     EdgeSteps.forEach { t ->
         stops += ((s + (e - s) * t) / h) to Color.White.copy(alpha = reveal * (1f - smooth(t)))
+    }
+    val mask = Brush.verticalGradient(colorStops = stops.toTypedArray())
+    onDrawWithContent {
+        drawContent()
+        drawRect(mask, blendMode = BlendMode.DstIn)
+    }
+}
+
+/** The lower blur complements the body fade so content softens into the rounded panel rim. */
+private fun Modifier.bottomBlurEdgeMask(): Modifier = drawWithCache {
+    val stops = ArrayList<Pair<Float, Color>>()
+    stops += 0f to Color.Transparent
+    EdgeSteps.forEach { t ->
+        stops += t to Color.White.copy(alpha = smooth(t))
     }
     val mask = Brush.verticalGradient(colorStops = stops.toTypedArray())
     onDrawWithContent {

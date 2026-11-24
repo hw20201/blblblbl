@@ -48,6 +48,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.PanelAnimationSpeed
+import com.github.arca.android.data.LocalProxyPorts
 import com.github.arca.android.data.TunStack
 import com.github.arca.android.data.TunTuning
 import com.github.arca.android.ui.components.ShortcutTouchVariant
@@ -68,6 +69,7 @@ internal enum class SettingsDetailPage(
     SHORTCUT_TOUCH("快捷卡片触感", "选择按压与回弹的动态反馈", Icons.Default.TouchApp),
     PANEL_SPEED("面板动画速度", "首页快捷方式与设置面板", Icons.Default.Speed),
     TUN_MTU("TUN MTU", "调整隧道传输单元大小", Icons.Default.Tune),
+    PROXY_PORTS("代理端口", "本机代理与 DNS 监听端口", Icons.Default.Tune),
     MIPS_CONGESTION("MIPS 拥塞控制", "选择连接拥塞控制算法", Icons.Default.Memory),
     APPEARANCE("外观与显示", "主题、语言与策略节点排版", Icons.Default.Palette),
     GLASS_EFFECTS("玻璃效果", "主材质、光学与跟手动态", Icons.Default.AutoAwesome),
@@ -89,6 +91,7 @@ internal val SettingsDetailPage.preferredPanelHeight: androidx.compose.ui.unit.D
         }
         return when (this) {
             SettingsDetailPage.TUN_MTU -> 280.dp
+            SettingsDetailPage.PROXY_PORTS -> 360.dp
             SettingsDetailPage.APPEARANCE -> 620.dp
             SettingsDetailPage.GLASS_EFFECTS -> 680.dp
             SettingsDetailPage.DNS -> 620.dp
@@ -116,6 +119,11 @@ internal fun SettingsDetailMorphPage(
     tunMtuDraft: String,
     onTunMtuDraftChanged: (String) -> Unit,
     onTunMtuSaved: (Int) -> Unit,
+    mixedProxyPortDraft: String = LocalProxyPorts().mixedPort.toString(),
+    onMixedProxyPortDraftChanged: (String) -> Unit = {},
+    dnsProxyPortDraft: String = LocalProxyPorts().dnsPort.toString(),
+    onDnsProxyPortDraftChanged: (String) -> Unit = {},
+    onLocalProxyPortsSaved: (LocalProxyPorts) -> Boolean = { true },
     mipsCongestionController: String,
     onMipsCongestionControllerChanged: (String) -> Unit,
     onClose: () -> Unit,
@@ -315,6 +323,56 @@ internal fun SettingsDetailMorphPage(
                         ) { Text("保存") }
                     }
                 }
+                SettingsDetailPage.PROXY_PORTS -> {
+                    Text(
+                        "端口范围为 1–65535；本地混合代理与 DNS 监听端口不能相同。仅有效输入可以保存。",
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        color = LoonTextSecondary
+                    )
+                    OutlinedTextField(
+                        value = mixedProxyPortDraft,
+                        onValueChange = { value ->
+                            if (value.length <= 5 && value.all { it in '0'..'9' }) onMixedProxyPortDraftChanged(value)
+                        },
+                        singleLine = true,
+                        label = { Text("本地混合代理端口") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().testTag("settings-detail-mixed-proxy-port")
+                    )
+                    OutlinedTextField(
+                        value = dnsProxyPortDraft,
+                        onValueChange = { value ->
+                            if (value.length <= 5 && value.all { it in '0'..'9' }) onDnsProxyPortDraftChanged(value)
+                        },
+                        singleLine = true,
+                        label = { Text("DNS 监听端口") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().testTag("settings-detail-dns-proxy-port")
+                    )
+                    val validPorts = LocalProxyPorts.parse(mixedProxyPortDraft, dnsProxyPortDraft)
+                    if (validPorts == null) {
+                        val message = when {
+                            mixedProxyPortDraft.isEmpty() || dnsProxyPortDraft.isEmpty() -> "请填写两个端口。"
+                            mixedProxyPortDraft == dnsProxyPortDraft -> "两个监听端口不能相同。"
+                            else -> "请输入 1–65535 范围内的端口。"
+                        }
+                        Text(message, color = Color(0xFFFF6B6B), fontSize = 12.sp, modifier = Modifier.testTag("settings-detail-proxy-ports-error"))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = onClose,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.14f), contentColor = LoonTextPrimary)
+                        ) { Text("取消") }
+                        Button(
+                            onClick = { validPorts?.let { if (onLocalProxyPortsSaved(it)) onClose() } },
+                            enabled = validPorts != null,
+                            modifier = Modifier.weight(1f).testTag("settings-detail-proxy-ports-save"),
+                            colors = ButtonDefaults.buttonColors(containerColor = IosBlue.copy(alpha = 0.86f))
+                        ) { Text("保存") }
+                    }
+                }
                 SettingsDetailPage.MIPS_CONGESTION -> {
                     TunTuning.CONGESTION_CONTROLLERS.forEachIndexed { index, option ->
                         SettingsDetailOption(
@@ -333,6 +391,7 @@ internal fun SettingsDetailMorphPage(
                     }
                 }
                 SettingsDetailPage.APPEARANCE,
+                SettingsDetailPage.PROXY_PORTS,
                 SettingsDetailPage.GLASS_EFFECTS,
                 SettingsDetailPage.DNS,
                 SettingsDetailPage.MANAGED_CONFIG,

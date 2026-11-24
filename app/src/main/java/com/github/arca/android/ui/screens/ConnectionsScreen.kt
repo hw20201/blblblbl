@@ -80,6 +80,7 @@ fun ConnectionsScreen(
     var query by remember { mutableStateOf("") }
     var confirmCloseAll by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
     ReportSettingsDetailScrollOffset {
         if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else listState.firstVisibleItemScrollOffset
     }
@@ -107,6 +108,7 @@ fun ConnectionsScreen(
     Column(
         Modifier.fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
+            .then(if (embeddedPanel) Modifier.padding(top = edgeInsets?.top ?: 0.dp) else Modifier)
             .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
             .testTag("connections-root")
     ) {
@@ -163,10 +165,10 @@ fun ConnectionsScreen(
                 } else {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize().bounceOverscroll(),
+                        modifier = Modifier.weight(1f).fillMaxWidth().bounceOverscroll().testTag("connections-list"),
                         contentPadding = PaddingValues(
                             start = 16.dp, end = 16.dp, top = 6.dp,
-                            bottom = if (embeddedPanel) 24.dp else 120.dp
+                            bottom = if (embeddedPanel) (edgeInsets?.bottom ?: 24.dp) else 120.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {

@@ -97,7 +97,8 @@ internal fun OutboundIpPanel(
     isVpnRunning: Boolean,
     modifier: Modifier = Modifier,
     state: OutboundIpLookupState = remember { OutboundIpLookupState() },
-    repository: OutboundIpRepository = remember { OutboundIpRepository() },
+    repository: OutboundIpRepository? = null,
+    mixedProxyPort: Int = DEFAULT_LOCAL_MIXED_PROXY_PORT,
     credentialStorage: ScamalyticsCredentialsStorage? = null,
     /**
      * Hoisted settings-sheet state. When a host supplies it, the host renders the
@@ -110,6 +111,7 @@ internal fun OutboundIpPanel(
     onRefresh: (suspend () -> OutboundIpInfo)? = null
 ) {
     val context = LocalContext.current
+    val activeRepository = repository ?: remember(mixedProxyPort) { OutboundIpRepository(proxyPort = mixedProxyPort) }
     val storage = credentialStorage ?: remember(context) { ScamalyticsCredentialStore(context) }
     val scope = rememberCoroutineScope()
     var credentials by remember { mutableStateOf<ScamalyticsCredentials?>(null) }
@@ -176,7 +178,7 @@ internal fun OutboundIpPanel(
                     val selectedTest = testMode
                     state.refresh(scope) { onIpResolved ->
                         if (onRefresh != null) OutboundIpResult(onRefresh())
-                        else repository.lookupWithRisk(isVpnRunning, selectedState, selectedTest, onIpResolved)
+                        else activeRepository.lookupWithRisk(isVpnRunning, selectedState, selectedTest, onIpResolved)
                     }
                 },
                 enabled = credentialsReady && !state.loading && !credentialBusy,

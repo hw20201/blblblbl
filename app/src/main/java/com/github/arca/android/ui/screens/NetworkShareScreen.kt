@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.LanCredentials
+import com.github.arca.android.data.DEFAULT_LOCAL_MIXED_PROXY_PORT
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.components.bounceOverscroll
@@ -50,7 +51,8 @@ fun NetworkShareScreen(
     onAllowLanChanged: (Boolean) -> Unit,
     onRegenerateCredentials: () -> Unit,
     vpnState: VpnState,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    mixedProxyPort: Int = DEFAULT_LOCAL_MIXED_PROXY_PORT
 ) {
     val lang = LocalAppLanguage.current
     val clipboardManager = LocalClipboardManager.current
@@ -89,7 +91,7 @@ fun NetworkShareScreen(
     }
 
     val primaryIp = localIps.firstOrNull() ?: "127.0.0.1"
-    val port = "7890"
+    val port = mixedProxyPort.toString()
     val proxyUrl = buildLanProxyUrl(credentials, primaryIp, port)
 
     var selectedPlatform by remember { mutableStateOf("WINDOWS") }
@@ -167,7 +169,7 @@ fun NetworkShareScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.padding(end = 10.dp)
                                 )
-                                Text("混合代理端口: 7890", fontSize = 12.sp, color = LoonTextSecondary, fontWeight = FontWeight.Medium)
+                                Text("混合代理端口: $mixedProxyPort", fontSize = 12.sp, color = LoonTextSecondary, fontWeight = FontWeight.Medium)
                             }
 
                             Text(

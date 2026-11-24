@@ -38,6 +38,8 @@ class SettingsManager(context: Context) {
     private companion object {
         const val KEY_GLASS_SETTINGS = "glass_settings_v1"
         const val KEY_MANAGED_CONFIG = "managed_config_v1"
+        const val KEY_MIXED_PROXY_PORT = "local_mixed_proxy_port"
+        const val KEY_DNS_PROXY_PORT = "local_dns_proxy_port"
         const val KEY_SHORTCUT_GLASS_LEVEL = "shortcut_glass_level"
         const val KEY_SHORTCUT_GLASS_REFRACTION = "shortcut_glass_refraction_dp"
         const val KEY_SHORTCUT_GLASS_DISPERSION = "shortcut_glass_dispersion_dp"
@@ -99,6 +101,25 @@ class SettingsManager(context: Context) {
     var allowLan: Boolean
         get() = prefs.getBoolean("allow_lan", false)
         set(value) = prefs.edit().putBoolean("allow_lan", value).apply()
+
+    /** Invalid legacy values fall back together so the two listeners can never collide. */
+    val localProxyPorts: LocalProxyPorts
+        get() {
+            val ports = LocalProxyPorts(
+                mixedPort = prefs.getInt(KEY_MIXED_PROXY_PORT, DEFAULT_LOCAL_MIXED_PROXY_PORT),
+                dnsPort = prefs.getInt(KEY_DNS_PROXY_PORT, DEFAULT_LOCAL_DNS_PROXY_PORT)
+            )
+            return ports.takeIf(LocalProxyPorts::isValid) ?: LocalProxyPorts()
+        }
+
+    /** Persist both listener ports in one SharedPreferences transaction; reject invalid pairs. */
+    fun setLocalProxyPorts(ports: LocalProxyPorts): Boolean {
+        if (!ports.isValid()) return false
+        return prefs.edit()
+            .putInt(KEY_MIXED_PROXY_PORT, ports.mixedPort)
+            .putInt(KEY_DNS_PROXY_PORT, ports.dnsPort)
+            .commit()
+    }
 
     fun lanCredentials(): LanCredentials = synchronized(lanCredentialLock) {
         val user = prefs.getString(KEY_LAN_USER, null)

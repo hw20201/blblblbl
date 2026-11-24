@@ -9,6 +9,9 @@ class ConfigDnsMergeTest {
         assertEquals(true, dns["enable"]); assertEquals("127.0.0.1:1053", dns["listen"])
         assertEquals("redir-host", dns["enhanced-mode"]); assertEquals("198.18.0.1/16", dns["fake-ip-range"])
     }
+    @Test fun `runtime DNS listener uses configured loopback port`() {
+        assertEquals("127.0.0.1:5353", ConfigManager.buildDnsSection(false, null, dnsPort = 5353)["listen"])
+    }
     @Test fun `IPv6 routing switch does not disable proxy server endpoint resolution`() {
         val disabled = ConfigManager.runtimeIpv6Flags(ipv6RoutingEnabled = false)
         assertTrue(disabled.proxyServerResolution)

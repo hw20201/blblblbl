@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.data.LogRepository
+import com.github.arca.android.data.DEFAULT_LOCAL_DNS_PROXY_PORT
 import com.github.arca.android.ui.glass.FROSTED_PAGE_TITLE_FILL_ALPHA
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
@@ -50,6 +51,7 @@ fun DnsScreen(
     fakeIpEnabled: Boolean,
     onFakeIpEnabledChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
+    dnsProxyPort: Int = DEFAULT_LOCAL_DNS_PROXY_PORT,
     embeddedPanel: Boolean = false,
     listState: LazyListState? = null
 ) {
@@ -57,6 +59,12 @@ fun DnsScreen(
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
     val pageListState = listState ?: rememberLazyListState()
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
+    // The viewport adds bleed past the panel; keep its pinned hint inside the clipped edge.
+    val bottomBleed = if (embeddedPanel) {
+        edgeInsets?.bottom?.minus(SettingsDetailEdgeBottomInset) ?: 0.dp
+    } else 0.dp
+    val bottomBlurSafeSpace = if (embeddedPanel) 20.dp else 0.dp
     ReportSettingsDetailScrollOffset {
         if (pageListState.firstVisibleItemIndex > 0) Int.MAX_VALUE / 2 else pageListState.firstVisibleItemScrollOffset
     }
@@ -124,7 +132,7 @@ fun DnsScreen(
     ) {
         // In a morph panel the empty-state explanation is pinned inside the panel, not
         // left as the final lazy item where it can sit behind the floating Dock.
-        Column(Modifier.fillMaxSize().testTag("dns-page-body")) {
+        Column(Modifier.fillMaxSize().padding(bottom = bottomBleed + bottomBlurSafeSpace).testTag("dns-page-body")) {
         LazyColumn(
             state = pageListState,
             modifier = Modifier
@@ -134,10 +142,10 @@ fun DnsScreen(
                 .bounceOverscroll()
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
-                top = if (embeddedPanel) 8.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                top = if (embeddedPanel) (edgeInsets?.top ?: 8.dp) else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
                 // Leave a deliberate scroll tail above the pinned explanation so
                 // the final DNS row can settle fully clear of the fixed hint.
-                bottom = if (embeddedPanel) 20.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                bottom = if (embeddedPanel) (edgeInsets?.bottom ?: 40.dp) else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -183,7 +191,7 @@ fun DnsScreen(
                             }
                             Column {
                                 Text("核心监听端口", fontSize = 11.sp, color = LoonTextMuted)
-                                Text("127.0.0.1:1053", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary)
+                                Text("127.0.0.1:$dnsProxyPort", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = LoonTextPrimary)
                             }
                             Column {
                                 Text("防污染劫持", fontSize = 11.sp, color = LoonTextMuted)

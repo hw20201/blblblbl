@@ -51,6 +51,7 @@ import com.github.arca.android.data.ProfileItem
 import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.data.PerAppProxyMode
 import com.github.arca.android.data.InstalledApp
+import com.github.arca.android.data.DEFAULT_LOCAL_MIXED_PROXY_PORT
 import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.service.VpnState
 import com.github.arca.android.service.TrafficMetrics
@@ -192,6 +193,7 @@ fun DashboardScreen(
     onToggleAppPackage: (String) -> Unit = {},
     allowLan: Boolean = false,
     onAllowLanChanged: (Boolean) -> Unit = {},
+    mixedProxyPort: Int = DEFAULT_LOCAL_MIXED_PROXY_PORT,
     glassScene: NavigationLensState? = null,
     navigationLensBoundsState: State<NavigationLensGlobalBounds?>? = null,
     onAddNode: () -> Unit = {},
@@ -261,7 +263,7 @@ fun DashboardScreen(
     // shortcut model (or its grid) on every one-second telemetry update.
     val allShortcutMap = remember(
         lang, activeProfileName, activeNodeName, totalNodes, totalRules, requestMonitoringEnabled,
-        vpnState.coreVersion, isRunning, isStarting, vpnState.status
+        vpnState.coreVersion, isRunning, isStarting, vpnState.status, mixedProxyPort
     ) {
         mapOf(
             "vpn" to ShortcutDef("vpn", if (vpnState.status == VpnState.Status.STOPPING) "正在停止" else if (isRunning || isStarting) "停止 VPN" else "启动 VPN",
@@ -302,7 +304,7 @@ fun DashboardScreen(
                 activeDialogContent = "内核版本: ${vpnState.coreVersion.ifBlank { "v1.18.x" }}\n" +
                         "架构支持: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}"
             },
-            "network_share" to ShortcutDef("network_share", AppStrings.get("shortcut_network_share", lang), "127.0.0.1:7890", { NetworkShareIllustration() }) {
+            "network_share" to ShortcutDef("network_share", AppStrings.get("shortcut_network_share", lang), "127.0.0.1:$mixedProxyPort", { NetworkShareIllustration() }) {
                 onNavigateToNetworkShare()
             },
             "traffic" to ShortcutDef("traffic", AppStrings.get("shortcut_traffic", lang), AppStrings.get("traffic_records_subtitle", lang), {
@@ -318,7 +320,7 @@ fun DashboardScreen(
     }
 
     if (showOutboundIp) {
-        OutboundIpSheet(isVpnRunning = isRunning, onDismiss = { showOutboundIp = false })
+        OutboundIpSheet(isVpnRunning = isRunning, mixedProxyPort = mixedProxyPort, onDismiss = { showOutboundIp = false })
     }
 
     val titleScene = rememberNavigationLens()
@@ -1041,6 +1043,7 @@ fun DashboardScreen(
                         onToggleAppPackage = onToggleAppPackage,
                         allowLan = allowLan,
                         onAllowLanChanged = onAllowLanChanged,
+                        mixedProxyPort = mixedProxyPort,
                         trafficMetrics = trafficMetrics,
                         coreVersion = vpnState.coreVersion,
                         isPanelActive = activeShortcutPanelId != null,

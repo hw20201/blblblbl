@@ -327,6 +327,7 @@ class MainActivity : ComponentActivity() {
         var tunStack by remember { mutableStateOf(settingsManager.tunStack) }
         var bootOnStartup by remember { mutableStateOf(settingsManager.bootOnStartup) }
         var allowLan by remember { mutableStateOf(settingsManager.allowLan) }
+        var localProxyPorts by remember { mutableStateOf(settingsManager.localProxyPorts) }
         var lanCredentials by remember { mutableStateOf(settingsManager.lanCredentials()) }
         var fakeIpEnabled by remember { mutableStateOf(settingsManager.fakeIpEnabled) }
         var managedConfig by remember { mutableStateOf(settingsManager.managedConfig) }
@@ -1169,6 +1170,7 @@ class MainActivity : ComponentActivity() {
                                     settingsManager.selectedPackages = updated
                                 },
                                 allowLan = allowLan,
+                                mixedProxyPort = localProxyPorts.mixedPort,
                                 onAllowLanChanged = { enabled ->
                                     allowLan = enabled
                                     settingsManager.allowLan = enabled
@@ -1276,6 +1278,19 @@ class MainActivity : ComponentActivity() {
                             tunStack = tunStack,
                             bootOnStartup = bootOnStartup,
                             allowLan = allowLan,
+                            localProxyPorts = localProxyPorts,
+                            onLocalProxyPortsSaved = { updated ->
+                                if (updated == localProxyPorts) {
+                                    true
+                                } else if (settingsManager.setLocalProxyPorts(updated)) {
+                                    localProxyPorts = updated
+                                    restartTunnelForSettings()
+                                    true
+                                } else {
+                                    AppNotice.error("代理端口保存失败，请重试")
+                                    false
+                                }
+                            },
                             fakeIpEnabled = fakeIpEnabled,
                             hapticEnabled = hapticEnabled,
                             shortcutTouchVariant = shortcutTouchVariant,
@@ -1405,6 +1420,7 @@ class MainActivity : ComponentActivity() {
                             dnsDetailContent = {
                                 DnsScreen(
                                     fakeIpEnabled = fakeIpEnabled,
+                                    dnsProxyPort = localProxyPorts.dnsPort,
                                     onFakeIpEnabledChanged = { enabled ->
                                         fakeIpEnabled = enabled
                                         settingsManager.fakeIpEnabled = enabled
@@ -1794,6 +1810,7 @@ class MainActivity : ComponentActivity() {
                             SubScreen.DNS -> {
                                 DnsScreen(
                                     fakeIpEnabled = fakeIpEnabled,
+                                    dnsProxyPort = localProxyPorts.dnsPort,
                                     onFakeIpEnabledChanged = { enabled ->
                                         fakeIpEnabled = enabled
                                         settingsManager.fakeIpEnabled = enabled
@@ -1848,7 +1865,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     vpnState = vpnState,
-                                    onBack = { currentSubScreen = null }
+                                    onBack = { currentSubScreen = null },
+                                    mixedProxyPort = localProxyPorts.mixedPort
                                 )
                             }
                             SubScreen.GLASS_EFFECTS -> GlassEffectsScreen(

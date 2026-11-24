@@ -80,7 +80,7 @@ internal fun safeIpLookupError(error: Throwable): String =
 
 /** Local HTTP proxy of the running VPN core; used for every lookup request while the VPN is up. */
 internal const val VPN_LOCAL_PROXY_HOST = "127.0.0.1"
-internal const val VPN_LOCAL_PROXY_PORT = 7890
+internal const val VPN_LOCAL_PROXY_PORT = DEFAULT_LOCAL_MIXED_PROXY_PORT
 
 /** The whole exit-IP stage (both racing sources) is bounded by this; the risk stage has its own. */
 internal const val EXIT_STAGE_TIMEOUT_MILLIS = 8_000L
@@ -102,9 +102,9 @@ class OutboundIpRepository internal constructor(
     private val exitTimeoutMillis: Long,
     private val riskTimeoutMillis: Long
 ) {
-    constructor(client: OkHttpClient? = null) : this(
+    constructor(client: OkHttpClient? = null, proxyPort: Int = VPN_LOCAL_PROXY_PORT) : this(
         client,
-        InetSocketAddress(VPN_LOCAL_PROXY_HOST, VPN_LOCAL_PROXY_PORT),
+        InetSocketAddress(VPN_LOCAL_PROXY_HOST, proxyPort),
         Dns.SYSTEM,
         EXIT_STAGE_TIMEOUT_MILLIS,
         RISK_STAGE_TIMEOUT_MILLIS

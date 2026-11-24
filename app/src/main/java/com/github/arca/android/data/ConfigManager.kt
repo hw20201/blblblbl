@@ -662,8 +662,14 @@ object ConfigManager {
         RuntimeIpv6Flags(proxyServerResolution = true, clientDns = ipv6RoutingEnabled)
     private val defaultFakeIpFilter = listOf("*.lan", "*.local", "localhost.ptlogin2.qq.com", "*.connectivitycheck.android.com", "*.connectivitycheck.gstatic.com", "connectivitycheck.gstatic.com", "connectivitycheck.android.com", "clients3.google.com", "www.google.com/generate_204", "+.msftconnecttest.com", "+.msftncsi.com", "+.qualcomm.com", "+.miui.com", "+.xiaomi.com")
 
-    internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
-        val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:1053", "ipv6" to ipv6Enabled,
+    internal fun buildDnsSection(
+        fakeIp: Boolean,
+        userDns: Map<String, Any?>?,
+        ipv6Enabled: Boolean = false,
+        dnsPort: Int = DEFAULT_LOCAL_DNS_PROXY_PORT
+    ): LinkedHashMap<String, Any?> {
+        require(dnsPort in LOCAL_PROXY_PORT_RANGE) { "DNS proxy port must be between 1 and 65535" }
+        val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:$dnsPort", "ipv6" to ipv6Enabled,
             "enhanced-mode" to if (fakeIp) "fake-ip" else "redir-host", "fake-ip-range" to "198.18.0.1/16",
             "default-nameserver" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
             "proxy-server-nameserver" to listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT"),
@@ -715,7 +721,8 @@ object ConfigManager {
         tcpConcurrent: Boolean = true
     ): String {
         val ipv6Flags = runtimeIpv6Flags(ipv6Enabled)
-        val values = linkedMapOf<String, Any?>("mode" to settings.tunnelMode, "log-level" to settings.logLevel, "ipv6" to ipv6Flags.proxyServerResolution, "unified-delay" to settings.unifiedDelayEnabled, "mixed-port" to 7890, "allow-lan" to settings.allowLan, "tcp-concurrent" to tcpConcurrent)
+        val ports = settings.localProxyPorts
+        val values = linkedMapOf<String, Any?>("mode" to settings.tunnelMode, "log-level" to settings.logLevel, "ipv6" to ipv6Flags.proxyServerResolution, "unified-delay" to settings.unifiedDelayEnabled, "mixed-port" to ports.mixedPort, "allow-lan" to settings.allowLan, "tcp-concurrent" to tcpConcurrent)
         if (settings.allowLan) {
             values["authentication"] = listOf(settings.lanCredentials().encoded)
             values["skip-auth-prefixes"] = listOf("127.0.0.1/32", "::1/128")
@@ -723,7 +730,7 @@ object ConfigManager {
         values["geodata-mode"] = false
         values["geo-auto-update"] = false
         values["geox-url"] = linkedMapOf("geoip" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb", "geosite" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat", "mmdb" to "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb")
-        values["dns"] = buildDnsSection(settings.fakeIpEnabled, userDns, ipv6Flags.clientDns)
+        values["dns"] = buildDnsSection(settings.fakeIpEnabled, userDns, ipv6Flags.clientDns, ports.dnsPort)
         values["clash-for-android"] = linkedMapOf("append-system-dns" to false)
         val opts = org.yaml.snakeyaml.DumperOptions().apply { defaultFlowStyle = org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK; isPrettyFlow = true; indent = 2 }
         return "# Mihomo Android Injected Runtime Config\n" + org.yaml.snakeyaml.Yaml(opts).dump(values).trimEnd()

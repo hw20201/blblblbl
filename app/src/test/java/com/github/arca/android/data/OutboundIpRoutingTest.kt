@@ -29,6 +29,7 @@ class OutboundIpRoutingTest {
         assertNull(repo.lookupClient(false).proxy)
         assertEquals(InetSocketAddress("127.0.0.1", 7890), repo.lookupClient(true).proxy?.address())
         assertEquals(java.net.Proxy.Type.HTTP, repo.lookupClient(true).proxy?.type())
+        assertEquals(InetSocketAddress("127.0.0.1", 2080), OutboundIpRepository(proxyPort = 2080).lookupClient(true).proxy?.address())
     }
 
     @Test fun vpnOnSendsExitRequestsThroughTheLocalProxy() = runBlocking {

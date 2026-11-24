@@ -12,8 +12,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunStack
+import com.github.arca.android.data.LocalProxyPorts
 import com.github.arca.android.ui.components.LocalHapticFeedbackEnabled
 import com.github.arca.android.ui.components.LocalHapticFeedbackPerformer
+import com.github.arca.android.ui.components.ShortcutTouchVariant
 import com.github.arca.android.ui.glass.NavigationLensState
 import com.github.arca.android.ui.glass.GlassSettings
 import com.github.arca.android.ui.glass.NexusGlassBackground
@@ -59,6 +61,61 @@ class SettingsUiBehaviorTest {
             val parent = requireNotNull(outerBackdrop)
             assertSame(parent, settingsSectionLens(page, parent))
             assertNull(settingsSectionLens(page, page))
+        }
+    }
+
+    @Test fun proxyPortEditorDisablesSavingUntilBothPortsAreValidAndDistinct() {
+        val mixed = mutableStateOf("7890")
+        val dns = mutableStateOf("1053")
+        var saved: LocalProxyPorts? = null
+        var closed = false
+        compose.setContent {
+            MihomoTheme(ThemeMode.DARK) {
+                SettingsDetailMorphPage(
+                    page = SettingsDetailPage.PROXY_PORTS,
+                    tunStack = TunStack.DEFAULT,
+                    onTunStackChanged = {},
+                    logLevel = "info",
+                    onLogLevelChanged = {},
+                    shortcutTouchVariant = ShortcutTouchVariant.GentleFloat,
+                    onShortcutTouchVariantChanged = {},
+                    tunMtuDraft = "1500",
+                    onTunMtuDraftChanged = {},
+                    onTunMtuSaved = {},
+                    mixedProxyPortDraft = mixed.value,
+                    onMixedProxyPortDraftChanged = { mixed.value = it },
+                    dnsProxyPortDraft = dns.value,
+                    onDnsProxyPortDraftChanged = { dns.value = it },
+                    onLocalProxyPortsSaved = { saved = it; true },
+                    mipsCongestionController = "bbr",
+                    onMipsCongestionControllerChanged = {},
+                    onClose = { closed = true }
+                )
+            }
+        }
+        compose.waitForIdle()
+        val save = compose.onNodeWithTag("settings-detail-proxy-ports-save")
+        save.assertIsEnabled()
+
+        val mixedField = compose.onNodeWithTag("settings-detail-mixed-proxy-port")
+        mixedField.performTextClearance()
+        mixedField.performTextInput("65536")
+        compose.waitForIdle()
+        save.assertIsNotEnabled()
+        mixedField.performTextClearance()
+        mixedField.performTextInput("65535")
+        val dnsField = compose.onNodeWithTag("settings-detail-dns-proxy-port")
+        dnsField.performTextClearance()
+        dnsField.performTextInput("65535")
+        compose.waitForIdle()
+        save.assertIsNotEnabled()
+        dnsField.performTextClearance()
+        dnsField.performTextInput("53")
+        compose.waitForIdle()
+        save.assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(LocalProxyPorts(65535, 53), saved)
+            assertTrue(closed)
         }
     }
 

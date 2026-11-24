@@ -52,22 +52,30 @@ object ScriptManager {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    // Client that routes through local mixed-port proxy (127.0.0.1:7890)
-    // Used when app traffic bypasses VPN (app is in disallowedApplications)
-    private val localProxyClient = OkHttpClient.Builder()
-        .addNetworkInterceptor(secureRemoteUrlInterceptor)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress("127.0.0.1", 7890)))
-        .build()
+    // Cached per configured port because the local proxy may be changed while the app is open.
+    @Volatile private var cachedLocalProxyClient: Pair<Int, OkHttpClient>? = null
+
+    internal fun localProxyClient(context: Context): OkHttpClient {
+        val port = SettingsManager(context).localProxyPorts.mixedPort
+        cachedLocalProxyClient?.takeIf { it.first == port }?.let { return it.second }
+        return synchronized(this) {
+            cachedLocalProxyClient?.takeIf { it.first == port }?.second ?: OkHttpClient.Builder()
+                .addNetworkInterceptor(secureRemoteUrlInterceptor)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress("127.0.0.1", port)))
+                .build()
+                .also { cachedLocalProxyClient = port to it }
+        }
+    }
 
     /**
      * Attempt to fetch a URL, with special handling for raw.githubusercontent.com:
-     * 1. First try through local proxy (127.0.0.1:7890) - works when core is running
+     * 1. First try through the configured local mixed-port proxy - works when core is running
      * 2. Then try mirror URLs directly
      * 3. Finally fall back to direct connection
      */
-    private fun fetchUrl(url: String): String {
+    private fun fetchUrl(context: Context, url: String): String {
         val isGithubRaw = url.contains("raw.githubusercontent.com")
 
         if (isGithubRaw) {
@@ -76,7 +84,7 @@ object ScriptManager {
                 val req = Request.Builder().url(url)
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .build()
-                localProxyClient.newCall(req).execute().use { resp ->
+                localProxyClient(context).newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
                         return resp.body?.string() ?: error("响应内容为空")
                     }
@@ -142,7 +150,7 @@ object ScriptManager {
     ): Result<ScriptItem> = withContext(Dispatchers.IO) {
         runCatching {
             requireSecureRemoteUrl(url)
-            val body = fetchUrl(url)
+            val body = fetchUrl(context, url)
 
             val id = java.util.UUID.randomUUID().toString()
             val fileName = "$id.js"
@@ -217,7 +225,7 @@ object ScriptManager {
         runCatching {
             if (script.url.isBlank()) error("无远程更新链接")
             requireSecureRemoteUrl(script.url)
-            val body = fetchUrl(script.url)
+            val body = fetchUrl(context, script.url)
 
             val file = getScriptsDir(context).resolve(script.scriptFile)
             file.writeText(body)

@@ -18,13 +18,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.github.arca.android.data.OutboundIpInfo
+import com.github.arca.android.data.DEFAULT_LOCAL_MIXED_PROXY_PORT
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.theme.LoonBg
 import com.github.arca.android.ui.theme.LoonTextPrimary
 
 @Composable
-fun OutboundIpSheet(isVpnRunning: Boolean, onDismiss: () -> Unit = {}) {
-    OutboundIpGlassSheet(isVpnRunning = isVpnRunning, onDismiss = onDismiss)
+fun OutboundIpSheet(
+    isVpnRunning: Boolean,
+    mixedProxyPort: Int = DEFAULT_LOCAL_MIXED_PROXY_PORT,
+    onDismiss: () -> Unit = {}
+) {
+    OutboundIpGlassSheet(isVpnRunning = isVpnRunning, mixedProxyPort = mixedProxyPort, onDismiss = onDismiss)
 }
 
 /** Injectable manual lookup for previews/tests; never called simply by opening the sheet. */
@@ -38,6 +43,7 @@ fun OutboundIpSheet(onRefresh: suspend () -> OutboundIpInfo, onDismiss: () -> Un
 private fun OutboundIpGlassSheet(
     isVpnRunning: Boolean,
     onDismiss: () -> Unit,
+    mixedProxyPort: Int = DEFAULT_LOCAL_MIXED_PROXY_PORT,
     onRefresh: (suspend () -> OutboundIpInfo)? = null
 ) {
     val state = remember { OutboundIpLookupState() }
@@ -65,6 +71,7 @@ private fun OutboundIpGlassSheet(
                 }
                 OutboundIpPanel(
                     isVpnRunning = isVpnRunning,
+                    mixedProxyPort = mixedProxyPort,
                     state = state,
                     onRefresh = onRefresh,
                     settingsOpenState = settingsOpen,

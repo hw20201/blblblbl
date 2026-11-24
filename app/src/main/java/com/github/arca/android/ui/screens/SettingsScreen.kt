@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.arca.android.core.ClashCore
 import com.github.arca.android.data.PanelAnimationSpeed
+import com.github.arca.android.data.LocalProxyPorts
 import com.github.arca.android.data.SettingsManager
 import com.github.arca.android.data.ThemeMode
 import com.github.arca.android.data.TunTuning
@@ -79,6 +80,8 @@ fun SettingsScreen(
     tunStack: TunStack,
     bootOnStartup: Boolean,
     allowLan: Boolean,
+    localProxyPorts: LocalProxyPorts = LocalProxyPorts(),
+    onLocalProxyPortsSaved: (LocalProxyPorts) -> Boolean = { true },
     fakeIpEnabled: Boolean,
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     ipv6Enabled: Boolean = false,
@@ -120,6 +123,8 @@ fun SettingsScreen(
     val lang = LocalAppLanguage.current
     val scope = rememberCoroutineScope()
     var mtuDraft by remember { mutableStateOf(tunMtu.toString()) }
+    var mixedProxyPortDraft by remember(localProxyPorts) { mutableStateOf(localProxyPorts.mixedPort.toString()) }
+    var dnsProxyPortDraft by remember(localProxyPorts) { mutableStateOf(localProxyPorts.dnsPort.toString()) }
 
     var activeSettingsDetail by remember { mutableStateOf<SettingsDetailPage?>(null) }
     var hiddenSettingsDetailSource by remember { mutableStateOf<SettingsDetailPage?>(null) }
@@ -211,6 +216,30 @@ fun SettingsScreen(
                             )
                         },
                         onClick = { onAllowLanChanged(!allowLan) }
+                    )
+                }
+                SeparatedRow(
+                    SeparatedRowPosition.Middle,
+                    modifier = Modifier
+                        .graphicsLayer { alpha = if (hiddenSettingsDetailSource == SettingsDetailPage.PROXY_PORTS) 0f else 1f }
+                        .onGloballyPositioned {
+                            settingsDetailBounds[SettingsDetailPage.PROXY_PORTS] = it.boundsInWindow()
+                            settingsDetailRadius[SettingsDetailPage.PROXY_PORTS] = SeparatedRowPosition.Middle
+                        }
+                ) {
+                    CupertinoCell(
+                        modifier = Modifier.testTag("settings-proxy-ports-entry"),
+                        title = "代理端口",
+                        subtitle = "本机混合代理与 DNS 监听",
+                        value = "${localProxyPorts.mixedPort} / ${localProxyPorts.dnsPort}",
+                        icon = Icons.Default.Tune,
+                        iconBg = AppPalette.iconIndigo,
+                        showChevron = true,
+                        onClick = {
+                            mixedProxyPortDraft = localProxyPorts.mixedPort.toString()
+                            dnsProxyPortDraft = localProxyPorts.dnsPort.toString()
+                            openSettingsDetail(SettingsDetailPage.PROXY_PORTS)
+                        }
                     )
                 }
                 SeparatedRow(SeparatedRowPosition.Middle) {
@@ -597,6 +626,7 @@ fun SettingsScreen(
                     mipsCongestionController = mipsCongestionController,
                     themeMode = themeMode,
                     fakeIpEnabled = fakeIpEnabled,
+                    localProxyPorts = localProxyPorts,
                     modifier = Modifier.fillMaxSize().testTag("settings-detail-source-face")
                 )
             }
@@ -620,6 +650,11 @@ fun SettingsScreen(
                 tunMtuDraft = mtuDraft,
                 onTunMtuDraftChanged = { mtuDraft = it },
                 onTunMtuSaved = onTunMtuChanged,
+                mixedProxyPortDraft = mixedProxyPortDraft,
+                onMixedProxyPortDraftChanged = { mixedProxyPortDraft = it },
+                dnsProxyPortDraft = dnsProxyPortDraft,
+                onDnsProxyPortDraftChanged = { dnsProxyPortDraft = it },
+                onLocalProxyPortsSaved = onLocalProxyPortsSaved,
                 mipsCongestionController = mipsCongestionController,
                 onMipsCongestionControllerChanged = onMipsCongestionControllerChanged,
                 onClose = { activeSettingsDetail = null },
@@ -719,6 +754,7 @@ private fun SettingsDetailSourceFace(
     mipsCongestionController: String,
     themeMode: ThemeMode,
     fakeIpEnabled: Boolean,
+    localProxyPorts: LocalProxyPorts,
     modifier: Modifier = Modifier
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
@@ -749,6 +785,10 @@ private fun SettingsDetailSourceFace(
                 icon = Icons.Default.Speed, iconBg = AppPalette.iconBlue, showChevron = true
             )
             SettingsDetailPage.TUN_MTU -> CupertinoCell(title = "TUN MTU", value = tunMtu.toString(), showChevron = true)
+            SettingsDetailPage.PROXY_PORTS -> CupertinoCell(
+                title = "代理端口", value = "${localProxyPorts.mixedPort} / ${localProxyPorts.dnsPort}",
+                icon = Icons.Default.Tune, iconBg = AppPalette.iconIndigo, showChevron = true
+            )
             SettingsDetailPage.MIPS_CONGESTION -> CupertinoCell(title = "MIPS 拥塞控制", value = mipsCongestionController, showChevron = true)
             SettingsDetailPage.APPEARANCE -> CupertinoCell(
                 title = "外观与显示",
