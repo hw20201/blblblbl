@@ -14,7 +14,8 @@ data class LocalProxyPorts(
 
     companion object {
         fun parse(mixed: String, dns: String): LocalProxyPorts? {
-            if (mixed.isEmpty() || dns.isEmpty() || mixed.any { it !in '0'..'9' } || dns.any { it !in '0'..'9' }) return null
+            if (mixed.isEmpty() || dns.isEmpty()) return null
+            if (mixed.any { it !in '0'..'9' } || dns.any { it !in '0'..'9' }) return null
             val ports = LocalProxyPorts(mixed.toIntOrNull() ?: return null, dns.toIntOrNull() ?: return null)
             return ports.takeIf(LocalProxyPorts::isValid)
         }
