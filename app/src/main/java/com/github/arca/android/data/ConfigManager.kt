@@ -665,10 +665,13 @@ object ConfigManager {
     internal fun buildDnsSection(fakeIp: Boolean, userDns: Map<String, Any?>?, ipv6Enabled: Boolean = false): LinkedHashMap<String, Any?> {
         val dns = linkedMapOf<String, Any?>("enable" to true, "listen" to "127.0.0.1:1053", "ipv6" to ipv6Enabled,
             "enhanced-mode" to if (fakeIp) "fake-ip" else "redir-host", "fake-ip-range" to "198.18.0.1/16",
-            "default-nameserver" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
-            "proxy-server-nameserver" to listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT"),
-            "nameserver" to listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"),
-            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"),
+            // Plain UDP resolvers stay as the reliable fallback: DoH-only defaults
+            // break all DNS when DoH fails (TLS or network), because even the DoH
+            // hostnames in `nameserver` then cannot be resolved.
+            "default-nameserver" to listOf("223.5.5.5", "119.29.29.29"),
+            "proxy-server-nameserver" to listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT", "223.5.5.5", "119.29.29.29"),
+            "nameserver" to listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query", "223.5.5.5", "119.29.29.29", "180.76.76.76"),
+            "fallback" to listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query", "1.1.1.1", "8.8.8.8"),
             "fallback-filter" to linkedMapOf("geoip" to true, "geoip-code" to "CN"),
             "respect-rules" to true,
             "fake-ip-filter" to defaultFakeIpFilter)

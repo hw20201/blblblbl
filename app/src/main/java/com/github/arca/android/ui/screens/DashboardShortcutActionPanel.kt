@@ -287,8 +287,12 @@ internal fun DashboardShortcutActionPanel(
                                 .testTag("quick-profile-choice-${profile.id}")
                                 .onGloballyPositioned { profileBounds[profile.id] = it.boundsInRoot() }
                                 .graphicsLayer {
-                                    val bounds = profileBounds[profile.id]
-                                    translationY = if (draggedProfileId == profile.id && bounds != null) draggedProfileCenterY - bounds.center.y else 0f
+                                    // Anchor to the drag-start snapshot, NOT the live bounds:
+                                    // boundsInRoot() includes this row's own translation, so
+                                    // deriving translationY from it collapses the drag to half
+                                    // the finger travel (feedback loop).
+                                    val anchorCenter = dragStartCenters[profile.id]
+                                    translationY = if (draggedProfileId == profile.id && anchorCenter != null) draggedProfileCenterY - anchorCenter else 0f
                                     // No scale on the dragged row: pointerInput sits inside this
                                     // graphicsLayer, so a scale makes the accumulated drag deltas
                                     // (local) lag the pointer in root coordinates, and the drag

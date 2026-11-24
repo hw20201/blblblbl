@@ -212,6 +212,14 @@ android {
     // test passes). 2g fits CI runners and the build machine.
     tasks.withType<Test>().configureEach {
         maxHeapSize = "2g"
+        // Robolectric fetches android-all jars itself at test time via
+        // MavenArtifactFetcher, bypassing Gradle's cache and proxy, straight
+        // from repo1.maven.org. GitHub Actions runners share IPs, so Central
+        // 429s them and the whole test class setup dies (the flake we keep
+        // hitting). Point it at Google's full Central mirror instead; the
+        // mirror does not rate-limit the same way.
+        systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2/")
+        systemProperty("robolectric.dependency.repo.id", "google-mirror")
     }
 
     lint {
