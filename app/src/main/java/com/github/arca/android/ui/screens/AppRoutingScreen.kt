@@ -77,7 +77,7 @@ fun AppRoutingScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item(key = "routing-mode") {
-                CupertinoSegmentedControl(
+                GlassSegmentedControl(
                     items = modes,
                     selectedItem = currentMode,
                     onItemSelected = onModeChanged,

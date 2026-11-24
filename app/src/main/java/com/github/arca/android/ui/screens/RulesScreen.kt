@@ -34,6 +34,7 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
+import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,7 +107,7 @@ fun RulesScreen(
                 )
             }
             item(key = "rules-behavior-filter") {
-                CupertinoSegmentedControl(
+                GlassSegmentedControl(
                     items = behaviorTabs,
                     selectedItem = selectedBehavior,
                     onItemSelected = { selectedBehavior = it },
@@ -130,13 +131,14 @@ fun RulesScreen(
                     ) {
                         items(filterTypes) { type ->
                             val selected = selectedFilterType == type
-                            Surface(
+                            GlassSurface(
                                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
                                     haptic.selection()
                                     selectedFilterType = type
                                 },
-                                color = if (selected) LoonTertiaryBg else LoonCard,
-                                shape = RoundedCornerShape(16.dp)
+                                shape = RoundedCornerShape(16.dp),
+                                honorShape = true,
+                                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
                             ) {
                                 Text(
                                     text = if (type == "ALL") "全部 (${rules.size})" else type,
