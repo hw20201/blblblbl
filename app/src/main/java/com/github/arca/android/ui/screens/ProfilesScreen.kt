@@ -222,11 +222,22 @@ fun ProfilesScreen(
         targetReplacingProfile = null
     }
 
+    // Inside the settings morph page the EdgeViewport pins its own header above
+    // this screen; clear it with the published edge insets so our nav bar sits
+    // below the morph title instead of overlapping it (back chevron on "配置中心",
+    // "+" on the close "X"). Standalone use keeps the status-bar padding.
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
+            .then(
+                when {
+                    edgeInsets != null -> Modifier.padding(top = edgeInsets.top)
+                    embeddedPanel -> Modifier
+                    else -> Modifier.statusBarsPadding()
+                }
+            )
             .testTag("profiles-screen-root")
     ) {
         // Cupertino Navigation Bar

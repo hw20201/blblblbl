@@ -52,6 +52,10 @@ fun RulesScreen(
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val initialHeaderHeight = (if (embeddedPanel) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 48.dp
     val headerHeight = if (headerHeightPx > 0) with(density) { headerHeightPx.toDp() } else initialHeaderHeight
+    // Inside the settings morph page the EdgeViewport pins its own header above
+    // this screen; clear it with the published edge insets so our floating nav
+    // bar sits below the morph title instead of overlapping it.
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedBehavior by remember { mutableStateOf("ALL") }
@@ -88,7 +92,7 @@ fun RulesScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("rules-list").bounceOverscroll(),
             contentPadding = PaddingValues(
-                top = headerHeight + 12.dp,
+                top = headerHeight + 12.dp + (edgeInsets?.top ?: 0.dp),
                 bottom = 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -237,7 +241,13 @@ fun RulesScreen(
             }
         }
         Box(Modifier.align(Alignment.TopCenter).onSizeChanged { headerHeightPx = it.height }
-            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())) {
+            .then(
+                when {
+                    edgeInsets != null -> Modifier.padding(top = edgeInsets.top)
+                    embeddedPanel -> Modifier
+                    else -> Modifier.statusBarsPadding()
+                }
+            )) {
             CupertinoNavBar(
                 title = AppStrings.get("rules_screen_title", lang),
                 subtitle = "${tunnelMode.displayName} · 共 $totalRules 条规则",

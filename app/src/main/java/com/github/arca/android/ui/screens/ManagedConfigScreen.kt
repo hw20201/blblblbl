@@ -64,7 +64,7 @@ fun ManagedConfigScreen(
                 .bounceOverscroll(),
             state = listState,
             contentPadding = PaddingValues(
-                top = if (embeddedPanel) 8.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                top = if (embeddedPanel) (LocalSettingsDetailEdgeInsets.current?.top ?: 8.dp) else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
                 bottom = if (embeddedPanel) 24.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
