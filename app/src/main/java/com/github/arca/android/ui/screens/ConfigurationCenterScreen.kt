@@ -49,6 +49,10 @@ fun ConfigurationCenterScreen(
     embeddedPanel: Boolean = false
 ) {
     val titleScene = rememberNavigationLens()
+    // Inside the settings morph page the EdgeViewport pins its own header above
+    // this hub; clear it with the published edge insets so the first section
+    // sits below the morph title instead of overlapping it.
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
     var headerHeightPx by remember { mutableIntStateOf(0) }
     val headerInset = with(LocalDensity.current) { headerHeightPx.toDp() }
 
@@ -63,7 +67,11 @@ fun ConfigurationCenterScreen(
                 .testTag("configuration-center-scroll")
                 .verticalScroll(scrollState)
                 .padding(
-                    top = if (embeddedPanel) 4.dp else headerInset + 32.dp,
+                    top = when {
+                        edgeInsets != null -> edgeInsets.top
+                        embeddedPanel -> 4.dp
+                        else -> headerInset + 32.dp
+                    },
                     bottom = if (embeddedPanel) 24.dp else 136.dp
                 ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
