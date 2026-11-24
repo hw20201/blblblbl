@@ -134,6 +134,10 @@ fun ProfilesScreen(
     var refreshingProfileId by remember { mutableStateOf<String?>(null) }
     var localProfiles by remember(profiles) { mutableStateOf(profiles) }
     var profileDrag by remember { mutableStateOf<ProfileDragPosition?>(null) }
+    // Slot top captured at pickup. translationY is drag.top minus THIS fixed
+    // anchor, i.e. pure finger travel, so a reorder mid-drag cannot move the
+    // card under the finger.
+    var dragStartTop by remember { mutableStateOf<Float?>(null) }
     var retainedDragItem by remember { mutableStateOf<ProfileReorderItem?>(null) }
     val dragContainers = remember { mutableMapOf<String, PinnableContainer>() }
     var dragPin by remember { mutableStateOf<PinnableContainer.PinnedHandle?>(null) }
@@ -170,6 +174,7 @@ fun ProfilesScreen(
             // drag visibly snaps back.
             fun commitReleasedOrder(order: List<ProfileItem>) {
                 profileDrag = null
+                dragStartTop = null
                 retainedDragItem = null
                 dragPin?.release()
                 dragPin = null
@@ -181,6 +186,7 @@ fun ProfilesScreen(
                 }
                 ProfileReorderResult.Cancelled -> {
                     profileDrag = null
+                    dragStartTop = null
                     retainedDragItem = null
                     dragPin?.release()
                     dragPin = null
@@ -361,6 +367,7 @@ fun ProfilesScreen(
                     .pointerInput(profiles, localProfiles.size) {
                         fun cancelProfileDrag() {
                             profileDrag = null
+                            dragStartTop = null
                             retainedDragItem = null
                             dragPin?.release()
                             dragPin = null
@@ -387,6 +394,7 @@ fun ProfilesScreen(
                                     ProfileReorderItem(start.id, it.index, it.offset, it.size)
                                 }
                             profileDrag = start
+                            dragStartTop = start.top
                             try {
                                 // Own accepted drags before the inner scrollable's Main pass,
                                 // even when the scroll lock has not recomposed yet.
@@ -462,10 +470,8 @@ fun ProfilesScreen(
                                 shape = cardShape
                                 clip = false
                                 val drag = profileDrag
-                                val slotOffset = lazyListState.layoutInfo.visibleItemsInfo
-                                    .firstOrNull { it.key == item.id }?.offset
-                                    ?: retainedDragItem?.takeIf { it.id == item.id }?.offset
-                                translationY = if (drag?.id == item.id && slotOffset != null) drag.translationY(slotOffset) else 0f
+                                val anchorTop = dragStartTop
+                                translationY = if (drag?.id == item.id && anchorTop != null) drag.top - anchorTop else 0f
                                 scaleX = 1f
                                 scaleY = 1f
                                 shadowElevation = 0f
