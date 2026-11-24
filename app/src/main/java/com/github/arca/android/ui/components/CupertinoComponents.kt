@@ -48,7 +48,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -808,91 +807,6 @@ fun <T> CupertinoSegmentedControl(
                     Text(
                         text = labelProvider(item),
                         color = if (isSelected) LoonTextPrimary else LoonTextSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-    }
-}
-
-// =============================================================================
-// Glasmio Glass Segmented Control (glass sliding bar, like the home dock)
-// =============================================================================
-
-/**
- * Glass sliding bar, kept subtle like the home 规则/全局/直连 control
- * (DashboardModeControl): a dark flat track (LoonCard + border) with only
- * the selection pill in glass. A full-glass bar is too flashy here; the
- * pill slides to the tapped segment on a critically-damped spring so it
- * settles without overshoot or left-right sway.
- */
-@Composable
-fun <T> GlassSegmentedControl(
-    items: List<T>,
-    selectedItem: T,
-    onItemSelected: (T) -> Unit,
-    labelProvider: (T) -> String,
-    modifier: Modifier = Modifier
-) {
-    val haptic = rememberIosHaptic()
-    val selectedIndex = items.indexOf(selectedItem).coerceAtLeast(0)
-    var barWidthPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val segmentWidth = if (barWidthPx > 0 && items.isNotEmpty()) {
-        with(density) { (barWidthPx / items.size).toDp() }
-    } else 0.dp
-    // Sliding pill: critically damped (no bounce), same travel feel as the dock.
-    val indicatorOffset by animateDpAsState(
-        targetValue = segmentWidth * selectedIndex,
-        animationSpec = spring(stiffness = 250f, dampingRatio = 1f),
-        label = "glass-segmented-indicator"
-    )
-    Box(
-        modifier = modifier
-            .height(36.dp)
-            .onSizeChanged { barWidthPx = it.width }
-            .background(LoonCard, RoundedCornerShape(18.dp))
-            .border(1.dp, LoonCardBorder, RoundedCornerShape(18.dp))
-    ) {
-        // Sliding selection pill (the only glass here, like the home lens).
-        // Hidden until the bar is measured so it never flashes at the wrong slot.
-        if (barWidthPx > 0 && segmentWidth > 0.dp) {
-            GlassSurface(
-                modifier = Modifier
-                    .width(segmentWidth - 4.dp)
-                    .fillMaxHeight()
-                    .padding(vertical = 2.dp)
-                    .offset(x = indicatorOffset + 2.dp),
-                shape = RoundedCornerShape(14.dp),
-                honorShape = true,
-                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
-            ) {}
-        }
-        Row(
-            Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            items.forEachIndexed { index, item ->
-                val isSelected = index == selectedIndex
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
-                            if (!isSelected) {
-                                onItemSelected(item)
-                                haptic.selection()
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = labelProvider(item),
-                        color = if (isSelected) IosBlue else LoonTextSecondary,
                         fontSize = 13.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1

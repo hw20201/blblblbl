@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -33,8 +32,6 @@ import com.github.arca.android.core.model.TunnelMode
 import com.github.arca.android.data.ParsedRule
 import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
-import com.github.arca.android.ui.glass.recordArcaGlasmioBackdropSource
-import com.github.arca.android.ui.glass.rememberArcaGlasmioBackdrop
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
 import com.github.arca.android.ui.theme.*
@@ -60,10 +57,6 @@ fun RulesScreen(
     // bar sits below the morph title instead of overlapping it.
     val edgeInsets = LocalSettingsDetailEdgeInsets.current
 
-    val listState = rememberLazyListState()
-    // Local backdrop that samples this list, so the top-edge blur has real
-    // content to blur. The morph page provides no backdrop of its own.
-    val pageBackdrop = rememberArcaGlasmioBackdrop()
     var searchQuery by remember { mutableStateOf("") }
     var selectedBehavior by remember { mutableStateOf("ALL") }
     var selectedFilterType by remember { mutableStateOf("ALL") }
@@ -97,9 +90,7 @@ fun RulesScreen(
     // while every control scrolls naturally with the rule content.
     Box(Modifier.fillMaxSize().background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)) {
         LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().testTag("rules-list").bounceOverscroll()
-                .recordArcaGlasmioBackdropSource(pageBackdrop),
+            modifier = Modifier.fillMaxSize().testTag("rules-list").bounceOverscroll(),
             contentPadding = PaddingValues(
                 top = headerHeight + 12.dp + (edgeInsets?.top ?: 0.dp),
                 bottom = 24.dp
@@ -115,7 +106,7 @@ fun RulesScreen(
                 )
             }
             item(key = "rules-behavior-filter") {
-                GlassSegmentedControl(
+                CupertinoSegmentedControl(
                     items = behaviorTabs,
                     selectedItem = selectedBehavior,
                     onItemSelected = { selectedBehavior = it },
@@ -249,21 +240,6 @@ fun RulesScreen(
                 }
             }
         }
-        // Top-edge blur: starting just below the title text, blur the
-        // scrolling content gradually, then the frosted nav bar covers it —
-        // so content never pops in or out suddenly under the header.
-        MainPageScrollEdge(
-            backdrop = pageBackdrop,
-            headerHeight = headerHeight,
-            background = LoonBg,
-            tag = "rules-top-blur",
-            modifier = Modifier.align(Alignment.TopCenter)
-                .then(if (edgeInsets != null) Modifier.padding(top = edgeInsets.top) else Modifier),
-            scrollOffsetPx = {
-                if (listState.firstVisibleItemIndex > 0) Int.MAX_VALUE
-                else listState.firstVisibleItemScrollOffset
-            }
-        )
         Box(Modifier.align(Alignment.TopCenter).onSizeChanged { headerHeightPx = it.height }
             .then(
                 when {
