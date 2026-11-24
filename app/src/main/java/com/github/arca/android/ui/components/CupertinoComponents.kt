@@ -823,9 +823,10 @@ fun <T> CupertinoSegmentedControl(
 // =============================================================================
 
 /**
- * Glass sliding bar: a Glasmio pill bar whose selection pill slides to the
- * tapped segment. Same shape language as the home bottom dock (glass tray +
- * separate selected pill), with a critically-damped spring so the pill
+ * Glass sliding bar, kept subtle like the home 规则/全局/直连 control
+ * (DashboardModeControl): a dark flat track (LoonCard + border) with only
+ * the selection pill in glass. A full-glass bar is too flashy here; the
+ * pill slides to the tapped segment on a critically-damped spring so it
  * settles without overshoot or left-right sway.
  */
 @Composable
@@ -849,13 +850,14 @@ fun <T> GlassSegmentedControl(
         animationSpec = spring(stiffness = 250f, dampingRatio = 1f),
         label = "glass-segmented-indicator"
     )
-    GlassSurface(
-        modifier = modifier.height(36.dp).onSizeChanged { barWidthPx = it.width },
-        shape = RoundedCornerShape(18.dp),
-        honorShape = true,
-        surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .onSizeChanged { barWidthPx = it.width }
+            .background(LoonCard, RoundedCornerShape(18.dp))
+            .border(1.dp, LoonCardBorder, RoundedCornerShape(18.dp))
     ) {
-        // Sliding selection pill (separate glass layer, like the dock lens).
+        // Sliding selection pill (the only glass here, like the home lens).
         // Hidden until the bar is measured so it never flashes at the wrong slot.
         if (barWidthPx > 0 && segmentWidth > 0.dp) {
             GlassSurface(
@@ -890,7 +892,7 @@ fun <T> GlassSegmentedControl(
                 ) {
                     Text(
                         text = labelProvider(item),
-                        color = if (isSelected) LoonTextPrimary else LoonTextSecondary,
+                        color = if (isSelected) IosBlue else LoonTextSecondary,
                         fontSize = 13.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1

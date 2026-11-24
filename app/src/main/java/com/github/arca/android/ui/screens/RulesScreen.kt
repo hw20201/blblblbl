@@ -34,7 +34,6 @@ import com.github.arca.android.ui.components.*
 import com.github.arca.android.ui.glass.GlassDefaults
 import com.github.arca.android.ui.glass.GlassModalBottomSheet
 import com.github.arca.android.ui.glass.GlassSurface
-import com.github.arca.android.ui.glass.GlassSurfaceCategory
 import com.github.arca.android.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,14 +130,13 @@ fun RulesScreen(
                     ) {
                         items(filterTypes) { type ->
                             val selected = selectedFilterType == type
-                            GlassSurface(
+                            Surface(
                                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable {
                                     haptic.selection()
                                     selectedFilterType = type
                                 },
-                                shape = RoundedCornerShape(16.dp),
-                                honorShape = true,
-                                surfaceCategory = GlassSurfaceCategory.SHORTCUT_CARDS
+                                color = if (selected) LoonTertiaryBg else LoonCard,
+                                shape = RoundedCornerShape(16.dp)
                             ) {
                                 Text(
                                     text = if (type == "ALL") "全部 (${rules.size})" else type,
