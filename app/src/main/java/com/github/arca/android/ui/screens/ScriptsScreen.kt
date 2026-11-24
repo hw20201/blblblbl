@@ -120,11 +120,22 @@ fun ScriptsScreen(
         }
     }
 
+    // Inside the settings morph page the EdgeViewport pins its own header above
+    // this screen; clear it with the published edge insets so our nav bar sits
+    // below the morph title instead of overlapping it. Standalone use keeps the
+    // status-bar padding.
+    val edgeInsets = LocalSettingsDetailEdgeInsets.current
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(if (GlassDefaults.enabled) Color.Transparent else LoonBg)
-            .then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding())
+            .then(
+                when {
+                    edgeInsets != null -> Modifier.padding(top = edgeInsets.top)
+                    embeddedPanel -> Modifier
+                    else -> Modifier.statusBarsPadding()
+                }
+            )
             .testTag("scripts-screen-root")
     ) {
         // Cupertino Navigation Bar

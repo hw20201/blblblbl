@@ -71,7 +71,7 @@ fun AppRoutingScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("app-routing-list").bounceOverscroll(),
             contentPadding = PaddingValues(
-                top = (if (embeddedPanel) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 56.dp,
+                top = (if (embeddedPanel) (LocalSettingsDetailEdgeInsets.current?.top ?: 0.dp) else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()) + 56.dp,
                 bottom = if (embeddedPanel) 24.dp else 120.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -211,7 +211,21 @@ fun AppRoutingScreen(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().then(if (embeddedPanel) Modifier else Modifier.statusBarsPadding()).zIndex(1f)) {
+        // Inside the settings morph page the EdgeViewport pins its own header above
+        // this screen; clear it with the published edge insets so our floating nav
+        // bar sits below the morph title instead of overlapping it.
+        val edgeInsets = LocalSettingsDetailEdgeInsets.current
+        Box(
+            Modifier.fillMaxWidth()
+                .then(
+                    when {
+                        edgeInsets != null -> Modifier.padding(top = edgeInsets.top)
+                        embeddedPanel -> Modifier
+                        else -> Modifier.statusBarsPadding()
+                    }
+                )
+                .zIndex(1f)
+        ) {
             CupertinoNavBar(
                 title = AppStrings.get("app_routing_title", lang),
                 showBackButton = onBack != null,

@@ -134,7 +134,7 @@ fun DnsScreen(
                 .bounceOverscroll()
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
-                top = if (embeddedPanel) 8.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                top = if (embeddedPanel) (LocalSettingsDetailEdgeInsets.current?.top ?: 8.dp) else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
                 // Leave a deliberate scroll tail above the pinned explanation so
                 // the final DNS row can settle fully clear of the fixed hint.
                 bottom = if (embeddedPanel) 20.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
