@@ -41,10 +41,12 @@ class ConfigDnsMergeTest {
 
     @Test fun `DNS defaults separate bootstrap and DoH transports`() {
         val dns = ConfigManager.buildDnsSection(false, null)
-        assertEquals(listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), dns["default-nameserver"])
-        assertEquals(listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT"), dns["proxy-server-nameserver"])
-        assertEquals(listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query"), dns["nameserver"])
-        assertEquals(listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), dns["fallback"])
+        // Plain UDP resolvers stay as the reliable fallback; DoH-only defaults
+        // break all DNS when DoH fails.
+        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["default-nameserver"])
+        assertEquals(listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT", "223.5.5.5", "119.29.29.29"), dns["proxy-server-nameserver"])
+        assertEquals(listOf("https://dns.alidns.com/dns-query", "https://doh.pub/dns-query", "223.5.5.5", "119.29.29.29", "180.76.76.76"), dns["nameserver"])
+        assertEquals(listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query", "1.1.1.1", "8.8.8.8"), dns["fallback"])
         assertEquals(mapOf("geoip" to true, "geoip-code" to "CN"), dns["fallback-filter"])
     }
 
@@ -53,9 +55,8 @@ class ConfigDnsMergeTest {
             "default-nameserver" to listOf("192.0.2.1"),
             "proxy-server-nameserver" to listOf("192.0.2.2")
         ))
-        val encryptedBootstrap = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query")
-        assertEquals(encryptedBootstrap, dns["default-nameserver"])
-        assertEquals(encryptedBootstrap.map { "$it#DIRECT" }, dns["proxy-server-nameserver"])
+        assertEquals(listOf("223.5.5.5", "119.29.29.29"), dns["default-nameserver"])
+        assertEquals(listOf("https://1.1.1.1/dns-query#DIRECT", "https://8.8.8.8/dns-query#DIRECT", "223.5.5.5", "119.29.29.29"), dns["proxy-server-nameserver"])
     }
 
     @Test fun `profile DNS retains encrypted resolvers and filters plaintext ones`() {
