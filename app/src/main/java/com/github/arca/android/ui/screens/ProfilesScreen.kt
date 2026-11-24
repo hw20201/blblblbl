@@ -161,8 +161,24 @@ fun ProfilesScreen(
             }
         }.collect { frame ->
             val (drag, result) = frame ?: return@collect
+            // The finger is already up: commit whatever order we have. Waiting
+            // for a Settled frame is not safe here, because snapshotFlow only
+            // re-emits when profileDrag changes, and a release that lands on
+            // Move/AwaitLayout never produces another emission. The order then
+            // stays unpersisted until profiles is re-emitted, and
+            // remember(profiles) resets localProfiles to the old order: the
+            // drag visibly snaps back.
+            fun commitReleasedOrder(order: List<ProfileItem>) {
+                profileDrag = null
+                retainedDragItem = null
+                dragPin?.release()
+                dragPin = null
+                currentOnReorderProfiles?.invoke(order)
+            }
             when (result) {
-                ProfileReorderResult.AwaitLayout -> Unit
+                ProfileReorderResult.AwaitLayout -> {
+                    if (drag.released) commitReleasedOrder(localProfiles)
+                }
                 ProfileReorderResult.Cancelled -> {
                     profileDrag = null
                     retainedDragItem = null
@@ -170,11 +186,7 @@ fun ProfilesScreen(
                     dragPin = null
                 }
                 ProfileReorderResult.Settled -> if (drag.released) {
-                    profileDrag = null
-                    retainedDragItem = null
-                    dragPin?.release()
-                    dragPin = null
-                    currentOnReorderProfiles?.invoke(localProfiles)
+                    commitReleasedOrder(localProfiles)
                 }
                 is ProfileReorderResult.Move -> {
                     val firstIndex = lazyListState.firstVisibleItemIndex
@@ -182,9 +194,11 @@ fun ProfilesScreen(
                         // Override keyed first-item retention in the SAME remeasure as the move.
                         lazyListState.requestScrollToItem(firstIndex, lazyListState.firstVisibleItemScrollOffset)
                     }
-                    localProfiles = localProfiles.toMutableList().apply {
+                    val reordered = localProfiles.toMutableList().apply {
                         add(result.to, removeAt(result.from))
                     }
+                    localProfiles = reordered
+                    if (drag.released) commitReleasedOrder(reordered)
                 }
             }
         }
@@ -208,9 +222,6 @@ fun ProfilesScreen(
         targetReplacingProfile = null
     }
 
-    Box(Modifier.fillMaxSize()) {
-    if (pageBackdrop != null) MainPageScrollEdge(pageBackdrop, 58.dp, LoonBg, "profiles-top-blur",
-        modifier = Modifier.align(Alignment.TopCenter), scrollOffsetPx = { lazyListState.firstVisibleItemScrollOffset })
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -647,7 +658,6 @@ fun ProfilesScreen(
             }
             } // pull-to-refresh
         }
-    }
     }
 
     // =========================================================================
